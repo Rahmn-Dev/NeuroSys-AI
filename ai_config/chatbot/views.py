@@ -1,45 +1,70 @@
 import logging
 import requests
 import subprocess
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
 import json
 import psutil
+import os
+from datetime import datetime
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
 from datasets import load_dataset
 
+# Setup logging folder
+LOG_DIR = "logs"
+os.makedirs(LOG_DIR, exist_ok=True)
+LOG_FILE = os.path.join(LOG_DIR, "app.log")
+SUBPROCESS_LOG_FILE = os.path.join(LOG_DIR, "subprocess.log")
+AI_RESPONSE_LOG_FILE = os.path.join(LOG_DIR, "ai_response.log")
+
+logging.basicConfig(filename=LOG_FILE, level=logging.INFO, format="%(asctime)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 
-# Load dataset dari Hugging Face
 ds = load_dataset("mrheinen/linux-commands")
-command_dict = {entry["input"]: entry["output"] for entry in ds["train"]}
+DATASET_PATH = os.path.join(os.path.dirname(__file__), "../dataset/ds.json")
+with open(DATASET_PATH, "r") as f:
+    data = json.load(f)
 
-def extract_command_from_ai(prompt):
-    """
-    Menggunakan Ollama untuk memahami apakah prompt mengandung perintah Linux.
-    """
+command_dict = {entry["input"]: entry["output"] for entry in ds["train"]}
+# command_dict = {entry["input"]: entry["output"] for entry in data}
+
+
+def log_to_file(filename, message):
+    with open(filename, "a") as f:
+        f.write(f"{datetime.now()} - {message}\n")
+
+def extract_commands_from_ai(prompt):
     ollama_payload = {
-        # "model": "deepseek-r1:7b",
-        "model": "llama3.2:latest",
-        "prompt": f"Extract the Linux command from this prompt: '{prompt}'. Only return the command, nothing else.",
+        "model": "codellama:7b",
+        "prompt": f"""
+        You are an expert Linux automation AI. 
+        Extract and return ONLY a JSON array of the necessary Linux commands 
+        to fulfill the user's request. Do NOT include explanations, just return the JSON array.
+        
+        User request: '{prompt}'
+        """,
         "stream": False
     }
 
     response = requests.post(OLLAMA_URL, json=ollama_payload)
+    log_to_file(AI_RESPONSE_LOG_FILE, f"AI Raw Response: {response.text}")
     
     if response.status_code == 200:
-        extracted_command = response.json().get("response", "").strip()
-        return extracted_command
-    return None
+        raw_response = response.json().get("response", "[]").strip()
+        try:
+            command_list = json.loads(raw_response)
+            if isinstance(command_list, list):
+                return command_list
+        except json.JSONDecodeError:
+            logger.error("AI response is not valid JSON")
+    return []
 
 def execute_linux_command(command):
-    """
-    Mengeksekusi perintah Linux menggunakan subprocess.
-    """
     try:
         process = subprocess.run(command, shell=True, text=True, capture_output=True)
         output = process.stdout if process.stdout else process.stderr
+        log_to_file(SUBPROCESS_LOG_FILE, f"Command: {command}\nOutput: {output}")
         return output, "subprocess"
     except Exception as e:
         return f"Error executing command: {str(e)}", "error"
@@ -50,44 +75,50 @@ def chat_with_ai(request):
         try:
             data = request.data
             user_prompt = data.get("prompt", "").strip()
-
             if not user_prompt:
                 return Response({"error": "Prompt tidak boleh kosong"}, status=400)
-
-            logger.info(f"User prompt: {user_prompt}")
-
-            # Minta Ollama untuk mengekstrak command dari prompt user
-            extracted_command = extract_command_from_ai(user_prompt)
-
-            if extracted_command:
-                logger.info(f"Extracted command: {extracted_command}")
-
-                # Jalankan command jika valid
-                output, source = execute_linux_command(extracted_command)
-
-                return Response({
-                    "response": output,
-                    "source": source,
-                    "executed_command": extracted_command
-                })
             
-            # Jika tidak ada command, tetap kirim prompt ke AI seperti biasa
-            response = requests.post(OLLAMA_URL, json={
-                "model": "deepseek-r1:7b",
-                "prompt": user_prompt,
+            logger.info(f"User prompt: {user_prompt}")
+            extracted_commands = extract_commands_from_ai(user_prompt)
+            
+            responses = []
+            executed_commands = []
+            
+            if extracted_commands:
+                for cmd in extracted_commands:
+                    logger.info(f"Executing command: {cmd}")
+                    output, source = execute_linux_command(cmd)
+                    executed_commands.append(cmd)
+                    responses.append({"command": cmd, "output": output})
+            
+            # **Tambahkan hasil eksekusi command ke dalam prompt AI**
+            command_output_text = "\n".join(
+                [f"Command: {r['command']}\nOutput: {r['output']}" for r in responses]
+            )
+
+            ai_response_prompt = f"""
+            You are an expert Linux automation AI. 
+            User requested: '{user_prompt}'
+            Commands executed and outputs:
+            {command_output_text}
+            Provide a clear response based on the outputs.
+            """
+
+            ai_summary = requests.post(OLLAMA_URL, json={
+                "model": "codellama:7b",
+                "prompt": ai_response_prompt,
                 "stream": False
+            }).json().get("response", "")
+
+            return Response({
+                "response": responses,
+                "executed_commands": executed_commands,
+                "ai-response": ai_summary
             })
-
-            if response.status_code == 200:
-                data = response.json()
-                return Response({"response": data.get("response", "Error: No response from AI")})
-            else:
-                return Response({"error": "Gagal mendapatkan respons dari AI"}, status=500)
-
+        
         except Exception as e:
             logger.error(f"Error saat memproses permintaan: {e}")
             return Response({"error": f"Gagal memproses permintaan: {str(e)}"}, status=500)
-        
 
 @api_view(['GET'])
 def system_status(request):
