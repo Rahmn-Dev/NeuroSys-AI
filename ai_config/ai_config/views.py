@@ -9,8 +9,8 @@ from datetime import datetime
 import socket
 import requests
 
-def textGenerator(request):
-    return render(request,"generator/textGenerator.html",{'headTitle' : 'Text Generator','toggle' : "true"})
+def chatAI(request):
+    return render(request,"generator/textGenerator.html",{'headTitle' : 'Chat AI','toggle' : "true"})
 
 
 def index(request):
