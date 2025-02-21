@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+
+{% include '../partials/head.html' with headTitle=headTitle %}
+
+
+<body>
+    <main class="page-wrapper">
+
+        <div id="my_switcher" class="my_switcher">
+            <ul>
+                <li>
+                    <a href="javascript: void(0);" data-theme="light" class="setColor light">
+                        <img src="/static/images/light/switch/sun-01.svg" alt="Sun images"><span title="Light Mode"> Light</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="javascript: void(0);" data-theme="dark" class="setColor dark">
+                        <img src="/static/images/light/switch/vector.svg" alt="Vector Images"><span title="Dark Mode">
+                            Dark</span>
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <!-- start header -->
+    
+        <!-- End  header -->
+
+        <!-- start mobilemenu -->
+        {% include '../partials/mobileMenu.html' %}
+        <!-- End  mobilemenu -->
+
+        <!-- start Preloader -->
+        {% include '../partials/preloader.html' %}
+        <!-- End Preloader -->
+
+        {% block content %}
+
+        {% endblock %} 
+
+      
+
+    </main>
+
+    <!-- start script -->
+    {% include '../partials/script.html' %}
+    <!-- End  script -->
+
+</body>
+
+</html>

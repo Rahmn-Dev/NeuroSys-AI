@@ -1,0 +1,100 @@
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6176]: Performing system checks...
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]: Watching for file changes with StatReloader
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]: Exception in thread django-main-thread:
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]: Traceback (most recent call last):
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:   File "/usr/lib/python3.12/threading.py", line 1073, in _bootstrap_inner
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:     self.run()
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:   File "/usr/lib/python3.12/threading.py", line 1010, in run
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:     self._target(*self._args, **self._kwargs)
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:   File "/home/paul/.local/share/virtualenvs/NeuroSys-AI-hMYEmNG9/lib/python3.12/site-packages/django/utils/autoreload.py", line 64, in wrapper
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:     fn(*args, **kwargs)
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:   File "/home/paul/.local/share/virtualenvs/NeuroSys-AI-hMYEmNG9/lib/python3.12/site-packages/django/core/management/commands/runserver.py", line 134, in inner_run
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:     self.check(display_num_errors=True)
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:   File "/home/paul/.local/share/virtualenvs/NeuroSys-AI-hMYEmNG9/lib/python3.12/site-packages/django/core/management/base.py", line 486, in check
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:     all_issues = checks.run_checks(
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:                  ^^^^^^^^^^^^^^^^^^
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:   File "/home/paul/.local/share/virtualenvs/NeuroSys-AI-hMYEmNG9/lib/python3.12/site-packages/django/core/checks/registry.py", line 88, in run_checks
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:     new_errors = check(app_configs=app_configs, databases=databases)
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:   File "/home/paul/.local/share/virtualenvs/NeuroSys-AI-hMYEmNG9/lib/python3.12/site-packages/django/core/checks/urls.py", line 44, in check_url_namespaces_unique
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:     all_namespaces = _load_all_namespaces(resolver)
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:   File "/home/paul/.local/share/virtualenvs/NeuroSys-AI-hMYEmNG9/lib/python3.12/site-packages/django/core/checks/urls.py", line 63, in _load_all_namespaces
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:     url_patterns = getattr(resolver, "url_patterns", [])
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:   File "/home/paul/.local/share/virtualenvs/NeuroSys-AI-hMYEmNG9/lib/python3.12/site-packages/django/utils/functional.py", line 47, in __get__
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:     res = instance.__dict__[self.name] = self.func(instance)
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:                                          ^^^^^^^^^^^^^^^^^^^
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:   File "/home/paul/.local/share/virtualenvs/NeuroSys-AI-hMYEmNG9/lib/python3.12/site-packages/django/urls/resolvers.py", line 718, in url_patterns
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:     patterns = getattr(self.urlconf_module, "urlpatterns", self.urlconf_module)
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:                        ^^^^^^^^^^^^^^^^^^^
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:   File "/home/paul/.local/share/virtualenvs/NeuroSys-AI-hMYEmNG9/lib/python3.12/site-packages/django/utils/functional.py", line 47, in __get__
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:     res = instance.__dict__[self.name] = self.func(instance)
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:                                          ^^^^^^^^^^^^^^^^^^^
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:   File "/home/paul/.local/share/virtualenvs/NeuroSys-AI-hMYEmNG9/lib/python3.12/site-packages/django/urls/resolvers.py", line 711, in urlconf_module
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:     return import_module(self.urlconf_name)
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:   File "/usr/lib/python3.12/importlib/__init__.py", line 90, in import_module
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:     return _bootstrap._gcd_import(name[level:], package, level)
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:   File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:   File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:   File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:   File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:   File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:   File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:   File "/home/paul/project-ai/NeuroSys-AI/ai_config/ai_config/urls.py", line 20, in <module>
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]:     from ai_config import dashboard
+Feb 14 21:59:17 paul-Legion-5-Pro-16ITH6H bash[6200]: ImportError: cannot import name 'dashboard' from 'ai_config' (/home/paul/project-ai/NeuroSys-AI/ai_config/ai_config/__init__.py)
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6200]: /home/paul/project-ai/NeuroSys-AI/ai_config/ai_config/urls.py changed, reloading.
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6200]: Performing system checks...
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]: Watching for file changes with StatReloader
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]: Exception in thread django-main-thread:
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]: Traceback (most recent call last):
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:   File "/usr/lib/python3.12/threading.py", line 1073, in _bootstrap_inner
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:     self.run()
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:   File "/usr/lib/python3.12/threading.py", line 1010, in run
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:     self._target(*self._args, **self._kwargs)
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:   File "/home/paul/.local/share/virtualenvs/NeuroSys-AI-hMYEmNG9/lib/python3.12/site-packages/django/utils/autoreload.py", line 64, in wrapper
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:     fn(*args, **kwargs)
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:   File "/home/paul/.local/share/virtualenvs/NeuroSys-AI-hMYEmNG9/lib/python3.12/site-packages/django/core/management/commands/runserver.py", line 134, in inner_run
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:     self.check(display_num_errors=True)
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:   File "/home/paul/.local/share/virtualenvs/NeuroSys-AI-hMYEmNG9/lib/python3.12/site-packages/django/core/management/base.py", line 486, in check
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:     all_issues = checks.run_checks(
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:                  ^^^^^^^^^^^^^^^^^^
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:   File "/home/paul/.local/share/virtualenvs/NeuroSys-AI-hMYEmNG9/lib/python3.12/site-packages/django/core/checks/registry.py", line 88, in run_checks
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:     new_errors = check(app_configs=app_configs, databases=databases)
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:   File "/home/paul/.local/share/virtualenvs/NeuroSys-AI-hMYEmNG9/lib/python3.12/site-packages/django/core/checks/urls.py", line 44, in check_url_namespaces_unique
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:     all_namespaces = _load_all_namespaces(resolver)
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:   File "/home/paul/.local/share/virtualenvs/NeuroSys-AI-hMYEmNG9/lib/python3.12/site-packages/django/core/checks/urls.py", line 63, in _load_all_namespaces
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:     url_patterns = getattr(resolver, "url_patterns", [])
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:   File "/home/paul/.local/share/virtualenvs/NeuroSys-AI-hMYEmNG9/lib/python3.12/site-packages/django/utils/functional.py", line 47, in __get__
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:     res = instance.__dict__[self.name] = self.func(instance)
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:                                          ^^^^^^^^^^^^^^^^^^^
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:   File "/home/paul/.local/share/virtualenvs/NeuroSys-AI-hMYEmNG9/lib/python3.12/site-packages/django/urls/resolvers.py", line 718, in url_patterns
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:     patterns = getattr(self.urlconf_module, "urlpatterns", self.urlconf_module)
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:                        ^^^^^^^^^^^^^^^^^^^
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:   File "/home/paul/.local/share/virtualenvs/NeuroSys-AI-hMYEmNG9/lib/python3.12/site-packages/django/utils/functional.py", line 47, in __get__
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:     res = instance.__dict__[self.name] = self.func(instance)
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:                                          ^^^^^^^^^^^^^^^^^^^
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:   File "/home/paul/.local/share/virtualenvs/NeuroSys-AI-hMYEmNG9/lib/python3.12/site-packages/django/urls/resolvers.py", line 711, in urlconf_module
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:     return import_module(self.urlconf_name)
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:   File "/usr/lib/python3.12/importlib/__init__.py", line 90, in import_module
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:     return _bootstrap._gcd_import(name[level:], package, level)
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:   File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:   File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:   File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:   File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:   File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:   File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:   File "/home/paul/project-ai/NeuroSys-AI/ai_config/ai_config/urls.py", line 20, in <module>
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]:     from ai_config import dashboard
+Feb 14 21:59:26 paul-Legion-5-Pro-16ITH6H bash[6204]: ImportError: cannot import name 'dashboard' from 'ai_config' (/home/paul/project-ai/NeuroSys-AI/ai_config/ai_config/__init__.py)
+Feb 14 21:59:51 paul-Legion-5-Pro-16ITH6H bash[6204]: /home/paul/project-ai/NeuroSys-AI/ai_config/ai_config/urls.py changed, reloading.
+Feb 14 21:59:51 paul-Legion-5-Pro-16ITH6H bash[6204]: Performing system checks...
+Feb 14 21:59:51 paul-Legion-5-Pro-16ITH6H bash[6211]: Watching for file changes with StatReloader
