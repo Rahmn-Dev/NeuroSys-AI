@@ -1,0 +1,100 @@
+<!-- Start Left panel -->
+<div class="rbt-left-panel popup-dashboardleft-section">
+    <div class="rbt-default-sidebar">
+        <div class="inner">
+            <div class="content-item-content">
+                <div class="rbt-default-sidebar-wrapper">
+                    <nav class="mainmenu-nav">
+                        <ul class="dashboard-mainmenu rbt-default-sidebar-list">
+                            <li><a href="{% url  'dashboard' %}">
+                                    <img class="boxed-logo-dark" src="/static/images/generator-icon/website-design.png" alt="Dashboard">
+                                    <img class="boxed-logo-light" src="/static/images/light/generator-icon/website-design.png" alt="Dashboard">
+                                    <span>Dashboard</span></a></li>
+                            <li><a href="{% url  'chat' %}">
+                                    <img class="boxed-logo-dark" src="/static/images/generator-icon/text.png" alt="AI Generator">
+                                    <img class="boxed-logo-light" src="/static/images/light/generator-icon/text.png" alt="AI Generator">
+                                    <span>Chat AI</span></a>
+                                </li>
+                            <li><a href="#">
+                                    <img class="boxed-logo-dark" src="/static/images/generator-icon/text.png" alt="AI Generator">
+                                    <img class="boxed-logo-light" src="/static/images/light/generator-icon/text.png" alt="AI Generator">
+                                    <span>Services Control</span></a>
+                                </li>
+                            <li><a href="#">
+                                    <img class="boxed-logo-dark" src="/static/images/generator-icon/text.png" alt="AI Generator">
+                                    <img class="boxed-logo-light" src="/static/images/light/generator-icon/text.png" alt="AI Generator">
+                                    <span>Network & Security</span></a>
+                                </li>
+                            <li><a href="#">
+                                    <img class="boxed-logo-dark" src="/static/images/generator-icon/text.png" alt="AI Generator">
+                                    <img class="boxed-logo-light" src="/static/images/light/generator-icon/text.png" alt="AI Generator">
+                                    <span>AI Optimization</span></a>
+                                </li>
+                            <li><a href="#">
+                                    <img class="boxed-logo-dark" src="/static/images/generator-icon/text.png" alt="AI Generator">
+                                    <img class="boxed-logo-light" src="/static/images/light/generator-icon/text.png" alt="AI Generator">
+                                    <span>Logs & Reports</span></a>
+                                </li>
+                            
+                        </ul>
+                    </nav>
+
+                    <div class="rbt-sm-separator"></div>
+
+                    <nav class="mainmenu-nav">
+                        <ul class="dashboard-mainmenu rbt-default-sidebar-list">
+                            <li class="has-submenu"><a class="collapse-btn collapsed" data-bs-toggle="collapse" href="#collapseExample('#')" role="button" aria-expanded="false" aria-controls="collapseExample"><i class="feather-plus-circle"></i><span>Setting</span></a>
+                                <div class="collapse" id="collapseExample">
+                                    <ul class="submenu rbt-default-sidebar-list">
+                                      
+                                    </ul>
+                                </div>
+                            </li>
+                          
+                        </ul>
+                        <div class="rbt-sm-separator"></div>
+                        <ul class="dashboard-mainmenu rbt-default-sidebar-list">
+                      
+                        </ul>
+                    </nav>
+                </div>
+            </div>
+        </div>
+        <div class="subscription-box">
+            <div class="inner">
+                <a href="/dashboard/profileDetails/" class="autor-info">
+                    <div class="author-img active">
+                        <img class="w-100" src="/static/images/team/team-01.png" alt="Author">
+                    </div>
+                    <div class="author-desc">
+                        <h6>{{user.username}}</h6>
+                        <p>{{user.email}}</p>
+                    </div>
+                    <div class="author-badge">Local</div>
+                </a>
+                <div class="btn-part">
+                   
+                </div>
+            </div>
+            <div id="my_switcher" class="my_switcher-3">
+                <ul>
+                    <li>
+                        <a href="javascript: void(0);" data-theme="light" class="setColor light">
+                            <img src="/static/images/light/switch/sun-01.svg" alt="Switcher Image">
+                            <span class="text" title="Dark Mode">
+                                Dark</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="javascript: void(0);" data-theme="dark" class="setColor dark">
+                            <img class="moon-light" src="/static/images/light/switch/vector.svg" alt="Switcher Image">
+                            <span class="text" title="Light Mode">Light</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+           <p class="subscription-copyright copyright-text text-center b4  small-text">© 2025 NeuroSys AI</a>.</p>
+    </div>
+</div>
+<!-- End Left panel -->

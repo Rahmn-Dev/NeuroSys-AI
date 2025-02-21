@@ -1,0 +1,210 @@
+{% extends './layout/layout1.html' %}
+{% block content %}
+
+<!-- Main content -->
+<div class="rbt-main-content mr--0">
+    <div class="rbt-daynamic-page-content">
+
+        <!-- Dashboard Center Content -->
+        <div class="rbt-dashboard-content">
+            <div class="banner-area"></div>
+            
+            <div class="content-page">
+                <div class="chat-box-list">
+
+                    <div class="welcome-wrapper">
+                        <div class="content-section">
+                            <h4 class="title">👋 Welcome, {{user.username}}</h4>
+                        </div>
+                       
+                    </div>
+
+                    <div class="rainbow-generartor-section rainbow-section-gap">
+                        <div class="section-title text-center sal-animate" data-sal="slide-up" data-sal-duration="700" data-sal-delay="100">
+                            <h4 class="subtitle "><span class="theme-gradient">NeuroSys AI</span></h4>
+                            <h2 class="title w-600 mb--20">AI-Powered Linux Automation & Security</h2>
+                            <p class="description b1">Smart. Secure. Efficient.
+                            </p>
+                        </div>
+                       
+                    </div>
+
+                </div>
+            </div>
+            <div class="banner-area">
+                <div class="row" id="row1">
+                    <!-- CPU Usage Card -->
+                    <div class="col-md-3 col-sm-6 col-lg-3" style="padding: 12px;">
+                        <div class="card is" style="border-radius: 14px; background: var(--Neutral-100, #1e1e1e); display: flex; padding: 33px 22px; align-items: center; gap: 20px; flex: 1 0 0; overflow: hidden;">
+                            <div class="row d-flex justify-content-center align-items-center" style="position: relative;">
+                                <div class="col-6 text-center " style="left: 53%; top: 40%;">
+                                    <h5 style="color: white;" id="cpuUsage">0%</h1>
+                                </div>
+                                <div class="col-6 text-center  " style="left: 55%; top: 80%;">
+                                    <h5 style="color: rgba(255, 255, 255, 0.8); font-size: 14px; font-weight: 400;">CPU Usage</h1>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+            
+                    <!-- RAM Usage Card -->
+                    <div class="col-md-3 col-sm-6 col-lg-3" style="padding: 12px;">
+                        <div class="card is" style="border-radius: 14px; background: white; display: flex; padding: 33px 22px; align-items: center; gap: 20px; flex: 1 0 0; overflow: hidden;">
+                            <div class="row d-flex justify-content-center align-items-center" style="position: relative;">
+                                <div class="col-6 text-center  " style="left: 53%; top: 40%;">
+                                    <h5 style="color: var(--Neutral-100, #1E1E1E);" id="ramUsage">0%</h1>
+                                </div>
+                                <div class="col-6 text-center " style="left: 55%; top: 80%;">
+                                    <h5 style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;">RAM Usage</h1>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+            
+                    <!-- Disk Usage Card -->
+                    <div class="col-md-3 col-sm-6 col-lg-3" style="padding: 12px;">
+                        <div class="card is" style="border-radius: 14px; background: white; display: flex; padding: 33px 22px; align-items: center; gap: 20px; flex: 1 0 0; overflow: hidden;">
+                            <div class="row d-flex justify-content-center align-items-center" style="position: relative;">
+                                <div class="col-6 text-center " style="left: 53%; top: 40%;">
+                                    <h5 style="color: var(--Neutral-100, #1E1E1E);" id="diskUsage">0%</h1>
+                                </div>
+                                <div class="col-6 text-center " style="left: 55%; top: 80%;">
+                                    <h5 style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;">Disk Usage</h1>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                     <!-- VRAM Usage Card -->
+                    <div class="col-md-3 col-sm-6 col-lg-3" style="padding: 12px;">
+                        <div class="card is" style="border-radius: 14px; background: white; display: flex; padding: 33px 22px; align-items: center; gap: 20px; flex: 1 0 0; overflow: hidden;">
+                            <div class="row d-flex justify-content-center align-items-center" style="position: relative;">
+                                <div class="col-6 text-center" style="left: 53%; top: 40%;">
+                                    <h5 style="color: var(--Neutral-100, #1E1E1E);" id="vramUsage">N/A</h4>
+                                </div>
+                                <div class="col-6 text-center" style="left: 55%; top: 80%;">
+                                    <h5 style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;">VRAM Usage</h1>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row" id="row2">
+                    <!-- Network Connections Card -->
+                    <div class="col-md-12 col-sm-12 col-lg-12" style="padding: 12px;">
+                        <div class="card is" style="border-radius: 14px; background: white; display: flex; padding: 20px; align-items: center; gap: 10px; flex: 1 0 0; overflow: hidden;">
+                            <h4 style="color: var(--Neutral-100, #1E1E1E);">Network Connections</h4>
+                            <pre id="networkStatus" style="color: black; background-color: white; font-size: 12px; max-height: 400px; overflow-y: auto;"></pre>
+                        </div>
+                    </div>
+            
+                    <!-- Running Services Card -->
+                    <div class="col-md-12 col-sm-12 col-lg-12" style="padding: 12px;">
+                        <div class="card is" style="border-radius: 14px; background: white; display: flex; padding: 20px; align-items: center; gap: 10px; flex: 1 0 0; overflow: hidden;">
+                            <h4 style="color: var(--Neutral-100, #000000);">Running Services</h4>
+                            <pre id="serviceStatus" style="color: black; background-color: white; font-size: 12px; max-height: 400px; overflow-y: auto;"></pre>
+                        </div>
+                    </div>
+
+                    <div class="col-md-12 col-sm-12 col-lg-12" style="padding: 12px;">
+                        <div class="card is" style="border-radius: 14px; background: white; display: flex; padding: 20px; align-items: center; gap: 10px; flex: 1 0 0; overflow: hidden;">
+                            <h4>Network Overview</h4>
+                            <p><strong>Server IP:</strong> <span id="serverIp">Loading...</span></p>
+                            <p><strong>External IP:</strong> <span id="externalIp">Loading...</span></p>
+                            <p><strong>RX:</strong> <span id="rx">Loading...</span></p>
+                            <p><strong>TX:</strong> <span id="tx">Loading...</span></p>
+                            <p><strong>Active Connections:</strong> <span id="activeConnections">Loading...</span></p>
+                            
+                        </div>
+                       
+                    </div>
+                    <div class="col-md-12 col-sm-12 col-lg-12" style="padding: 12px;">
+                        <div class="card is" style="border-radius: 14px; background: white; display: flex; padding: 20px; align-items: center; gap: 10px; flex: 1 0 0; overflow: hidden;">
+                            <h4>Connected Devices</h4>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>IP Address</th>
+                                        <th>MAC Address</th>
+                                        <th>Hostname</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="connectedDevices">
+                                    <tr><td colspan="3">Fetching data...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                       
+                    </div>
+                </div>
+                
+            </div>
+           
+        </div>
+
+    </div>
+</div>
+
+{% endblock content %}
+{% block script %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+    async function fetchSystemData() {
+        try {
+            const response = await fetch('/system_monitor/');
+            const data = await response.json();
+
+            // Update Cards
+            document.getElementById('cpuUsage').innerText = data.cpu + "%";
+            document.getElementById('ramUsage').innerText = data.ram + "%";
+            document.getElementById('diskUsage').innerText = data.disk + "%";
+            document.getElementById("vramUsage").innerText = data.vram !== "N/A" ? data.vram + "%" : "N/A";
+            // Format network connections and services for better readability
+            document.getElementById('networkStatus').innerText = formatOutput(data.network);
+            document.getElementById('serviceStatus').innerText = formatOutput(data.services);
+
+                // Update Network Overview (Ensure the elements exist in HTML)
+            document.getElementById('serverIp').innerText = data.network_overview.server_ip;
+            document.getElementById('externalIp').innerText = data.network_overview.external_ip;
+            document.getElementById('rx').innerText = data.network_overview.rx + " KB";
+            document.getElementById('tx').innerText = data.network_overview.tx + " KB";
+            document.getElementById('activeConnections').innerText = data.network_overview.active_connections;
+
+            let deviceList = document.getElementById('connectedDevices');
+            if (deviceList) {
+                deviceList.innerHTML = ""; // Clear previous content
+
+                if (data.network_overview.connected_devices.length > 0) {
+                    data.network_overview.connected_devices.forEach(device => {
+                        let row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${device.ip || "Unknown"}</td>
+                            <td>${device.mac || "Unknown"}</td>
+                            <td>${device.hostname || "Unknown"}</td>
+                        `;
+                        deviceList.appendChild(row);
+                    });
+                } else {
+                    // If no devices are connected, show a message
+                    deviceList.innerHTML = `<tr><td colspan="3">No connected devices found.</td></tr>`;
+                }
+            } else {
+                console.error("Connected devices table not found in HTML.");
+            }
+
+        } catch (error) {
+            console.error("Error fetching system data:", error);
+        }
+    }
+
+    function formatOutput(text) {
+        return text.split("\n").slice(0, 100).join("\n"); // Show only the first 10 lines for readability
+    }
+
+    // Fetch data every 2 seconds
+    setInterval(fetchSystemData, 2000);
+
+    // Initial Fetch
+    fetchSystemData();
+</script>
+{% endblock %}
