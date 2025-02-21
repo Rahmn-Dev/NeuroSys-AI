@@ -60,7 +60,19 @@ def extract_commands_from_ai(prompt):
             logger.error("AI response is not valid JSON")
     return []
 
+FORBIDDEN_COMMANDS = ["rm", "rmdir", "unlink", "truncate", "shred", "wipe", "dd if=/dev", "mkfs", "chmod 000"]
+
+def is_dangerous_command(command):
+    """ Check if a command contains a forbidden deletion operation """
+    return any(forbidden in command for forbidden in FORBIDDEN_COMMANDS)
+
+
 def execute_linux_command(command):
+    if is_dangerous_command(command):
+        logger.warning(f"Blocked dangerous command: {command}")
+        log_to_file(SUBPROCESS_LOG_FILE, f"Blocked Command Attempt: {command}")
+        return f"Permission required for command: {command}", "blocked"
+    
     try:
         process = subprocess.run(command, shell=True, text=True, capture_output=True)
         output = process.stdout if process.stdout else process.stderr
@@ -83,13 +95,18 @@ def chat_with_ai(request):
             
             responses = []
             executed_commands = []
+            blocked_commands = []
             
             if extracted_commands:
                 for cmd in extracted_commands:
-                    logger.info(f"Executing command: {cmd}")
-                    output, source = execute_linux_command(cmd)
-                    executed_commands.append(cmd)
-                    responses.append({"command": cmd, "output": output})
+                    if is_dangerous_command(cmd):
+                        blocked_commands.append(cmd)
+                        responses.append({"command": cmd, "output": "Permission required", "status": "blocked"})
+                    else:
+                        logger.info(f"Executing command: {cmd}")
+                        output, source = execute_linux_command(cmd)
+                        executed_commands.append(cmd)
+                        responses.append({"command": cmd, "output": output, "status": source})
             
             # **Tambahkan hasil eksekusi command ke dalam prompt AI**
             command_output_text = "\n".join(
@@ -113,6 +130,7 @@ def chat_with_ai(request):
             return Response({
                 "response": responses,
                 "executed_commands": executed_commands,
+                 "blocked_commands": blocked_commands,
                 "ai_response": ai_summary
             })
         

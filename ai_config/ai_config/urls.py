@@ -22,7 +22,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('chatbot.urls')),
     path('', views.dashboard, name='index'),
-    path('chat/', views.textGenerator, name='chat'),
+    path('chat/', views.chatAI, name='chat'),
     path('dashboard/', views.dashboard, name='dashboard'),
     path('login/', views.user_login, name='login'),
     path('logout/', views.user_logout, name='logout'),
