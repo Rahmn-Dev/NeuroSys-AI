@@ -1,0 +1,1 @@
+{"event": "verbose", "uuid": "461c3108-16d3-45f6-b251-12986c6ecebc", "counter": 1, "stdout": "The command was not found or was not executable: ansible.", "start_line": 0, "end_line": 1, "runner_ident": "cdec91ec-bb5c-4cec-9861-9760dcf3aa38", "created": "2025-02-26T15:10:10.106449+00:00"}

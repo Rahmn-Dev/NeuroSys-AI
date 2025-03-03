@@ -840,7 +840,7 @@ async function sendMessage() {
       },
       body: JSON.stringify({ prompt: userMessage }), // User input as prompt
     });
-
+    txtarea.value = "";
     const data = await response.json();
 
     if (response.ok) {
@@ -877,7 +877,7 @@ async function sendMessage() {
   }
 
   // Clear the text area after sending the message
-  txtarea.value = "";
+ 
 }
 
 // Helper function to append a message to the chat container
@@ -1056,16 +1056,71 @@ function cancelEdit(button) {
   editable.contentEditable = "false";
   // Optionally, you can revert the content to the original state
 }
-
 function regenerateMessage() {
-  const regeneratedMessage = generateAutoReply();
-  const regeneratedMessageElement = createMessageWithReactions(
-    "ChatenAI",
-    regeneratedMessage,
-    "ai-speech",
-    "assets/images/team/avater.png"
-  );
-  appendMessage(regeneratedMessageElement);
+  const chatContainer = document.getElementById("chatContainer");
+
+  // Debugging: Log the chat container and its children
+  console.log("Chat Container:", chatContainer.innerHTML);
+
+  // Find the last user message with the `.editable` class inside a `p` tag
+  const lastUserMessageElement = chatContainer.querySelector(".author-speech:last-child p.editable");
+  console.log("Last User Message Element:", lastUserMessageElement);
+
+  if (!lastUserMessageElement) {
+    console.error("No user message found to regenerate.");
+    return;
+  }
+
+  const lastUserMessage = lastUserMessageElement.textContent;
+  console.log("Last User Message:", lastUserMessage);
+
+  // Clear the last AI response
+  const lastAIResponse = chatContainer.querySelector(".ai-speech:last-child");
+  if (lastAIResponse) {
+    lastAIResponse.remove();
+  }
+
+  // Send the last user message to the AI API to regenerate the response
+  fetch('/api/chat/', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      "X-CSRFToken": getCSRFToken()
+    },
+    body: JSON.stringify({ prompt: lastUserMessage }),
+  })
+    .then(response => response.json())
+    .then(data => {
+      if (data.ai_response) {
+        const aiMessageElement = createMessageWithReactions(
+          "Chat",
+          data.ai_response,
+          "ai-speech",
+          "/static/images/team/avater.png"
+        );
+        appendMessage(aiMessageElement);
+      } else {
+        const errorMessage = 'Sorry, there was an issue with the response.';
+        const errorMessageElement = createMessageWithReactions(
+          "Chat",
+          errorMessage,
+          "ai-speech",
+          "/static/images/team/avater.png"
+        );
+        appendMessage(errorMessageElement);
+      }
+    })
+    .catch(error => {
+      console.error('Error:', error);
+      const errorMessage = 'Sorry, something went wrong. Please try again later.';
+      const errorMessageElement = createMessageWithReactions(
+        "Chat",
+        errorMessage,
+        "ai-speech",
+        "/static/images/team/avater.png"
+      );
+      appendMessage(errorMessageElement);
+    });
 }
 
 const txtarea = document.getElementById("txtarea");
