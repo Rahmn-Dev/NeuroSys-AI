@@ -155,8 +155,7 @@ ASGI_APPLICATION = "ai_config.asgi.application"
 #         "BACKEND": "channels.layers.InMemoryChannelLayer",
 #     },
 # }
-
 STATICFILES_DIRS = [
-    BASE_DIR,"static"
+    os.path.join(BASE_DIR, "static")  # Hanya mengarah ke folder static yang benar
 ]   
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")  # Tempat hasil collectstatic
