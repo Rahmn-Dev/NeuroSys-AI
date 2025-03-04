@@ -149,13 +149,15 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <script>
-    async function fetchSystemData() {
-        try {
-            const response = await fetch('/system_monitor/');
-            const data = await response.json();
+    const isLocal = window.location.hostname === "localhost" || window.location.hostname.startsWith("192.168.");
+    const wsProtocol = isLocal ? "ws" : "wss";
+    const wsHost = isLocal ? "192.168.101.20:8000" : "experimental.rahmn.tech";
 
-            // Update Cards
-            document.getElementById('cpuUsage').innerText = data.cpu + "%";
+    const socket = new WebSocket(`${wsProtocol}://${wsHost}/ws/system_monitor/`);
+    socket.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+
+        document.getElementById('cpuUsage').innerText = data.cpu + "%";
             document.getElementById('ramUsage').innerText = data.ram + "%";
             document.getElementById('diskUsage').innerText = data.disk + "%";
             document.getElementById("vramUsage").innerText = data.vram !== "N/A" ? data.vram + "%" : "N/A";
@@ -192,19 +194,69 @@
                 console.error("Connected devices table not found in HTML.");
             }
 
-        } catch (error) {
-            console.error("Error fetching system data:", error);
-        }
-    }
+    };
+
+    socket.onclose = function() {
+        console.error("WebSocket Closed. Trying to reconnect...");
+        setTimeout(() => location.reload(), 5000);
+    };
+
+    // async function fetchSystemData() {
+    //     try {
+    //         const response = await fetch('/system_monitor/');
+    //         const data = await response.json();
+
+    //         // Update Cards
+    //         document.getElementById('cpuUsage').innerText = data.cpu + "%";
+    //         document.getElementById('ramUsage').innerText = data.ram + "%";
+    //         document.getElementById('diskUsage').innerText = data.disk + "%";
+    //         document.getElementById("vramUsage").innerText = data.vram !== "N/A" ? data.vram + "%" : "N/A";
+    //         // Format network connections and services for better readability
+    //         document.getElementById('networkStatus').innerText = formatOutput(data.network);
+    //         document.getElementById('serviceStatus').innerText = formatOutput(data.services);
+
+    //             // Update Network Overview (Ensure the elements exist in HTML)
+    //         document.getElementById('serverIp').innerText = data.network_overview.server_ip;
+    //         document.getElementById('externalIp').innerText = data.network_overview.external_ip;
+    //         document.getElementById('rx').innerText = data.network_overview.rx + " KB";
+    //         document.getElementById('tx').innerText = data.network_overview.tx + " KB";
+    //         document.getElementById('activeConnections').innerText = data.network_overview.active_connections;
+
+    //         let deviceList = document.getElementById('connectedDevices');
+    //         if (deviceList) {
+    //             deviceList.innerHTML = ""; // Clear previous content
+
+    //             if (data.network_overview.connected_devices.length > 0) {
+    //                 data.network_overview.connected_devices.forEach(device => {
+    //                     let row = document.createElement('tr');
+    //                     row.innerHTML = `
+    //                         <td>${device.ip || "Unknown"}</td>
+    //                         <td>${device.mac || "Unknown"}</td>
+    //                         <td>${device.hostname || "Unknown"}</td>
+    //                     `;
+    //                     deviceList.appendChild(row);
+    //                 });
+    //             } else {
+    //                 // If no devices are connected, show a message
+    //                 deviceList.innerHTML = `<tr><td colspan="3">No connected devices found.</td></tr>`;
+    //             }
+    //         } else {
+    //             console.error("Connected devices table not found in HTML.");
+    //         }
+
+    //     } catch (error) {
+    //         console.error("Error fetching system data:", error);
+    //     }
+    // }
 
     function formatOutput(text) {
         return text.split("\n").slice(0, 100).join("\n"); // Show only the first 10 lines for readability
     }
 
     // Fetch data every 2 seconds
-    setInterval(fetchSystemData, 2000);
+    // setInterval(fetchSystemData, 2000);
 
-    // Initial Fetch
-    fetchSystemData();
+    // // Initial Fetch
+    // fetchSystemData();
 </script>
 {% endblock %}

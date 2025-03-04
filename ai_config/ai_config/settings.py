@@ -33,13 +33,14 @@ ALLOWED_HOSTS = ['*']
 
 INSTALLED_APPS = [
     # 'daphne',
-    # 'channels',
+    'channels',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    "whitenoise.runserver_nostatic",
     'rest_framework',
     'chatbot',
     # 'corsheaders',
@@ -66,6 +67,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+     "whitenoise.middleware.WhiteNoiseMiddleware",
     #  'corsheaders.middleware.CorsMiddleware', 
 ]
 
@@ -146,6 +148,7 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 LOGIN_URL = '/login/'
 
+ASGI_APPLICATION = "ai_config.asgi.application"
 # ASGI_APPLICATION = "ai_config.asgi.application"
 # CHANNEL_LAYERS = {
 #     "default": {

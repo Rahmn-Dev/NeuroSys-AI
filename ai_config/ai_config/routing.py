@@ -1,7 +1,7 @@
-from django.urls import re_path
-from .consumers import SystemMonitorConsumer
+from django.urls import re_path, path
+from ai_config.consumers import SystemMonitorConsumer
 
 websocket_urlpatterns = [
-    re_path(r"ws/system-monitor/$", SystemMonitorConsumer.as_asgi()),
+    path("ws/system_monitor/", SystemMonitorConsumer.as_asgi()),
    
 ]

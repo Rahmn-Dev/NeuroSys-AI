@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+
+{% include '../partials/head.html' with headTitle=headTitle %}
+
+<body>
+    <main class="page-wrapper rbt-dashboard-page">
+        <div class="rbt-panel-wrapper">
+
+            <!-- start header -->
+            {% include '../partials/header.html' with toggle=toggle|default:"false" %}
+
+            <!-- End  header -->
+
+            <!-- start mobilemenu -->
+            {% include '../partials/mobileMenu.html' %}
+            <!-- End  mobilemenu -->
+
+            <!-- Imroz Preloader -->
+            {% include '../partials/preloader.html' %}
+            <!-- End Preloader -->
+
+            <!-- Start Left panel -->
+            {% include '../partials/leftPanel.html' %}
+            <!-- End Left panel -->
+
+            {% block content %}
+
+            {% endblock %} 
+
+            <!--New Chat Section Modal HTML -->
+            {% include '../partials/newChatModal.html' %}
+
+            <!--Like Section Modal HTML -->
+            {% include '../partials/likeModal.html' %}
+
+            <!--DisLike Section Modal HTML -->
+            {% include '../partials/disLikeModal.html' %}
+
+            <!--Share Section Modal HTML -->
+            {% include '../partials/shareModal.html' %}
+
+            <!--back to top -->
+            {% include '../partials/backToTop.html' %}
+            
+        </main>
+        
+    <!-- start script -->
+    {% include '../partials/script.html' %}
+    <!-- End  script -->
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
+    {% block script %}
+
+    {% endblock %} 
+</body>
+
+</html>          
