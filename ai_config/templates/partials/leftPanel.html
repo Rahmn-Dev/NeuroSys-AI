@@ -6,36 +6,48 @@
                 <div class="rbt-default-sidebar-wrapper">
                     <nav class="mainmenu-nav">
                         <ul class="dashboard-mainmenu rbt-default-sidebar-list">
-                            <li><a href="{% url  'dashboard' %}">
-                                    <img class="boxed-logo-dark" src="/static/images/generator-icon/website-design.png" alt="Dashboard">
-                                    <img class="boxed-logo-light" src="/static/images/light/generator-icon/website-design.png" alt="Dashboard">
-                                    <span>Dashboard</span></a></li>
-                            <li><a href="{% url  'chat' %}">
-                                    <img class="boxed-logo-dark" src="/static/images/generator-icon/text.png" alt="AI Generator">
-                                    <img class="boxed-logo-light" src="/static/images/light/generator-icon/text.png" alt="AI Generator">
-                                    <span>Chat AI</span></a>
-                                </li>
-                            <li><a href="#">
-                                    <img class="boxed-logo-dark" src="/static/images/generator-icon/text.png" alt="AI Generator">
-                                    <img class="boxed-logo-light" src="/static/images/light/generator-icon/text.png" alt="AI Generator">
-                                    <span>Services Control</span></a>
-                                </li>
-                            <li><a href="#">
-                                    <img class="boxed-logo-dark" src="/static/images/generator-icon/text.png" alt="AI Generator">
-                                    <img class="boxed-logo-light" src="/static/images/light/generator-icon/text.png" alt="AI Generator">
-                                    <span>Network & Security</span></a>
-                                </li>
-                            <li><a href="#">
-                                    <img class="boxed-logo-dark" src="/static/images/generator-icon/text.png" alt="AI Generator">
-                                    <img class="boxed-logo-light" src="/static/images/light/generator-icon/text.png" alt="AI Generator">
-                                    <span>AI Optimization</span></a>
-                                </li>
-                            <li><a href="#">
-                                    <img class="boxed-logo-dark" src="/static/images/generator-icon/text.png" alt="AI Generator">
-                                    <img class="boxed-logo-light" src="/static/images/light/generator-icon/text.png" alt="AI Generator">
-                                    <span>Logs & Reports</span></a>
-                                </li>
-                            
+                            <li style="height: 50px;">
+                                <a href="{% url 'dashboard' %}">
+                                    <i class="boxed-logo-dark fas fa-home"></i>
+                                    <i class="boxed-logo-light fas fa-home" style="color: #000;"></i>
+                                    <span>Dashboard</span>
+                                </a>
+                            </li>
+                            <li style="height: 50px;">
+                                <a href="{% url 'chat' %}">
+                                    <i class="boxed-logo-dark fas fa-comments"></i>
+                                    <i class="boxed-logo-light fas fa-comments" style="color: #000;"></i>
+                                    <span>Chat AI</span>
+                                </a>
+                            </li>
+                            <li style="height: 50px;">
+                                <a href="#">
+                                    <i class="boxed-logo-dark fas fa-cogs"></i>
+                                    <i class="boxed-logo-light fas fa-cogs" style="color: #000;"></i>
+                                    <span>Services Control</span>
+                                </a>
+                            </li>
+                            <li style="height: 50px;">
+                                <a href="#">
+                                    <i class="boxed-logo-dark fas fa-network-wired"></i>
+                                    <i class="boxed-logo-light fas fa-network-wired" style="color: #000;"></i>
+                                    <span>Network & Security</span>
+                                </a>
+                            </li>
+                            <li style="height: 50px;">
+                                <a href="#">
+                                    <i class="boxed-logo-dark fas fa-brain"></i>
+                                    <i class="boxed-logo-light fas fa-brain" style="color: #000;"></i>
+                                    <span>AI Optimization</span>
+                                </a>
+                            </li>
+                            <li style="height: 50px;">
+                                <a href="#">
+                                    <i class="boxed-logo-dark fas fa-clipboard-list"></i>
+                                    <i class="boxed-logo-light fas fa-clipboard-list" style="color: #000;"></i>
+                                    <span>Logs & Reports</span>
+                                </a>
+                            </li>
                         </ul>
                     </nav>
 
@@ -77,7 +89,7 @@
                 </div>
             </div>
             <div id="my_switcher" class="my_switcher-3">
-                <ul>
+                <ul style="padding-left: 0px; padding-right: 0px;">
                     <li>
                         <a href="javascript: void(0);" data-theme="light" class="setColor light">
                             <img src="/static/images/light/switch/sun-01.svg" alt="Switcher Image">
