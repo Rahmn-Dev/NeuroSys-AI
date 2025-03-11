@@ -5,46 +5,108 @@
             <div class="content-item-content">
                 <div class="rbt-default-sidebar-wrapper">
                     <nav class="mainmenu-nav">
-                        <ul class="dashboard-mainmenu rbt-default-sidebar-list">
+                        <ul class="dashboard-mainmenu rbt-default-sidebar-list" >
                             <li style="height: 50px;">
-                                <a href="{% url 'dashboard' %}">
-                                    <i class="boxed-logo-dark fas fa-home"></i>
-                                    <i class="boxed-logo-light fas fa-home" style="color: #000;"></i>
+                                <a href="{% url 'dashboard' %}" style="gap: 5px;" id="dashboard-sidebar">
+                                    <lord-icon  class="boxed-logo-light "  target="#dashboard-sidebar"   src="https://cdn.lordicon.com/cnpvyndp.json"     trigger="hover"     style="width:25px;height:25px"> </lord-icon>
+                                    <lord-icon  class="boxed-logo-dark "
+                                    target="#dashboard-sidebar"
+                                    colors="primary:#ffffff"   src="https://cdn.lordicon.com/cnpvyndp.json"     trigger="hover"     style="width:25px;height:25px"> </lord-icon>
                                     <span>Dashboard</span>
                                 </a>
                             </li>
                             <li style="height: 50px;">
-                                <a href="{% url 'chat' %}">
-                                    <i class="boxed-logo-dark fas fa-comments"></i>
-                                    <i class="boxed-logo-light fas fa-comments" style="color: #000;"></i>
+                                <a href="{% url 'chat' %}" style="gap: 5px;" id="chat-sidebar">
+                                    <!-- <i class="boxed-logo-dark fas fa-comments"></i> -->
+                                    <!-- <i class="boxed-logo-light fas fa-comments" style="color: #000;"></i> -->
+                                    <lord-icon  class="boxed-logo-dark"
+                                    colors="primary:#ffffff"  target="#chat-sidebar"
+                                    src="https://cdn.lordicon.com/fdxqrdfe.json"
+                                    trigger="hover"
+                                    target=""
+                                    style="width:25px;height:25px">
+                                </lord-icon>
+                                    <lord-icon class="boxed-logo-light"  target="#chat-sidebar"
+                                    src="https://cdn.lordicon.com/fdxqrdfe.json"
+                                    trigger="hover"
+                                    style="width:25px;height:25px">
+                                </lord-icon>
                                     <span>Chat AI</span>
                                 </a>
                             </li>
                             <li style="height: 50px;">
-                                <a href="#">
-                                    <i class="boxed-logo-dark fas fa-cogs"></i>
-                                    <i class="boxed-logo-light fas fa-cogs" style="color: #000;"></i>
+                                <a href="#" style="gap: 5px;" id="service-sidebar">
+                                    <!-- <i class="boxed-logo-dark fas fa-cogs"></i> -->
+                                    <!-- <i class="boxed-logo-light fas fa-cogs" style="color: #000;"></i> -->
+                                    <lord-icon class="boxed-logo-dark"
+                                    src="https://cdn.lordicon.com/lecprnjb.json"
+                                    trigger="hover"
+                                    target="#service-sidebar"
+                                    colors="primary:#ffffff"
+                                    style="width:25px;height:25px">
+                                </lord-icon>
+                                    <lord-icon class="boxed-logo-light"
+                                    src="https://cdn.lordicon.com/lecprnjb.json"
+                                    trigger="hover"
+                                    target="#service-sidebar"
+                                    style="width:25px;height:25px">
+                                </lord-icon>
                                     <span>Services Control</span>
                                 </a>
                             </li>
                             <li style="height: 50px;">
-                                <a href="#">
-                                    <i class="boxed-logo-dark fas fa-network-wired"></i>
-                                    <i class="boxed-logo-light fas fa-network-wired" style="color: #000;"></i>
+                                <a href="#" style="gap: 5px;" id="network-sidebar">
+                                    <lord-icon class="boxed-logo-dark"
+                                    src="https://cdn.lordicon.com/swcqkzdc.json"
+                                    trigger="hover"
+                                    colors="primary:#ffffff"
+                                    target="#network-sidebar"
+                                    style="width:25px;height:25px">
+                                </lord-icon>
+                                    <lord-icon class="boxed-logo-light"
+                                    src="https://cdn.lordicon.com/swcqkzdc.json"
+                                    trigger="hover"
+                                    target="#network-sidebar"
+                                    style="width:25px;height:25px">
+                                </lord-icon>
                                     <span>Network & Security</span>
                                 </a>
                             </li>
                             <li style="height: 50px;">
-                                <a href="#">
-                                    <i class="boxed-logo-dark fas fa-brain"></i>
-                                    <i class="boxed-logo-light fas fa-brain" style="color: #000;"></i>
+                                <a href="#" style="gap: 5px;" id="optimization-sidebar">
+                                    <lord-icon class="boxed-logo-dark"
+                                        src="https://cdn.lordicon.com/xunzgeah.json"
+                                        trigger="hover"
+                                        colors="primary:#ffffff"
+                                        target="#optimization-sidebar"
+                                        style="width:25px;height:25px">
+                                    </lord-icon>
+                                    <lord-icon class="boxed-logo-light"
+                                        src="https://cdn.lordicon.com/xunzgeah.json"
+                                        trigger="hover"
+                                        target="#optimization-sidebar"
+                                        style="width:25px;height:25px">
+                                    </lord-icon>
                                     <span>AI Optimization</span>
                                 </a>
                             </li>
                             <li style="height: 50px;">
-                                <a href="#">
-                                    <i class="boxed-logo-dark fas fa-clipboard-list"></i>
-                                    <i class="boxed-logo-light fas fa-clipboard-list" style="color: #000;"></i>
+                                <a href="#" style="gap: 5px;" id="logs-sidebar">
+                                    <!-- <i class="boxed-logo-dark fas fa-clipboard-list"></i> -->
+                                    <!-- <i class="boxed-logo-light fas fa-clipboard-list" style="color: #000;"></i> -->
+                                    <lord-icon class="boxed-logo-dark"
+                                        src="https://cdn.lordicon.com/zrtfxghu.json"
+                                        trigger="hover"
+                                         target="#logs-sidebar"
+                                        colors="primary:#ffffff"
+                                        style="width:25px;height:25px">
+                                    </lord-icon>
+                                    <lord-icon class="boxed-logo-light"
+                                        src="https://cdn.lordicon.com/zrtfxghu.json"
+                                        trigger="hover"
+                                        target="#logs-sidebar"
+                                        style="width:25px;height:25px">
+                                    </lord-icon>
                                     <span>Logs & Reports</span>
                                 </a>
                             </li>
