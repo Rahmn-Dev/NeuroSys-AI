@@ -17,14 +17,24 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from . import views
+from chatbot.api import ChatSessionViewSet, ChatMessageViewSet
+from rest_framework.routers import DefaultRouter
+from chatbot import views as chatbot_views
+router = DefaultRouter()
+router.register(r'chat-sessions', ChatSessionViewSet)
+router.register(r'chat-sessions/(?P<session_id>[^/.]+)/messages', ChatMessageViewSet, basename='chatmessage')
+
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/', include('chatbot.urls')),
+    # path('api/', include('chatbot.urls')),
     path('', views.dashboard, name='index'),
     path('chat/', views.chatAI, name='chat'),
     path('dashboard/', views.dashboard, name='dashboard'),
     path('login/', views.user_login, name='login'),
     path('logout/', views.user_logout, name='logout'),
     path('system_monitor/', views.system_monitor, name='system_monitor'),
+    path('api/v1/', include((router.urls, 'api_v1'), namespace='v1')),
+    path('api/v1/chat/', chatbot_views.chat_with_ai, name='chat_with_ai'),
+    path('api/v1/system_status/', chatbot_views.system_status, name='system_status'),
 ]
