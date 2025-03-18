@@ -60,7 +60,7 @@
                 <div class="chat-history-section">
                     <h6 class="title">Today</h6>
                     <ul class="chat-history-list">
-                        <li v-for="session in chatSessions" :key="session.id" :class="['history-box', { active: session.id === activeSession }]">
+                        <li v-for="session in chatSessions" :key="session.id" :class="['history-box', { active: session.id === activeSession }]" @click="changeSession(session.id)">
                             <span>[[ session.id ]]</span>
                             <div class="dropdown history-box-dropdown">
                                 <button type="button" class="more-info-icon dropdown-toggle" data-bs-toggle="dropdown">
@@ -115,6 +115,28 @@ new Vue({
         }
     },
     methods: {
+        fetchMessagesForSession(sessionId) {
+            this.messages = [];
+            const chatContainer = document.getElementById("chatContainer");
+            chatContainer.innerHTML = '';
+
+            fetch(`/api/v1/chat-sessions/${sessionId}/messages/`)
+                .then(response => response.json())
+                .then(data => {
+                    data.forEach(msg => {
+                        const messageElement = msg.sender === "user"
+                            ? this.createEditableMessage("You", msg.message, "author-speech", "/static/images/team/team-01.png")
+                            : this.createMessageWithReactions("Chat", msg.message, "ai-speech", "/static/images/team/avater.png");
+
+                        this.appendMessage(messageElement);
+                    });
+                })
+                .catch(error => console.error('Error fetching messages:', error));
+        },
+        changeSession(sessionId) {
+            this.activeSession = sessionId;
+            this.fetchMessagesForSession(sessionId);
+        },
         fetchChatSessions() {
             fetch('/api/v1/chat-sessions/')
                 .then(response => response.json())
