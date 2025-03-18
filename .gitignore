@@ -170,4 +170,4 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 ai_config/dataset/
-ai_config/random_forest_nsl_kdd.pkl
+ai_config/model/
