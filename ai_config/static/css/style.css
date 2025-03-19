@@ -82,13 +82,13 @@
 /*-- Variables --*/
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap");
 :root {
-  --color-primary: #7064e9;
-  --color-primary-alt: #35316f;
-  --color-secondary: #410093;
+  --color-primary: #648ee9;
+  --color-primary-alt: #314a6f;
+  --color-secondary: #003893;
   --color-tertiary: #F2CD25;
   --color-primary-gradient-start: #4179FE;
   --color-primary-gradient-end: #36F5FF;
-  --color-secondary-gradient-start: #F850FF;
+  --color-secondary-gradient-start: #508aff;
   --color-secondary-gradient-end: #147EF3;
   --color-tertiary-gradient-start: #FD6221;
   --color-tertiary-gradient-end: #F2CD25;
@@ -99,7 +99,7 @@
   --color-link: #BCC3D7;
   --color-border-dark: #1E1E1E;
   --color-heading: #ccceef;
-  --color-body: #7376aa;
+  --color-body: #7387aa;
   --color-text-off: #565e78;
   --color-dark: #070710;
   --color-darker: rgba(6, 6, 6, 0.7);
@@ -138,7 +138,7 @@
   --color-extra05: #242424;
   --color-extra06: #111424;
   --border-width: 2px;
-  --radius-small: 6px;
+  --radius-small: 18px;
   --radius: 10px;
   --radius-big: 16px;
   --radius-bigger: 50px;
@@ -18990,7 +18990,7 @@ body.active-light-mode {
   color: #65676b;
 }
 body.active-light-mode .inner-switcher {
-  background: #EFEFFF;
+  background: #eff5ff;
 }
 body.active-light-mode .inner-switcher img {
   filter: invert(0) !important;
@@ -19008,7 +19008,7 @@ body.active-light-mode .my_switcher-2 ul .text {
   color: var(--dark-color-link);
 }
 body.active-light-mode .my_switcher-3 ul {
-  background-color: #efefff;
+  background-color: #eff5ff;
 }
 body.active-light-mode .my_switcher-3 ul li a.active:hover {
   color: transparent;
@@ -19113,7 +19113,7 @@ body.active-light-mode .mainmenu-nav .mainmenu li.has-droupdown .submenu li a.ac
 }
 body.active-light-mode .mainmenu-nav .mainmenu li.with-megamenu .rainbow-megamenu .wrapper .mega-menu-item li a:hover,
 body.active-light-mode .mainmenu-nav .mainmenu li.with-megamenu .rainbow-megamenu .wrapper .mega-menu-item li a.active {
-  background: #EFEFFF;
+  background: #eff5ff;
 }
 body.active-light-mode p,
 body.active-light-mode input[type=text],
@@ -19211,7 +19211,7 @@ body.active-light-mode .mainmenu-nav .mainmenu li.has-droupdown .submenu li a:ho
   background: #d8d8d8;
 }
 body.active-light-mode .mainmenu-nav .mainmenu li.with-megamenu .rainbow-megamenu .wrapper .mega-menu-item li a:hover {
-  background: #EFEFFF;
+  background: #eff5ff;
   color: var(--color-primary);
 }
 body.active-light-mode .breadcrumb-inner ul.page-list li a:hover,
@@ -19331,7 +19331,7 @@ body.active-light-mode .bg-overlay-solid::before {
 }
 body.active-light-mode .rbt-default-sidebar-list li a.active {
   color: var(--color-primary);
-  background: #EFEFFF;
+  background: #eff5ff;
 }
 body.active-light-mode .rbt-user-wrapper .rbt-user-menu-list-wrapper {
   box-shadow: 0 0 20px 5px rgba(7, 7, 16, 0.1);
@@ -19636,7 +19636,7 @@ body.active-light-mode .separator-dark {
 }
 body.active-light-mode .subscription-box {
   bottom: 110px;
-  background-color: #efefff;
+  background-color: #eff5ff;
 }
 body.active-light-mode .subscription-box .inner .autor-info:hover {
   background-color: rgba(112, 100, 233, 0.1019607843);
@@ -19646,7 +19646,7 @@ body.active-light-mode .rbt-course-details-list-wrapper li a.active,
 body.active-light-mode .rbt-default-sidebar-list li a:hover,
 body.active-light-mode .rbt-default-sidebar-list li a.active {
   color: var(--color-primary);
-  background: #EFEFFF;
+  background: #eff5ff;
 }
 body.active-light-mode .rbt-main-content {
   background: var(--color-white);
@@ -19674,16 +19674,16 @@ body.active-light-mode .rbt-static-bar .staticbar-btn-grp {
   background: #f5f8fa;
 }
 body.active-light-mode .border-gradient::after {
-  background: #EFEFFF;
+  background: #eff5ff;
 }
 body.active-light-mode .rbt-dashboard-content .slick-dots {
   width: 90%;
 }
 body.active-light-mode .rbt-user-menu-list-wrapper .user-list-wrapper li a.active {
-  background: #EFEFFF;
+  background: #eff5ff;
 }
 body.active-light-mode .rbt-user-menu-list-wrapper .user-list-wrapper li :hover {
-  background: #EFEFFF;
+  background: #eff5ff;
 }
 body.active-light-mode .rbt-admin-profile .admin-info .name {
   color: #191818;
@@ -19759,10 +19759,10 @@ body.active-light-mode .small-search.search-section input {
   border: 2px solid rgba(0, 0, 0, 0.1411764706);
 }
 body.active-light-mode .chat-history-section .chat-history-list .history-box.active {
-  background: #EFEFFF;
+  background: #eff5ff;
 }
 body.active-light-mode .chat-history-section .chat-history-list .history-box:hover {
-  background: #EFEFFF;
+  background: #eff5ff;
 }
 body.active-light-mode .chat-history-section .chat-history-list .history-box .more-info-icon {
   color: #878787;
@@ -19784,7 +19784,7 @@ body.active-light-mode .expand-btn-grp button.collapsed {
   border-color: var(--color-primary);
 }
 body.active-light-mode .image-caption {
-  background: #efefff;
+  background: #eff5ff;
 }
 body.active-light-mode input[type=checkbox] ~ label::before {
   background-color: var(--color-white);
@@ -19823,7 +19823,7 @@ body.active-light-mode .rbt-utilize-area .single-inner-box .section-title {
   background: #f5f8fa;
 }
 body.active-light-mode .rbt-utilize-area .rbt-default-sidebar-list li.has-submenu .collapse-btn {
-  background: #EFEFFF;
+  background: #eff5ff;
 }
 body.active-light-mode .rbt-utilize-area .rbt-course-details-list-wrapper li.has-submenu .collapse-btn.collapsed,
 body.active-light-mode .rbt-utilize-area .rbt-default-sidebar-list li.has-submenu .collapse-btn.collapsed {
@@ -19897,7 +19897,7 @@ body.active-light-mode .rbt-utilize-area .rbt-default-sidebar-list li.has-submen
             Dashboard
 ***************************************/
 :root {
-  --sidebar-width: 320px;
+  --sidebar-width: 270px;
 }
 
 .rbt-left-panel {
@@ -19967,7 +19967,7 @@ body.active-light-mode .rbt-utilize-area .rbt-default-sidebar-list li.has-submen
   transition: 0.4s;
   padding: 10px 12px;
   width: 100%;
-  border-radius: var(--radius-small);
+  border-radius: 18px;
 }
 .rbt-course-details-list-wrapper li a:hover, .rbt-course-details-list-wrapper li a.active,
 .rbt-default-sidebar-list li a:hover,
@@ -20158,7 +20158,8 @@ body.active-light-mode .rbt-utilize-area .rbt-default-sidebar-list li.has-submen
 .chat-box {
   margin-bottom: 30px;
   padding: 30px;
-  border-radius: var(--radius);
+  /* border-radius: var(--radius); */
+  border-radius: 25px;
   background-color: var(--color-blackest);
   position: relative;
 }
@@ -20384,7 +20385,7 @@ body.active-light-mode .rbt-utilize-area .rbt-default-sidebar-list li.has-submen
   font-weight: 500;
   text-transform: uppercase;
   font-size: 14px;
-  border-radius: 5px;
+  border-radius: 18px;
   position: relative;
   cursor: pointer;
 }
@@ -20418,7 +20419,7 @@ body.active-light-mode .rbt-utilize-area .rbt-default-sidebar-list li.has-submen
   align-items: center;
   justify-content: space-between;
   padding: 5px 5px 5px 10px;
-  border-radius: 5px;
+  border-radius: 18px;
   font-size: var(--font-size-b3);
   line-height: var(--line-height-b3);
   font-weight: 400;
