@@ -46,7 +46,7 @@
                 <p class="b3 small-text"></p>
             </div>
         </div>
-
+        
         <!-- Dashboard Right Content -->
         <div class="rbt-right-side-panel popup-dashboardright-section" style="
         top: 60px;
@@ -436,23 +436,57 @@ new Vue({
         async sendMessages() {
             if (!this.userInput.trim()) return;
 
+            // Create a new chat session if none exists
             if (!this.activeSession) {
-                await this.newChat(); 
+                try {
+                    await this.newChat();
+                } catch (error) {
+                    console.error("Failed to create a new chat session:", error);
+                    const errorMessage = "Unable to start a new chat. Please try again.";
+                    const errorMessageElement = this.createMessageWithReactions(
+                        "Chat",
+                        errorMessage,
+                        "ai-speech",
+                        "/static/images/team/avater.png",
+                        null
+                    );
+                    this.appendMessage(errorMessageElement);
+                    return;
+                }
             }
-           
-            
-            
-            const txtarea = document.getElementById("txtarea");
-            const chatContainer = document.getElementById("chatContainer");
 
+            // Ensure activeSession is set
+            if (!this.activeSession) {
+                console.error("Active session is not set.");
+                const errorMessage = "Session initialization failed. Please refresh the page.";
+                const errorMessageElement = this.createMessageWithReactions(
+                    "Chat",
+                    errorMessage,
+                    "ai-speech",
+                    "/static/images/team/avater.png",
+                    null
+                );
+                this.appendMessage(errorMessageElement);
+                return;
+            }
+
+            const chatContainer = document.getElementById("chatContainer");
+            const txtarea = document.getElementById("txtarea");
             const userMessage = { sender: "user", message: this.userInput };
-            const sessionId = this.activeSession;
-           
+
             try {
-                const userResponse = await axios.post(`/api/v1/chat-sessions/${sessionId}/send_message/`, userMessage, { headers: { "X-CSRFToken": this.csrfToken }});
+                const sessionId = this.activeSession;
+                console.log("Using session ID:", sessionId);
+
+                // Send user message to the backend
+                const userResponse = await axios.post(
+                    `/api/v1/chat-sessions/${sessionId}/send_message/`,
+                    userMessage,
+                    { headers: { "X-CSRFToken": this.csrfToken } }
+                );
                 const userIdMessage = userResponse.data.id;
-                console.log(userResponse)
-                console.log(userIdMessage)
+
+                // Create and append user message element
                 const userMessageElement = this.createEditableMessage(
                     "You",
                     this.userInput,
@@ -461,14 +495,25 @@ new Vue({
                     userIdMessage
                 );
                 this.appendMessage(userMessageElement);
-                 const spinnerElement = document.createElement("div");
+
+                // Show spinner while waiting for AI response
+                const spinnerElement = document.createElement("div");
                 spinnerElement.className = "chat-box generate-section bg-flashlight";
                 spinnerElement.innerHTML = `
                     <div class="inner">
-                        <div class="chat-section generate-section">
-                            <div class="author">
-                                <img src="/static/images/icons/loader-one.gif" alt="Loader Images">
-                            </div>
+                        <div class="chat-section generate-section" style="
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: center;
+">
+                            <lord-icon
+                                src="https://cdn.lordicon.com/lqxfrxad.json"
+                                trigger="loop"
+                                state="loop-spin"
+                                colors="primary:#66a1ee"
+                                style="width:50px;height:50px">
+                            </lord-icon>
                             <div class="chat-content">
                                 <h6 class="title color-text-off mb--0">Generating answers for you…</h6>
                             </div>
@@ -477,42 +522,42 @@ new Vue({
                 `;
                 chatContainer.appendChild(spinnerElement);
 
+                // Fetch AI response
                 const aiResponse = await fetch('/api/v1/chat/', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         "X-CSRFToken": getCSRFToken()
                     },
-                    body: JSON.stringify({ prompt: this.userInput }), // User input as prompt
+                    body: JSON.stringify({ prompt: this.userInput }),
                 });
-                txtarea.value = "";
                 const data = await aiResponse.json();
-                
-                if (aiResponse.ok) {
-                    const aiMessage = aiResponse.ai_response ;
 
-                    // Kirim respons AI ke backend
-                    const aiPostResponse = await axios.post(`/api/v1/chat-sessions/${sessionId}/send_message/`, 
-                        { sender: "ai", message: aiMessage }, 
+                if (aiResponse.ok) {
+                    txtarea.value = "";
+                    const aiMessage = data.ai_response;
+
+                    // Send AI response to the backend
+                    const aiPostResponse = await axios.post(
+                        `/api/v1/chat-sessions/${sessionId}/send_message/`,
+                        { sender: "ai", message: aiMessage },
                         { headers: { "X-CSRFToken": this.csrfToken } }
                     );
 
-                    // Ekstrak aiidmessage dari respons AI
+                    // Extract AI message ID
                     const aiIdMessage = aiPostResponse.data.id;
 
-                    // Tampilkan respons AI di UI
+                    // Append AI message element
                     const aiMessageElement = this.createMessageWithReactions(
                         "Chat",
                         aiMessage,
                         "ai-speech",
                         "/static/images/team/avater.png",
-                        aiIdMessage,
-                         // Sertakan aiidmessage
+                        aiIdMessage
                     );
                     chatContainer.removeChild(spinnerElement);
                     this.appendMessage(aiMessageElement);
                 } else {
-                // In case of an error from the API
                     chatContainer.removeChild(spinnerElement);
                     const errorMessage = 'Sorry, there was an issue with the response.';
                     const errorMessageElement = this.createMessageWithReactions(
@@ -522,45 +567,46 @@ new Vue({
                         "/static/images/team/avater.png",
                         null
                     );
-                    this.appendMessage(errorMessageElement);    
+                    this.appendMessage(errorMessageElement);
                 }
             } catch (error) {
-                chatContainer.removeChild(spinnerElement);
                 console.error('Error:', error);
                 const errorMessage = 'Sorry, something went wrong. Please try again later.';
                 const errorMessageElement = this.createMessageWithReactions(
-                "Chat",
-                errorMessage,
-                "ai-speech",
-                "/static/images/team/avater.png",
-                null
+                    "Chat",
+                    errorMessage,
+                    "ai-speech",
+                    "/static/images/team/avater.png",
+                    null
                 );
                 this.appendMessage(errorMessageElement);
             }
-            this.userInput = '';
 
+            this.userInput = '';
         },
-        newChat(){
+        async newChat() {
             const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
             if (!csrfToken) {
                 console.error("CSRF token not found.");
-                return;
+                throw new Error("CSRF token missing.");
             }
+
             const chatContainer = document.getElementById("chatContainer");
             chatContainer.innerHTML = '';
-            
-            if (csrfToken){
-                axios.post('/api/v1/chat-sessions/', {}, {  // <-- Empty object as data
+
+            try {
+                const response = await axios.post('/api/v1/chat-sessions/', {}, {
                     headers: { 'X-CSRFToken': csrfToken }
-                })
-                .then(response => {
-                    console.log(response)
-                    this.chatSessions.push(response.data);
-                    this.activeSession = response.data.id;
-                })
-                .catch(error => {
-                    console.error("Error creating chat session:", error);
                 });
+
+                console.log("New chat session created:", response.data);
+                this.chatSessions.push(response.data);
+                this.activeSession = response.data.id; // Set active session ID
+                const newUrl = `${window.location.origin}${window.location.pathname}?session=${this.activeSession}`;
+                window.history.pushState({}, '', newUrl);
+            } catch (error) {
+                console.error("Error creating chat session:", error);
+                throw error; // Propagate the error to the caller
             }
         },
         deleteChat(uid) {
