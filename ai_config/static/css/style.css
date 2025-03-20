@@ -19922,7 +19922,7 @@ body.active-light-mode .rbt-utilize-area .rbt-default-sidebar-list li.has-submen
   height: 100%;
 }
 .rbt-left-panel .rbt-default-sidebar .rbt-default-sidebar-wrapper {
-  height: calc(100vh - 360px);
+  height: calc(100vh - 100px);
   overflow: scroll;
   -ms-overflow-style: none;
   scrollbar-width: none;
@@ -20009,7 +20009,7 @@ body.active-light-mode .rbt-utilize-area .rbt-default-sidebar-list li.has-submen
 
 .subscription-box {
   position: absolute;
-  bottom: 110px;
+  bottom: 10px;
   left: 0;
   width: 100%;
   height: auto;
@@ -20031,7 +20031,7 @@ body.active-light-mode .rbt-utilize-area .rbt-default-sidebar-list li.has-submen
   transition: all 0.3s;
   position: relative;
 }
-.subscription-box .inner .autor-info:hover {
+.my_switcher ul li:hover {
   background-color: var(--color-dark);
 }
 .subscription-box .inner .autor-info .author-img {
@@ -20858,10 +20858,24 @@ body.active-light-mode .rbt-utilize-area .rbt-default-sidebar-list li.has-submen
 
 .popup-dashboardleft-section {
   transition: all 0.4s ease;
+  /* width: 250px; */
 }
 .popup-dashboardleft-section.collapsed {
-  transform: translateX(-100%);
+  /* transform: translateX(-100%); */
+  width: 90px; /* Adjust to fit only the icons */
+  transform: translateX(0); /* No need to hide completely */
 }
+.popup-dashboardleft-section.collapsed .dashboard-mainmenu span {
+  display: none;
+}
+
+
+
+/* Button styling */
+.popup-dashboardleft-btn {
+  transition: all 0.4s ease;
+}
+
 
 .popup-dashboardright-section {
   transition: all 0.4s ease;

@@ -113,6 +113,7 @@ top: 60px;
                                     <span>Logs & Reports</span>
                                 </a>
                             </li>
+                            
                         </ul>
                     </nav>
 
@@ -120,60 +121,50 @@ top: 60px;
 
                     <nav class="mainmenu-nav">
                         <ul class="dashboard-mainmenu rbt-default-sidebar-list">
-                            <li class="has-submenu"><a class="collapse-btn collapsed" data-bs-toggle="collapse" href="#collapseExample('#')" role="button" aria-expanded="false" aria-controls="collapseExample"><i class="feather-plus-circle"></i><span>Setting</span></a>
-                                <div class="collapse" id="collapseExample">
-                                    <ul class="submenu rbt-default-sidebar-list">
-                                      
+                            <li class="has-submenu"><a class=""  role="button"><i class="feather-plus-circle"></i><span>Setting</span></a>
+                              
+                            </li>
+                            <li  id="my_switcher"  class="has-submenu">
+                               
+                                    <ul style="/* padding-left: 0px; *//* padding-right: 0px; */left: 0px;padding-left: 0px;">
+                                        <li>
+                                            <a href="javascript: void(0);" data-theme="dark" class="setColor dark"  style="
+                                            font-size: 14px;
+                                        ">
+                                                    <img class="moon-light" src="/static/images/light/switch/vector.svg" alt="Switcher Image" style="
+                                                    width: 20px;
+                                                    height: 20px;
+                                                ">
+                                                <span class="text" title="Dark Mode">
+                                                    Dark</span>
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="javascript: void(0);"  data-theme="light" class="setColor light" style="
+                                            font-size: 14px;
+                                            ">
+                                                <img src="/static/images/light/switch/sun-01.svg" alt="Switcher Image" style="
+                                                width: 20px;
+                                                height: 20px;
+                                            ">
+                                                <span class="text" title="Light Mode">Light</span>
+                                            </a>
+                                        </li>
                                     </ul>
-                                </div>
+                               
+                              
                             </li>
                           
                         </ul>
                         <div class="rbt-sm-separator"></div>
-                        <ul class="dashboard-mainmenu rbt-default-sidebar-list">
                       
-                        </ul>
                     </nav>
                 </div>
             </div>
         </div>
         <div class="subscription-box">
-            <div class="inner">
-                <a href="/dashboard/profileDetails/" class="autor-info" style="
-                margin-bottom: 0px;
-            ">
-                   
-                    <div class="author-desc">
-                        <h5>{{user.username}}</h5>
-                      
-                    </div>
-                    <div class="author-badge">Local</div>
-                </a>
-                <div class="btn-part">
-                   
-                </div>
-            </div>
-            <div id="my_switcher" class="my_switcher-3">
-                <ul style="padding-left: 0px; padding-right: 0px;">
-                    <li>
-                        <a href="javascript: void(0);" data-theme="dark" class="setColor dark"  style="
-                        font-size: 14px;
-                    ">
-                                <img class="moon-light" src="/static/images/light/switch/vector.svg" alt="Switcher Image">
-                            <span class="text" title="Dark Mode">
-                                Dark</span>
-                            </a>
-                        </li>
-                        <li>
-                            <a href="javascript: void(0);"  data-theme="light" class="setColor light" style="
-                        font-size: 14px;
-                        ">
-                            <img src="/static/images/light/switch/sun-01.svg" alt="Switcher Image">
-                            <span class="text" title="Light Mode">Light</span>
-                        </a>
-                    </li>
-                </ul>
-            </div>
+           
+            
         </div>
            <p class="subscription-copyright copyright-text text-center b4  small-text">© 2025 NeuroSys AI</a>.</p>
     </div>

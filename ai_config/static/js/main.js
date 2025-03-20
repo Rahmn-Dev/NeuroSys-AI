@@ -214,25 +214,25 @@
           $(".rbt-static-bar").addClass("area-left-expanded");
         }
       }
-
+    
       // Hide sidebars by default
       $(
         ".popup-dashboardleft-btn, .popup-dashboardleft-section, .rbt-main-content, .rbt-static-bar"
       ).hide();
-
+    
       // Initial setup on page load
       updateSidebar();
-
+    
       // Show sidebars after determining the appropriate state
       $(
         ".popup-dashboardleft-btn, .popup-dashboardleft-section, .rbt-main-content, .rbt-static-bar"
       ).show();
-
+    
       // Update on window resize
       $(window).on("resize", function () {
         updateSidebar();
       });
-
+    
       // Toggle classes on button click
       $(".popup-dashboardleft-btn").on("click", function (e) {
         $(".popup-dashboardleft-btn").toggleClass("collapsed");
