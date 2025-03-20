@@ -9,6 +9,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from datasets import load_dataset
 import ansible_runner
+import re
 
 # Setup logging folder
 LOG_DIR = "logs"
@@ -38,42 +39,91 @@ def log_to_file(filename, message):
 
 def extract_commands_from_ai(prompt):
     ollama_payload = {
-        "model": "codellama:7b",
+        "model": "qwen2.5-coder:latest",
         "prompt": f"""
-        You are an expert Linux automation AI commands. 
-        Extract and return ONLY a JSON array of valid Linux commands to fulfill the user's request.
-        Do NOT include explanations, descriptions. just return the JSON array base on user's request.
-        User request: '{prompt}'
-        
+            You are an expert Linux automation AI specializing in generating valid Linux commands. 
+            Extract and return ONLY a valid JSON array of Linux commands that fulfill the user's request.
+            - Return only a JSON array with no Markdown formatting.
+            - Do NOT include explanations, descriptions, or any additional text.
+            - Ensure the output is a valid JSON array without wrapping it inside a Markdown block.
+            
+            User request: '{prompt}'
+            
+            Example Output:
+            ["ls", "pwd", "whoami"]
         """,
-        "stream": True  # ✅ Streaming mode enabled
+        "stream": False  # ✅ Streaming mode enabled
     }
 
-    response = requests.post(OLLAMA_URL, json=ollama_payload, stream=True)
-
-    raw_response = ""
-    
-    # ✅ Read streaming response line by line
-    for line in response.iter_lines():
-        if line:
-            try:
-                json_line = json.loads(line.decode("utf-8"))  # ✅ Decode JSON chunk
-                raw_response += json_line.get("response", "")
-            except json.JSONDecodeError:
-                logger.error("Received invalid JSON chunk from AI")
-                continue
-
-    log_to_file(AI_RESPONSE_LOG_FILE, f"AI Raw Response: {raw_response}")
-
-    # ✅ Ensure raw_response contains valid JSON before parsing
+    response = requests.post(OLLAMA_URL, json=ollama_payload, stream=False)
     try:
-        command_list = json.loads(raw_response.strip())
-        if isinstance(command_list, list):
+        response_json = response.json()
+        raw_response = response_json.get("response", "")
+
+        # ✅ Remove Markdown code block if present
+        match = re.search(r"```json\n(.*?)\n```", raw_response, re.DOTALL)
+        if match:
+            raw_response = match.group(1)
+
+        log_to_file(AI_RESPONSE_LOG_FILE, f"AI Raw Response: {raw_response}")
+
+        # ✅ Attempt to parse as JSON
+        try:
+            command_list = json.loads(raw_response)
+            if isinstance(command_list, list):
+                return command_list
+            else:
+                raise ValueError("Response is not a JSON array")
+        except json.JSONDecodeError:
+            # Fallback: Try parsing as plain text (e.g., commands separated by newlines)
+            command_list = [cmd.strip() for cmd in raw_response.split("\n") if cmd.strip()]
             return command_list
-    except json.JSONDecodeError:
-        logger.error("AI response is not valid JSON")
+
+    except Exception as e:
+        logging.error(f"Error processing AI response: {e}")
+        logging.error(f"Raw AI Response: {raw_response}")
 
     return []
+
+
+# def extract_commands_from_ai(prompt):
+#     ollama_payload = {
+#         "model": "codellama:7b",
+#         "prompt": f"""
+#         You are an expert Linux automation AI commands. 
+#         Extract and return ONLY a JSON array of valid Linux commands to fulfill the user's request.
+#         Do NOT include explanations, descriptions. just return the JSON array base on user's request.
+#         User request: '{prompt}'
+        
+#         """,
+#         "stream": True  # ✅ Streaming mode enabled
+#     }
+
+#     response = requests.post(OLLAMA_URL, json=ollama_payload, stream=True)
+
+#     raw_response = ""
+    
+#     # ✅ Read streaming response line by line
+#     for line in response.iter_lines():
+#         if line:
+#             try:
+#                 json_line = json.loads(line.decode("utf-8"))  # ✅ Decode JSON chunk
+#                 raw_response += json_line.get("response", "")
+#             except json.JSONDecodeError:
+#                 logger.error("Received invalid JSON chunk from AI")
+#                 continue
+
+#     log_to_file(AI_RESPONSE_LOG_FILE, f"AI Raw Response: {raw_response}")
+
+#     # ✅ Ensure raw_response contains valid JSON before parsing
+#     try:
+#         command_list = json.loads(raw_response.strip())
+#         if isinstance(command_list, list):
+#             return command_list
+#     except json.JSONDecodeError:
+#         logger.error("AI response is not valid JSON")
+
+#     return []
 
 FORBIDDEN_COMMANDS = ["rm", "rmdir", "unlink", "truncate", "shred", "wipe", "dd if=/dev", "mkfs", "chmod 000"]
 
@@ -83,7 +133,7 @@ def is_dangerous_command(command):
 
 def generate_ansible_playbook(prompt):
     ollama_payload = {
-        "model": "codellama:7b",
+        "model": "qwen2.5-coder:latest",
         "prompt": f"""
         You are an expert Ansible AI.
         Generate an Ansible playbook YAML file for the following request:
@@ -171,7 +221,7 @@ def chat_with_ai(request):
                         blocked_commands.append(cmd)
                         responses.append({"command": cmd, "output": "Permission required", "status": "blocked"})
                     else:
-                        logger.info(f"Executing command with Ansible: {cmd}")
+                        logger.info(f"Executing command : {cmd}")
                         output, source = execute_linux_command(cmd)
                         executed_commands.append(cmd)
                         responses.append({"command": cmd, "output": output, "status": source})
@@ -190,7 +240,7 @@ def chat_with_ai(request):
             """
 
             ai_summary = requests.post(OLLAMA_URL, json={
-                "model": "codellama:7b",
+                "model": "qwen2.5-coder:latest",
                 "prompt": ai_response_prompt,
                 "stream": False
             }).json().get("response", "")
