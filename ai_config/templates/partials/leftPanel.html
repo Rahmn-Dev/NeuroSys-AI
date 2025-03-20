@@ -139,13 +139,13 @@ top: 60px;
         </div>
         <div class="subscription-box">
             <div class="inner">
-                <a href="/dashboard/profileDetails/" class="autor-info">
-                    <div class="author-img active">
-                        <img class="w-100" src="/static/images/team/team-01.png" alt="Author">
-                    </div>
+                <a href="/dashboard/profileDetails/" class="autor-info" style="
+                margin-bottom: 0px;
+            ">
+                   
                     <div class="author-desc">
-                        <h6>{{user.username}}</h6>
-                        <p>{{user.email}}</p>
+                        <h5>{{user.username}}</h5>
+                      
                     </div>
                     <div class="author-badge">Local</div>
                 </a>
@@ -156,15 +156,19 @@ top: 60px;
             <div id="my_switcher" class="my_switcher-3">
                 <ul style="padding-left: 0px; padding-right: 0px;">
                     <li>
-                        <a href="javascript: void(0);" data-theme="light" class="setColor light">
-                            <img src="/static/images/light/switch/sun-01.svg" alt="Switcher Image">
+                        <a href="javascript: void(0);" data-theme="dark" class="setColor dark"  style="
+                        font-size: 14px;
+                    ">
+                                <img class="moon-light" src="/static/images/light/switch/vector.svg" alt="Switcher Image">
                             <span class="text" title="Dark Mode">
                                 Dark</span>
-                        </a>
-                    </li>
-                    <li>
-                        <a href="javascript: void(0);" data-theme="dark" class="setColor dark">
-                            <img class="moon-light" src="/static/images/light/switch/vector.svg" alt="Switcher Image">
+                            </a>
+                        </li>
+                        <li>
+                            <a href="javascript: void(0);"  data-theme="light" class="setColor light" style="
+                        font-size: 14px;
+                        ">
+                            <img src="/static/images/light/switch/sun-01.svg" alt="Switcher Image">
                             <span class="text" title="Light Mode">Light</span>
                         </a>
                     </li>

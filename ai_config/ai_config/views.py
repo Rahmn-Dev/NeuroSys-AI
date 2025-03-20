@@ -9,10 +9,11 @@ from datetime import datetime
 import socket
 import requests
 
+@login_required
 def chatAI(request):
     return render(request,"generator/textGenerator.html",{'headTitle' : 'Chat AI','toggle' : "true"})
 
-
+@login_required
 def index(request):
     return render(request, "index.html")
 
