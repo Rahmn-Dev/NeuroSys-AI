@@ -23,7 +23,7 @@ SECRET_KEY = config("DJANGO_SECRET_KEY", default="default-secret-key")
 
 # SECURITY WARNING: keep the secret key used in production secret!
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = ['*']
 
