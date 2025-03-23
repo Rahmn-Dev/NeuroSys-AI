@@ -19,7 +19,7 @@
 
             <div class="rbt-static-bar">
                 <form class="new-chat-form border-gradient" @submit.prevent="sendMessages()">
-                    <textarea id="txtarea" v-model="userInput" rows="1" placeholder="Send a message..."></textarea>
+                    <textarea id="txtarea" v-model="userInput" rows="1" placeholder="Send a message..." @keydown.enter.prevent="sendMessages()"></textarea>
                     <div class="left-icons">
                         <div title="ChatenAI" class="form-icon icon-gpt">
                             <i class="feather-aperture"></i>
@@ -100,6 +100,7 @@
 <script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
 <script>
+    console.log("test")
 new Vue({
     el: '.rbt-main-content',
     delimiters: ["[[", "]]"],
@@ -129,14 +130,41 @@ new Vue({
         fetchMessagesForSession(sessionId) {
             this.messages = [];
             const chatContainer = document.getElementById("chatContainer");
-            chatContainer.innerHTML = '';
+            chatContainer.innerHTML = ''; // Clear the chat container
             fetch(`/api/v1/chat-sessions/${sessionId}/messages/`)
                 .then(response => response.json())
                 .then(data => {
                     data.forEach(msg => {
+                        let parsedMessage = msg.message;
+                        if (msg.sender == "user"){
+                            userMessage = msg.message;
+                        }
+                        if (msg.sender === "ai") {
+                            if (typeof parsedMessage === "string") {
+                                try {
+                                    // Step 1: Replace single quotes with double quotes
+                                    parsedMessage = parsedMessage.replace(/'/g, '"');
+
+                                    // Step 2: Escape problematic characters (e.g., newlines, tabs)
+                                    parsedMessage = parsedMessage.replace(/\n/g, "\\n").replace(/\t/g, "\\t");
+
+                                    // Step 3: Attempt to parse the string as JSON
+                                    parsedMessage = JSON.parse(parsedMessage);
+                                } catch (error) {
+                                    console.error("Error parsing AI message:", error);
+
+                                    // Fallback: Treat the message as a plain string
+                                    parsedMessage = [{ step: "Response", command: "", status: "success", message: parsedMessage }];
+                                }
+                            }
+                        }
+
+                        // Ensure parsedMessage is always an array
+                        parsedMessage = Array.isArray(parsedMessage) ? parsedMessage : [parsedMessage];
+
                         const messageElement = msg.sender === "user"
-                            ? this.createEditableMessage("You", msg.message, "author-speech", "/static/images/team/team-01.png", msg.id)
-                            : this.createMessageWithReactions("Chat", msg.message, "ai-speech", "/static/images/team/avater.png", msg.id);
+                            ? this.createEditableMessage("You", userMessage, "author-speech", "/static/images/team/team-01.png", msg.id)
+                            : this.createMessageWithReactions("Chat", parsedMessage, "ai-speech", "/static/images/team/avater.png", msg.id);
                         this.appendMessage(messageElement);
                     });
                 })
@@ -204,6 +232,7 @@ new Vue({
         appendMessage(messageElement){
             const chatContainer = document.getElementById("chatContainer");
             chatContainer.appendChild(messageElement);
+            Prism.highlightAll();
         },
         createMessageElement(title, message, speechClass, imgSrc, isEditable){
             const messageElement = document.createElement("div");
@@ -389,29 +418,74 @@ new Vue({
             }
         }
         ,
-        createAIMessageElement(title, message, speechClass, imgSrc, idmessage,isEditable){
-            const messageElement = document.createElement("div");
-            messageElement.className = `chat-box ai-speech bg-flashlight ${speechClass}`;
-            const innerClass = title === "You" ? "" : "top-flashlight leftside light-xl";  
-            const titleStatus = title === "You" ? "" : this.AIstatus();  
-            messageElement.innerHTML = `
-                <div class="inner  ${ innerClass } ">
-                    <div class="chat-section">
-                    <div class="author">
-                        <img class="w-100" src="${imgSrc}" alt="${title}">
-                    </div>
-                    <div class="chat-content">
-                        <h6 class="title">${title} ${ titleStatus }</h6>
-                        <p class="mb--20 ${isEditable ? "editable" : ""}" ${
-                isEditable ? 'contenteditable="true"' : ""
-            } data-idmessage="${idmessage}">${message}</p>
-                        ${isEditable ? this.getEditButtons() : this.getReactionButtons()}
-                    </div>
+        createAIMessageElement(title, messages, speechClass, imgSrc, idmessage, isEditable) {
+    const messageElement = document.createElement("div");
+    messageElement.className = `chat-box ai-speech bg-flashlight ${speechClass}`;
+    const innerClass = title === "You" ? "" : "top-flashlight leftside light-xl";  
+    const titleStatus = title === "You" ? "" : this.AIstatus();  
+
+    // Process the messages array into HTML
+    const messageContent = Array.isArray(messages) && messages.length > 0
+        ? messages.map(msg => `
+            <article class="documentation_body shortcode_text mb--20">
+                <h4 class="mb--20">${msg.step}</h4>
+                <div class="command-section">
+                    <strong>Command:</strong>
+                    <div class="highlight">
+                        <div class="code-toolbar">
+
+                            <pre >
+                                <code class="language-bash" data-lang="bash">
+                                    ${msg.command || ""}
+                                </code>
+                            </pre>
+                        </div>
                     </div>
                 </div>
-                `;
-            return messageElement;
-        },
+                <div class="status-section" style="     display: flex;     gap: 5px">
+                    <strong>Status:</strong>
+                    ${
+                        msg.status === "success"
+                            ? `<h5 style="     color: green; ">Success</h5> <lord-icon
+                                src="https://cdn.lordicon.com/oqdmuxru.json"
+                                trigger="hover"
+                                colors="primary:#109121"
+                                style="width:25px;height:25px">
+                               </lord-icon>`
+                            : `<h5 style="     color: red; ">Error</h5> <lord-icon
+                                src="https://cdn.lordicon.com/ygvjgdmk.json"
+                                trigger="hover"
+                                colors="primary:#e83a30"
+                                style="width:50px;height:50px">
+                               </lord-icon>`
+                    }
+                </div>
+                <div class="results-section">
+                    <strong>Results:</strong>
+                    <pre>${msg.message || ""}</pre>
+                </div>
+            </article>
+        `).join("")
+        : `<p class="mb--20 ${isEditable ? "editable" : ""}" ${
+            isEditable ? 'contenteditable="true"' : ""
+        } data-idmessage="${idmessage}">${messages || ""}</p>`;
+
+    messageElement.innerHTML = `
+        <div class="inner ${innerClass}">
+            <div class="chat-section">
+                <div class="author">
+                    <img class="w-100" src="${imgSrc}" alt="${title}">
+                </div>
+                <div class="chat-content">
+                    <h6 class="title">${title} ${titleStatus}</h6>
+                    ${messageContent}
+                    ${isEditable ? this.getEditButtons() : this.getReactionButtons()}
+                </div>
+            </div>
+        </div>
+    `;
+    return messageElement;
+},
         createMessageWithReactions(title, message, speechClass, imgSrc, idmessage){
             const messageElement = this.createAIMessageElement(
                 title,
@@ -535,7 +609,7 @@ new Vue({
 
                 if (aiResponse.ok) {
                     txtarea.value = "";
-                    const aiMessage = data.ai_response;
+                    const aiMessage = data.responses;
 
                     // Send AI response to the backend
                     const aiPostResponse = await axios.post(
@@ -620,6 +694,8 @@ new Vue({
             })
             .then(response => {
                 this.fetchChatSessions();
+                const chatContainer = document.getElementById("chatContainer");
+                chatContainer.innerHTML = '';
             })
             .catch(error => {
                 console.error("Error deleting chat session:", error);

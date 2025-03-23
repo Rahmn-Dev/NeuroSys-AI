@@ -20556,6 +20556,30 @@ body.active-light-mode .rbt-utilize-area .rbt-default-sidebar-list li.has-submen
 .custom-tooltip .tooltip-arrow::before {
   border-top-color: var(--color-primary);
 }
+/* Remove the default arrow */
+.bs-tooltip-end .tooltip-arrow,
+.bs-tooltip-top .tooltip-arrow,
+.bs-tooltip-bottom .tooltip-arrow,
+.bs-tooltip-start .tooltip-arrow {
+    display: none !important;
+}
+
+/* Customize the tooltip container */
+.tooltip-inner {
+    background-color: #3498db; /* Change the background color */
+    color: #fff; /* Change the text color */
+    font-size: 14px; /* Adjust font size */
+    padding: 8px 16px; /* Add padding */
+    border-radius: 20px; /* Make it rounded */
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* Optional: Add a subtle shadow */
+    white-space: nowrap; /* Prevent text wrapping */
+}
+
+/* Adjust the positioning of the tooltip */
+[data-bs-placement="right"] + .tooltip {
+    margin-left: 10px; /* Add spacing between the element and the tooltip */
+}
+
 
 .rbt-dashboard-header {
   position: fixed;
@@ -20889,7 +20913,7 @@ body.active-light-mode .rbt-utilize-area .rbt-default-sidebar-list li.has-submen
   transition: all 0.4s ease;
 }
 .rbt-main-content.area-left-expanded {
-  margin-left: 0;
+  margin-left: 90px;
 }
 .rbt-main-content.area-right-expanded {
   margin-right: 0;
