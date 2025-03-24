@@ -1,5 +1,9 @@
 {% extends '../layout/layout1.html' %}
-
+{% block style %}
+<!-- <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css"> -->
+<!-- Prism.js Toolbar CSS -->
+<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/toolbar/prism-toolbar.min.css" rel="stylesheet" />
+{% endblock %}
 {% block content %}
 
 <!-- Main content -->
@@ -97,8 +101,17 @@
 
 {% endblock content %}
 {% block script %}
+<!-- Prism.js CSS -->
+<!-- <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" /> -->
+
+<!-- Prism.js JS -->
+<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script> -->
 <script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script> -->
+<!-- Prism.js Plugin: Copy to Clipboard -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/toolbar/prism-toolbar.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/copy-to-clipboard/prism-copy-to-clipboard.min.js"></script>
 <script>
     console.log("test")
 new Vue({
@@ -134,30 +147,26 @@ new Vue({
             fetch(`/api/v1/chat-sessions/${sessionId}/messages/`)
                 .then(response => response.json())
                 .then(data => {
+                    data.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
                     data.forEach(msg => {
                         let parsedMessage = msg.message;
                         if (msg.sender == "user"){
                             userMessage = msg.message;
                         }
                         if (msg.sender === "ai") {
-                            if (typeof parsedMessage === "string") {
-                                try {
-                                    // Step 1: Replace single quotes with double quotes
-                                    parsedMessage = parsedMessage.replace(/'/g, '"');
-
-                                    // Step 2: Escape problematic characters (e.g., newlines, tabs)
-                                    parsedMessage = parsedMessage.replace(/\n/g, "\\n").replace(/\t/g, "\\t");
-
-                                    // Step 3: Attempt to parse the string as JSON
-                                    parsedMessage = JSON.parse(parsedMessage);
-                                } catch (error) {
-                                    console.error("Error parsing AI message:", error);
-
-                                    // Fallback: Treat the message as a plain string
-                                    parsedMessage = [{ step: "Response", command: "", status: "success", message: parsedMessage }];
-                                }
+                    console.log(msg);
+                    if (typeof parsedMessage === "string") {
+                            try {
+                                // Coba parsing jika JSON valid
+                                parsedMessage = JSON.parse(parsedMessage);
+                            } catch (error) {
+                                console.error("Error parsing AI message:", error);
+                                // Fallback: Jika gagal, tetap gunakan string original sebagai array
+                                parsedMessage = [{ step: "Response", command: "", status: "success", message: parsedMessage }];
                             }
                         }
+                    }
+
 
                         // Ensure parsedMessage is always an array
                         parsedMessage = Array.isArray(parsedMessage) ? parsedMessage : [parsedMessage];
@@ -314,13 +323,40 @@ new Vue({
             const editableParagraph = messageElement.querySelector('.editable');
             const editedText = editableParagraph.innerText.trim();
             const idmessage = editableParagraph.dataset.idmessage; // Ambil idmessage
+            const chatContainer = document.getElementById("chatContainer");
+                   
 
+            const spinnerElement = document.createElement("div");
+            
+            spinnerElement.className = "chat-box generate-section bg-flashlight";
+            spinnerElement.innerHTML = `
+                <div class="inner">
+                    <div class="chat-section generate-section" style="
+display: flex;
+gap: 10px;
+align-items: center;
+justify-content: center;
+">
+                        <lord-icon
+                            src="https://cdn.lordicon.com/lqxfrxad.json"
+                            trigger="loop"
+                            state="loop-spin"
+                            colors="primary:#66a1ee"
+                            style="width:50px;height:50px">
+                        </lord-icon>
+                        <div class="chat-content">
+                            <h6 class="title color-text-off mb--0">Generating answers for you…</h6>
+                        </div>
+                    </div>
+                </div>
+            `;
+            chatContainer.appendChild(spinnerElement);
+            
             if (!editedText) {
                 alert('Message cannot be empty.');
                 return;
             }
 
-            try {
                 const sessionId = this.activeSession;
 
                 // 1. Update pesan pengguna di backend
@@ -330,7 +366,7 @@ new Vue({
                 });
 
                 // 2. Kirim teks yang diedit ke API AI untuk mendapatkan respons baru
-                const response = await fetch('/api/v1/chat/', {
+                const aiResponse = await fetch('/api/v1/chat/', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -339,12 +375,12 @@ new Vue({
                     body: JSON.stringify({ prompt: editedText }) // Teks yang diedit sebagai prompt
                 });
 
-                const data = await response.json();
-                if (response.ok) {
+                    
+                const data = await aiResponse.json();
+                if (aiResponse.ok) {
                     // 3. Dapatkan respons AI baru
-                    const aiMessage = data.ai_response ;
-                    const chatContainer = document.getElementById("chatContainer");
-
+                    const aiMessage = data.responses ;
+                    console.log("ini ai message",aiMessage)
                     // Cari elemen respons AI berikutnya
                     const nextSibling = messageElement.nextElementSibling;
                     if (nextSibling && nextSibling.classList.contains('ai-speech')) {
@@ -365,17 +401,28 @@ new Vue({
                             "/static/images/team/avater.png",
                             aiIdMessage // Gunakan idmessage yang sama untuk AI
                         );
+                        chatContainer.removeChild(spinnerElement);
                         chatContainer.replaceChild(aiMessageElement, nextSibling);
                     } else {
+                        console.log("ini fungsi else",data)
+                        const formattedMessage = JSON.stringify(aiMessage);
+                   
+                        const aiPostResponse = await axios.post(
+                            `/api/v1/chat-sessions/${sessionId}/send_message/`,
+                            { sender: "ai", message: formattedMessage },
+                            { headers: { "X-CSRFToken": this.csrfToken } }
+                        );
+                        const aiIdMessage = aiPostResponse.data.id;
                         // Jika tidak ada respons AI sebelumnya, tambahkan yang baru
                         const aiMessageElement = this.createMessageWithReactions(
                             "Chat",
                             aiMessage,
                             "ai-speech",
                             "/static/images/team/avater.png",
-                            self.crypto.randomUUID() // Buat ID lokal jika tidak ada
+                            aiIdMessage
                         );
-                        chatContainer.appendChild(aiMessageElement);
+                        chatContainer.removeChild(spinnerElement);
+                        this.appendMessage(aiMessageElement);
                     }
 
                     // 6. Perbarui teks pesan pengguna dengan teks yang diedit
@@ -394,18 +441,7 @@ new Vue({
                 } else {
                     throw new Error('Error generating AI response.');
                 }
-            } catch (error) {
-                console.error('Error:', error);
-                const errorMessage = 'Sorry, something went wrong. Please try again later.';
-                const errorMessageElement = this.createMessageWithReactions(
-                    "Chat",
-                    errorMessage,
-                    "ai-speech",
-                    "/static/images/team/avater.png",
-                    null
-                );
-                this.appendMessage(errorMessageElement);
-            }
+          
         },
         getCSRFToken(){
             const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
@@ -419,73 +455,70 @@ new Vue({
         }
         ,
         createAIMessageElement(title, messages, speechClass, imgSrc, idmessage, isEditable) {
-    const messageElement = document.createElement("div");
-    messageElement.className = `chat-box ai-speech bg-flashlight ${speechClass}`;
-    const innerClass = title === "You" ? "" : "top-flashlight leftside light-xl";  
-    const titleStatus = title === "You" ? "" : this.AIstatus();  
+            const messageElement = document.createElement("div");
+            messageElement.className = `chat-box ai-speech bg-flashlight ${speechClass}`;
+            const innerClass = title === "You" ? "" : "top-flashlight leftside light-xl";  
+            const titleStatus = title === "You" ? "" : this.AIstatus();  
 
-    // Process the messages array into HTML
-    const messageContent = Array.isArray(messages) && messages.length > 0
-        ? messages.map(msg => `
-            <article class="documentation_body shortcode_text mb--20">
-                <h4 class="mb--20">${msg.step}</h4>
-                <div class="command-section">
-                    <strong>Command:</strong>
-                    <div class="highlight">
-                        <div class="code-toolbar">
+            // Process the messages array into HTML
+            const messageContent = Array.isArray(messages) && messages.length > 0
+                ? messages.map(msg => `
+                    <article class="documentation_body shortcode_text mb--20">
+                        <h4 class="mb--20">${msg.step}</h4>
+                        <div class="command-section">
+                            <strong>Command:</strong>
+                            <div class="highlight">
+                                <div class="code-toolbar">
+                                    <pre>
+                                            <code class="language-bash" data-lang="bash" data-prismjs-toolbar >${msg.command || ""}</code>
+                                        </pre>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="status-section" style="     display: flex;     gap: 5px">
+                            <strong>Status:</strong>
+                            ${
+                                msg.status === "success"
+                                    ? `<h5 style="     color: green; ">Success</h5> <lord-icon
+                                        src="https://cdn.lordicon.com/oqdmuxru.json"
+                                        trigger="hover"
+                                        colors="primary:#109121"
+                                        style="width:25px;height:25px">
+                                    </lord-icon>`
+                                    : `<h5 style="     color: red; ">Error</h5> <lord-icon
+                                        src="https://cdn.lordicon.com/ygvjgdmk.json"
+                                        trigger="hover"
+                                        colors="primary:#e83a30"
+                                        style="width:25px;height:25px">
+                                    </lord-icon>`
+                            }
+                        </div>
+                        <div class="results-section">
+                            <strong>Results:</strong>
+                            <pre>${msg.message || ""}</pre>
+                        </div>
+                    </article>
+                `).join("")
+                : `<p class="mb--20 ${isEditable ? "editable" : ""}" ${
+                    isEditable ? 'contenteditable="true"' : ""
+                } data-idmessage="${idmessage}">${messages || ""}</p>`;
 
-                            <pre >
-                                <code class="language-bash" data-lang="bash">
-                                    ${msg.command || ""}
-                                </code>
-                            </pre>
+            messageElement.innerHTML = `
+                <div class="inner ${innerClass}">
+                    <div class="chat-section">
+                        <div class="author">
+                            <img class="w-100" src="${imgSrc}" alt="${title}">
+                        </div>
+                        <div class="chat-content">
+                            <h6 class="title">${title} ${titleStatus}</h6>
+                            ${messageContent}
+                            ${isEditable ? this.getEditButtons() : this.getReactionButtons()}
                         </div>
                     </div>
                 </div>
-                <div class="status-section" style="     display: flex;     gap: 5px">
-                    <strong>Status:</strong>
-                    ${
-                        msg.status === "success"
-                            ? `<h5 style="     color: green; ">Success</h5> <lord-icon
-                                src="https://cdn.lordicon.com/oqdmuxru.json"
-                                trigger="hover"
-                                colors="primary:#109121"
-                                style="width:25px;height:25px">
-                               </lord-icon>`
-                            : `<h5 style="     color: red; ">Error</h5> <lord-icon
-                                src="https://cdn.lordicon.com/ygvjgdmk.json"
-                                trigger="hover"
-                                colors="primary:#e83a30"
-                                style="width:50px;height:50px">
-                               </lord-icon>`
-                    }
-                </div>
-                <div class="results-section">
-                    <strong>Results:</strong>
-                    <pre>${msg.message || ""}</pre>
-                </div>
-            </article>
-        `).join("")
-        : `<p class="mb--20 ${isEditable ? "editable" : ""}" ${
-            isEditable ? 'contenteditable="true"' : ""
-        } data-idmessage="${idmessage}">${messages || ""}</p>`;
-
-    messageElement.innerHTML = `
-        <div class="inner ${innerClass}">
-            <div class="chat-section">
-                <div class="author">
-                    <img class="w-100" src="${imgSrc}" alt="${title}">
-                </div>
-                <div class="chat-content">
-                    <h6 class="title">${title} ${titleStatus}</h6>
-                    ${messageContent}
-                    ${isEditable ? this.getEditButtons() : this.getReactionButtons()}
-                </div>
-            </div>
-        </div>
-    `;
-    return messageElement;
-},
+            `;
+            return messageElement;
+        },
         createMessageWithReactions(title, message, speechClass, imgSrc, idmessage){
             const messageElement = this.createAIMessageElement(
                 title,
@@ -548,7 +581,7 @@ new Vue({
             const txtarea = document.getElementById("txtarea");
             const userMessage = { sender: "user", message: this.userInput };
 
-            try {
+          
                 const sessionId = this.activeSession;
                 console.log("Using session ID:", sessionId);
 
@@ -609,12 +642,13 @@ new Vue({
 
                 if (aiResponse.ok) {
                     txtarea.value = "";
+                    console.log(data)
                     const aiMessage = data.responses;
-
+                    const formattedMessage = JSON.stringify(aiMessage);
                     // Send AI response to the backend
                     const aiPostResponse = await axios.post(
                         `/api/v1/chat-sessions/${sessionId}/send_message/`,
-                        { sender: "ai", message: aiMessage },
+                        { sender: "ai", message: formattedMessage },
                         { headers: { "X-CSRFToken": this.csrfToken } }
                     );
 
@@ -632,29 +666,30 @@ new Vue({
                     chatContainer.removeChild(spinnerElement);
                     this.appendMessage(aiMessageElement);
                 } else {
+                    console.log("pada fugnsi else",data)
+               
+                    const aiMessage = data.responses;
                     chatContainer.removeChild(spinnerElement);
-                    const errorMessage = 'Sorry, there was an issue with the response.';
+                     // Send AI response to the backend
+                     const formattedMessage = JSON.stringify(aiMessage);
+                     const aiPostResponse = await axios.post(
+                        `/api/v1/chat-sessions/${sessionId}/send_message/`,
+                        { sender: "ai", message: formattedMessage },
+                        { headers: { "X-CSRFToken": this.csrfToken } }
+                    );
+
+                    // Extract AI message ID
+                    const aiIdMessage = aiPostResponse.data.id;
                     const errorMessageElement = this.createMessageWithReactions(
                         "Chat",
-                        errorMessage,
+                        aiIdMessage,
                         "ai-speech",
                         "/static/images/team/avater.png",
                         null
                     );
                     this.appendMessage(errorMessageElement);
                 }
-            } catch (error) {
-                console.error('Error:', error);
-                const errorMessage = 'Sorry, something went wrong. Please try again later.';
-                const errorMessageElement = this.createMessageWithReactions(
-                    "Chat",
-                    errorMessage,
-                    "ai-speech",
-                    "/static/images/team/avater.png",
-                    null
-                );
-                this.appendMessage(errorMessageElement);
-            }
+           
 
             this.userInput = '';
         },
@@ -696,6 +731,7 @@ new Vue({
                 this.fetchChatSessions();
                 const chatContainer = document.getElementById("chatContainer");
                 chatContainer.innerHTML = '';
+                this.activeSession = '';
             })
             .catch(error => {
                 console.error("Error deleting chat session:", error);

@@ -460,6 +460,7 @@ def chat_with_ai(request):
                 responses.append({
                     "step": step.get("description"),
                     "command": step.get("command"),
+                    "verification": result["verification"],
                     "status": result["status"],
                     "message": result["message"]
                 })
