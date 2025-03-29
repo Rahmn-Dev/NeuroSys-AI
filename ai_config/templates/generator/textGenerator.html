@@ -3,6 +3,62 @@
 <!-- <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css"> -->
 <!-- Prism.js Toolbar CSS -->
 <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/toolbar/prism-toolbar.min.css" rel="stylesheet" />
+<style>
+ /* Overlay to dim the background */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent black */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000; /* Ensure it appears above other elements */
+}
+
+/* Modal box styling */
+.modal-box {
+    background-color: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    width: 300px;
+    text-align: center;
+}
+
+.modal-box p {
+    margin-bottom: 15px;
+    font-size: 16px;
+}
+
+.modal-box input {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 15px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.modal-box button {
+    padding: 10px 20px;
+    margin: 5px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.modal-box #submit-input {
+    background-color: #007bff;
+    color: white;
+}
+
+.modal-box #cancel-input {
+    background-color: #ccc;
+    color: black;
+}
+</style>
 {% endblock %}
 {% block content %}
 
@@ -110,6 +166,7 @@
 <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
 <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script> -->
 <!-- Prism.js Plugin: Copy to Clipboard -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/toolbar/prism-toolbar.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/copy-to-clipboard/prism-copy-to-clipboard.min.js"></script>
 <script>
@@ -124,6 +181,7 @@ new Vue({
         activeSession: '',
         searchQuery: '',
         csrfToken: '',
+        currentPrompt: '',
 
     },
     computed: {
@@ -479,16 +537,24 @@ justify-content: center;
                             <strong>Status:</strong>
                             ${
                                 msg.status === "success"
-                                    ? `<h5 style="     color: green; ">Success</h5> <lord-icon
+                                    ? `<h5 style="color: green;">Success</h5> <lord-icon
                                         src="https://cdn.lordicon.com/oqdmuxru.json"
                                         trigger="hover"
                                         colors="primary:#109121"
                                         style="width:25px;height:25px">
                                     </lord-icon>`
-                                    : `<h5 style="     color: red; ">Error</h5> <lord-icon
+                                    : msg.status === "error"
+                                    ? `<h5 style="color: red;">Error</h5> <lord-icon
                                         src="https://cdn.lordicon.com/ygvjgdmk.json"
                                         trigger="hover"
                                         colors="primary:#e83a30"
+                                        style="width:25px;height:25px">
+                                    </lord-icon>`
+                                    : `<h5 style="color: orange;">Pending</h5>
+                                    <lord-icon
+                                        src="https://cdn.lordicon.com/mwikjdwh.json"
+                                        trigger="hover"
+                                        colors="primary:#e8b730"
                                         style="width:25px;height:25px">
                                     </lord-icon>`
                             }
@@ -543,6 +609,7 @@ justify-content: center;
         async sendMessages() {
             if (!this.userInput.trim()) return;
 
+            this.currentPrompt = this.userInput;
             // Create a new chat session if none exists
             if (!this.activeSession) {
                 try {
@@ -562,20 +629,7 @@ justify-content: center;
                 }
             }
 
-            // Ensure activeSession is set
-            if (!this.activeSession) {
-                console.error("Active session is not set.");
-                const errorMessage = "Session initialization failed. Please refresh the page.";
-                const errorMessageElement = this.createMessageWithReactions(
-                    "Chat",
-                    errorMessage,
-                    "ai-speech",
-                    "/static/images/team/avater.png",
-                    null
-                );
-                this.appendMessage(errorMessageElement);
-                return;
-            }
+           
 
             const chatContainer = document.getElementById("chatContainer");
             const txtarea = document.getElementById("txtarea");
@@ -583,7 +637,7 @@ justify-content: center;
 
           
                 const sessionId = this.activeSession;
-                console.log("Using session ID:", sessionId);
+                // console.log("Using session ID:", sessionId);
 
                 // Send user message to the backend
                 const userResponse = await axios.post(
@@ -642,29 +696,52 @@ justify-content: center;
 
                 if (aiResponse.ok) {
                     txtarea.value = "";
-                    console.log(data)
                     const aiMessage = data.responses;
-                    const formattedMessage = JSON.stringify(aiMessage);
-                    // Send AI response to the backend
-                    const aiPostResponse = await axios.post(
-                        `/api/v1/chat-sessions/${sessionId}/send_message/`,
-                        { sender: "ai", message: formattedMessage },
-                        { headers: { "X-CSRFToken": this.csrfToken } }
-                    );
+                    const requiresInputStep = aiMessage.find(step => step.requires_input);
+            
+                    if (requiresInputStep) {
+                        const formattedMessage = JSON.stringify(aiMessage);
+                        const aiPostResponse =  await axios.post(
+                            `/api/v1/chat-sessions/${sessionId}/send_message/`,
+                            { sender: "ai", message: formattedMessage },
+                            { headers: { "X-CSRFToken": this.csrfToken } }
+                        );
+                        const aiIdMessage = aiPostResponse.data.id;
+                        const aiMessageElement = this.createMessageWithReactions(
+                            "Chat",
+                            aiMessage,
+                            "ai-speech",
+                            "/static/images/team/avater.png",
+                            aiIdMessage
+                        );
+                        // Extract AI message ID
 
-                    // Extract AI message ID
-                    const aiIdMessage = aiPostResponse.data.id;
+                        this.appendMessage(aiMessageElement);
+                        this.showInputPrompt(requiresInputStep);
+                    } else {
+                        const formattedMessage = JSON.stringify(aiMessage);
+                        // Send AI response to the backend
+                        const aiPostResponse = await axios.post(
+                            `/api/v1/chat-sessions/${sessionId}/send_message/`,
+                            { sender: "ai", message: formattedMessage },
+                            { headers: { "X-CSRFToken": this.csrfToken } }
+                        );
 
-                    // Append AI message element
-                    const aiMessageElement = this.createMessageWithReactions(
-                        "Chat",
-                        aiMessage,
-                        "ai-speech",
-                        "/static/images/team/avater.png",
-                        aiIdMessage
-                    );
-                    chatContainer.removeChild(spinnerElement);
-                    this.appendMessage(aiMessageElement);
+                        // Extract AI message ID
+                        const aiIdMessage = aiPostResponse.data.id;
+
+                        // Append AI message element
+                        const aiMessageElement = this.createMessageWithReactions(
+                            "Chat",
+                            aiMessage,
+                            "ai-speech",
+                            "/static/images/team/avater.png",
+                            aiIdMessage
+                        );
+                        chatContainer.removeChild(spinnerElement);
+                        this.appendMessage(aiMessageElement);
+                    }
+                   
                 } else {
                     console.log("pada fugnsi else",data)
                
@@ -736,6 +813,112 @@ justify-content: center;
             .catch(error => {
                 console.error("Error deleting chat session:", error);
             });
+        },
+        async getLatestAIMessage(sessionId) {
+            try {
+                // Fetch all messages for the session
+                const response = await fetch(`/api/v1/chat-sessions/${sessionId}/messages/`);
+                const data = await response.json();
+                console.log("get latestai message:",data)
+                // Filter messages to find the latest AI message
+                const aiMessages = data.filter(msg => msg.sender === "ai");
+                if (aiMessages.length === 0) {
+                    throw new Error("No AI messages found.");
+                }
+
+                aiMessages.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+                const latestAIMessage = aiMessages[0];
+
+                let parsedMessage;
+                try {
+                    parsedMessage = JSON.parse(latestAIMessage.message);
+                } catch (error) {
+                    throw new Error("Failed to parse AI message.");
+                }
+
+                return { id: latestAIMessage.id, steps: parsedMessage };
+            } catch (error) {
+                console.error("Error fetching latest AI message:", error);
+                throw error;
+            }
+        },
+        showInputPrompt(step) {
+            const inputType = step.input_type || "text";
+            const promptMessage = step.message || "Please provide input:";
+            const sessionId = this.activeSession;
+            console.log(step)
+            // sending ke db dulu
+            // swal
+            this.getLatestAIMessage(sessionId).then(({ id, steps }) => {
+                const stepRequiringInput = steps.find(step => step.requires_input);
+                if (!stepRequiringInput) {
+                    console.error("No step requiring input found.");
+                    return;
+                }
+
+                const inputType = stepRequiringInput.input_type || "text";
+                const promptMessage = stepRequiringInput.message || "Please provide input:";
+
+                Swal.fire({
+                    title: promptMessage,
+                    input: inputType,
+                    inputPlaceholder: `Enter ${inputType}`,
+                    showCancelButton: true,
+                    confirmButtonText: "Submit",
+                    cancelButtonText: "Cancel",
+                    inputValidator: (value) => {
+                        if (!value) {
+                            return "Input cannot be empty!";
+                        }
+                    }
+                }).then(async (result) => {
+                    if (result.isConfirmed) {
+                        const userInput = result.value;
+
+                        // Send the input back to the backend
+                        const response = await fetch('/api/v1/chat/', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                "X-CSRFToken": getCSRFToken()
+                            },
+                            body: JSON.stringify({
+                                prompt: this.currentPrompt,
+                                additional_input: userInput,
+                                step_id: stepRequiringInput.id // Use the step ID
+                            }),
+                        });
+
+                        const responseData = await response.json();
+                        if (response.ok) {
+                            // Append the final AI response
+                            console.log(responseData.responses)
+                            const datais = responseData.responses;
+                            const formattedMessage = JSON.stringify(datais)
+                            const aiPostResponse =  await axios.post(
+                                `/api/v1/chat-sessions/${sessionId}/send_message/`,
+                                { sender: "ai", message: formattedMessage },
+                                { headers: { "X-CSRFToken": this.csrfToken } }
+                            );
+                            const aiIdMessage = aiPostResponse.data.id;
+                            const aiMessageElement = this.createMessageWithReactions(
+                                "Chat",
+                                responseData.responses,
+                                "ai-speech",
+                                "/static/images/team/avater.png",
+                                aiIdMessage
+                            );
+                           
+                            this.appendMessage(aiMessageElement);
+                        } else {
+                            console.error("Error:", responseData);
+                        }
+                    }
+                });
+            }).catch(error => {
+                console.error("Error showing input prompt:", error);
+            });
+            // tambahan
         }
     },
     mounted() {

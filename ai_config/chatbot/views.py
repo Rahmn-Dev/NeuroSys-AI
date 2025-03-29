@@ -403,14 +403,12 @@ def verify_with_ai(command, output):
     return False
 
 def execute_step(step):
-    """Execute a single step and verify its success."""
     description = step.get("description", "")
     command = step.get("command", "").strip()
     
     if not command:
         return {"status": "error", "message": "Empty command"}
     
-    # Execute the command
     try:
         process = subprocess.run(command, shell=True, capture_output=True, text=True)
         output = process.stdout if process.stdout else process.stderr
@@ -419,23 +417,63 @@ def execute_step(step):
         # Log the result
         log_to_file(SUBPROCESS_LOG_FILE, f"Step: {description}\nCommand: {command}\nOutput: {output}")
         
-        # Verify the result using both static logic and AI
-        # verification_result_static = verify_with_logic(command, output)
+        # Check if the output indicates a password prompt
+        if "[sudo] password for" in output or "password is required" in output.lower():
+            return {
+                "status": "pending",
+                "message": "Password is required to proceed. Please enter your password.",
+                "requires_input": True,  # Set requires_input to True
+                "input_type": "password"
+            }
+        
+        # Verify the result using AI
         verification_result_ai = verify_with_ai(command, output)
         
-        # Combine results
-        verification_result =  verification_result_ai
-        
         return {
-            "status": "success" if success and verification_result else "error",
+            "status": "success" if success and verification_result_ai else "error",
             "message": output,
-            "verification": verification_result
+            "verification": verification_result_ai
         }
     except Exception as e:
         log_to_file(SUBPROCESS_LOG_FILE, f"Error executing step: {description}\nError: {str(e)}")
         return {"status": "error", "message": str(e)}
 
+import pexpect
+import subprocess
 
+def execute_step_with_input(step, additional_input):
+    description = step.get("description", "")
+    command = step.get("command", "").strip()
+    logger.info(f"Executing step with password: {additional_input}")
+
+    if not command:
+        logger.info("Empty command")
+        return {"status": "error", "message": "Empty command"}
+
+    try:
+        # Use `sudo -S` to accept password from stdin
+        full_command = f"echo '{additional_input}' | sudo -S {command}"
+        logger.info(f"Running command: {full_command}")
+
+        # Execute the command using subprocess
+        process = subprocess.run(
+            full_command,
+            shell=True,
+            capture_output=True,
+            text=True
+        )
+
+        output = process.stdout if process.stdout else process.stderr
+        success = process.returncode == 0
+        logger.info(f"Command output: {output}")
+
+        return {
+            "status": "success" if success else "error",
+            "message": output
+        }
+    except Exception as e:
+        logger.error(f"Error executing step: {description}\nError: {str(e)}")
+        return {"status": "error", "message": str(e)}
 
 @api_view(['POST'])
 def chat_with_ai(request):
@@ -443,27 +481,49 @@ def chat_with_ai(request):
         try:
             data = request.data
             user_prompt = data.get("prompt", "").strip()
+            additional_input = data.get("additional_input", None)
+            step_id = data.get("step_id")
             if not user_prompt:
                 return Response({"error": "Prompt tidak boleh kosong"}, status=400)
             
             logger.info(f"User prompt: {user_prompt}")
+            # If additional input is provided, append it to the prompt
+            # if additional_input:
+                # user_prompt += f"\nAdditional Input: {additional_input}"
             
+            if not additional_input:
+                logger.info("Additional input is required but not provided.")
             # Parse the user input into steps
             steps = parse_user_input(user_prompt)
+            logger.info(f"Parsed steps: {steps}")
             if not steps:
                 return Response({"error": "Failed to parse user input"}, status=500)
             
             responses = []
+            print(additional_input)
             for step in steps:
-                # Execute the step
-                result = execute_step(step)
+                if additional_input:
+                    logger.info("Executing step with additional input")
+                    result = execute_step_with_input(step, additional_input)
+                    step["requires_input"] = False  # Reset requires_input after processing
+                else:
+                    logger.info("Executing step without additional input")
+                    result = execute_step(step)
+                    
                 responses.append({
                     "step": step.get("description"),
                     "command": step.get("command"),
-                    "verification": result["verification"],
+                    # "verification": result["verification"],
                     "status": result["status"],
-                    "message": result["message"]
+                    "message": result["message"],
+                    "requires_input": result.get("requires_input", False),  # Tambahkan ini
+                    "input_type": result.get("input_type", None)
                 })
+                if result.get("requires_input"):
+                    return Response({
+                        "message": "Task requires additional input",
+                        "responses": responses
+                    }, status=200)
                 
                 # Stop execution if any step fails
                 if result["status"] != "success":
@@ -473,6 +533,7 @@ def chat_with_ai(request):
                     }, status=500)
             
             # All steps completed successfully
+            print(responses)
             return Response({
                 "message": "Task completed successfully",
                 "responses": responses
