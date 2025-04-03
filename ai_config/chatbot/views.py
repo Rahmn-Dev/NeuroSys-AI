@@ -385,6 +385,9 @@ def verify_with_ai(command, output):
     safe_command = json.dumps(command)[1:-1]
     safe_output = json.dumps(output)[1:-1]
 
+    if "inactive (dead)" in output.lower():
+        return True
+    logger.error(command)
     ollama_payload = {
         "model": "qwen2.5-coder:latest",
         "prompt": f"""
@@ -392,7 +395,8 @@ def verify_with_ai(command, output):
             Analyze the following command and its output to determine if the task was successful:
             Command: {safe_command}
             Output: {safe_output}
-            Return ONLY "True" if the task was successful, otherwise return "False".
+            If the output indicates that the service is 'inactive (dead)' but was stopped successfully, return "True".
+            Otherwise, return "True" if the task was successful, and "False" if it failed.
         """,
         "stream": False
     }
@@ -412,13 +416,15 @@ def execute_step(step):
     try:
         process = subprocess.run(command, shell=True, capture_output=True, text=True)
         output = process.stdout if process.stdout else process.stderr
-        success = process.returncode == 0
+        success = process.returncode in [0, 3]
+        
         
         # Log the result
         log_to_file(SUBPROCESS_LOG_FILE, f"Step: {description}\nCommand: {command}\nOutput: {output}")
         
         # Check if the output indicates a password prompt
-        if "[sudo] password for" in output or "password is required" in output.lower():
+        # if "[sudo] password for" in output or "password is required" in output.lower():
+        if any(keyword in output.lower() for keyword in ["[sudo] password for", "password is required", "authentication required"]):
             return {
                 "status": "pending",
                 "message": "Password is required to proceed. Please enter your password.",
@@ -464,7 +470,8 @@ def execute_step_with_input(step, additional_input):
         )
 
         output = process.stdout if process.stdout else process.stderr
-        success = process.returncode == 0
+        success = process.returncode in [0, 3]
+        
         logger.info(f"Command output: {output}")
 
         return {
@@ -530,7 +537,7 @@ def chat_with_ai(request):
                     return Response({
                         "message": "Task failed at a step",
                         "responses": responses
-                    }, status=500)
+                    }, status=200)
             
             # All steps completed successfully
             print(responses)

@@ -432,7 +432,7 @@ justify-content: center;
                     },
                     body: JSON.stringify({ prompt: editedText }) // Teks yang diedit sebagai prompt
                 });
-
+                this.currentPrompt = editedText;
                     
                 const data = await aiResponse.json();
                 if (aiResponse.ok) {
@@ -445,22 +445,50 @@ justify-content: center;
                         // Ambil idmessage dari respons AI sebelumnya
                         const aiIdMessage = nextSibling.querySelector('p').dataset.idmessage;
 
-                        // 4. Update respons AI di backend
-                        await axios.put(`/api/v1/chat-sessions/${sessionId}/messages/${aiIdMessage}/`, 
-                            { sender: "ai", message: aiMessage, id: aiIdMessage }, 
-                            { headers: { "X-CSRFToken": this.csrfToken } }
-                        );
+                        const requiresInputStep = aiMessage.find(step => step.requires_input);
+            
+                        if (requiresInputStep) {
+                            const formattedMessage = JSON.stringify(aiMessage);
+                            await axios.put(
+                                `/api/v1/chat-sessions/${sessionId}/messages/${aiIdMessage}/`,
+                                { sender: "ai", message: formattedMessage},
+                                { headers: { "X-CSRFToken": this.csrfToken } }
+                            );
+                            const aiMessageElement = this.createMessageWithReactions(
+                                "Chat",
+                                aiMessage,
+                                "ai-speech",
+                                "/static/images/team/avater.png",
+                                aiIdMessage
+                            );
+                            // Extract AI message ID
+                            this.showInputPrompt(requiresInputStep);
+                            chatContainer.removeChild(spinnerElement);
+                            chatContainer.replaceChild(aiMessageElement, nextSibling);
+                        } else {
+                            const formattedMessage = JSON.stringify(aiMessage);
+                          
 
-                        // 5. Perbarui UI dengan respons AI baru
-                        const aiMessageElement = this.createMessageWithReactions(
-                            "Chat",
-                            aiMessage,
-                            "ai-speech",
-                            "/static/images/team/avater.png",
-                            aiIdMessage // Gunakan idmessage yang sama untuk AI
-                        );
-                        chatContainer.removeChild(spinnerElement);
-                        chatContainer.replaceChild(aiMessageElement, nextSibling);
+
+                                           // 4. Update respons AI di backend
+                            await axios.put(`/api/v1/chat-sessions/${sessionId}/messages/${aiIdMessage}/`, 
+                                // { sender: "ai", message: aiMessage, id: aiIdMessage }, 
+                                { sender: "ai", message: formattedMessage }, 
+                                { headers: { "X-CSRFToken": this.csrfToken } }
+                            );
+
+                            // 5. Perbarui UI dengan respons AI baru
+                            const aiMessageElement = this.createMessageWithReactions(
+                                "Chat",
+                                aiMessage,
+                                "ai-speech",
+                                "/static/images/team/avater.png",
+                                aiIdMessage // Gunakan idmessage yang sama untuk AI
+                            );
+                            chatContainer.removeChild(spinnerElement);
+                            chatContainer.replaceChild(aiMessageElement, nextSibling);
+                        }
+         
                     } else {
                         console.log("ini fungsi else",data)
                         const formattedMessage = JSON.stringify(aiMessage);
@@ -523,6 +551,9 @@ justify-content: center;
                 ? messages.map(msg => `
                     <article class="documentation_body shortcode_text mb--20">
                         <h4 class="mb--20">${msg.step}</h4>
+                        <p class="mb--20 ${isEditable ? "editable" : ""}" ${
+                            isEditable ? 'contenteditable="true"' : ""
+                        } data-idmessage="${idmessage}"></p>
                         <div class="command-section">
                             <strong>Command:</strong>
                             <div class="highlight">
@@ -759,10 +790,10 @@ justify-content: center;
                     const aiIdMessage = aiPostResponse.data.id;
                     const errorMessageElement = this.createMessageWithReactions(
                         "Chat",
-                        aiIdMessage,
+                        aiMessage,
                         "ai-speech",
                         "/static/images/team/avater.png",
-                        null
+                        aiIdMessage
                     );
                     this.appendMessage(errorMessageElement);
                 }
