@@ -95,8 +95,13 @@
               
               <div class="logo">
                 <h4 class="subtitle" style="margin-top: 10px; margin-bottom: 10px;">
-                    <span class="headline__title">Two-Factor Authentication</span>
+                    <span class="headline__title">
+                        {% if is_2fa_activated %}{% else %}Setup{% endif %} Two-Factor Authentication
+                    </span>
                 </h4>
+                {% if is_2fa_activated %}
+                <p>Two-Factor Authentication is already activated for your account.</p>
+                {% endif %}
             </div>
                 {% if messages %}
                 <div class="alert alert-danger">
@@ -136,7 +141,7 @@
                         log out
                         
                      </a>
-                    <button type="submit" class="btn btn-solid link-l">Submit OTP</button>
+                    <button type="submit" class="btn btn-solid link-l" style="border-radius: 10px;">Submit OTP</button>
                 </div>
             </form>
             
