@@ -70,9 +70,13 @@
 import pyshark
 import joblib
 import pandas as pd
+import os
+
+# Menentukan path absolut atau relatif ke model
+model_path = os.path.join("model", "random_forest_nsl_kdd.pkl")
 
 # Memuat model yang sudah disimpan
-model = joblib.load("random_forest_nsl_kdd.pkl")
+model = joblib.load(model_path)
 
 # Daftar fitur yang digunakan saat pelatihan
 feature_columns = [
@@ -103,17 +107,47 @@ feature_columns = [
     'flag_S3', 'flag_SF', 'flag_SH'
 ]
 
+# Pemetaan label lengkap
+label_mapping = {
+    0: "normal",          # Normal traffic
+    1: "neptune",         # Denial of Service (DoS)
+    2: "warezclient",     # Unauthorized access
+    3: "ipsweep",         # Probe attack
+    4: "portsweep",       # Probe attack
+    5: "teardrop",        # Denial of Service (DoS)
+    6: "nmap",            # Probe attack
+    7: "satan",           # Probe attack
+    8: "smurf",           # Denial of Service (DoS)
+    9: "pod",             # Denial of Service (DoS)
+    10: "back",           # Denial of Service (DoS)
+    11: "guess_passwd",   # Remote to Local (R2L) attack
+    12: "ftp_write",      # Remote to Local (R2L) attack
+    13: "multihop",       # User-to-Root (U2R) attack
+    14: "phf",            # Remote to Local (R2L) attack
+    15: "spy",            # Remote to Local (R2L) attack
+    16: "warezmaster",    # Unauthorized access
+    17: "land",           # Denial of Service (DoS)
+    18: "buffer_overflow",# User-to-Root (U2R) attack
+    19: "imap",           # Remote to Local (R2L) attack
+    20: "rootkit",        # User-to-Root (U2R) attack
+    21: "loadmodule",     # User-to-Root (U2R) attack
+    22: "perl",           # User-to-Root (U2R) attack
+    23: "httptunnel",     # Remote to Local (R2L) attack
+}
+
 # Fungsi untuk memproses paket
 def process_packet(packet):
-    # Ekstrak fitur yang tersedia dari paket
-    features = {col: 0 for col in feature_columns}  # Isi semua fitur dengan nilai default
+    # Inisialisasi fitur dengan nilai default
+    features = {col: 0 for col in feature_columns}
 
-    # Fitur dasar
-    features["duration"] = float(packet.frame_info.time_delta)
-    features["src_bytes"] = int(packet.length)
-    features["dst_bytes"] = int(packet.length)
+    # Ekstrak fitur dasar
+    if hasattr(packet, 'frame_info'):
+        features["duration"] = float(packet.frame_info.time_delta)
+    if hasattr(packet, 'length'):
+        features["src_bytes"] = int(packet.length)
+        features["dst_bytes"] = int(packet.length)
 
-    # Fitur protocol_type
+    # Ekstrak protocol_type
     if hasattr(packet, 'ip'):
         if hasattr(packet, 'tcp'):
             features["protocol_type_tcp"] = 1
@@ -122,19 +156,34 @@ def process_packet(packet):
         else:
             features["protocol_type_icmp"] = 1
 
-    # Fitur service
+    # Ekstrak service
     if hasattr(packet, 'http'):
         features["service_http"] = 1
     elif hasattr(packet, 'ftp'):
         features["service_ftp"] = 1
+    elif hasattr(packet, 'ssh'):
+        features["service_ssh"] = 1
+    elif hasattr(packet, 'smtp'):
+        features["service_smtp"] = 1
+    elif hasattr(packet, 'telnet'):
+        features["service_telnet"] = 1
+    elif hasattr(packet, 'dns'):
+        features["service_domain"] = 1
     # Tambahkan layanan lainnya sesuai kebutuhan
 
-    # Fitur flag
-    if hasattr(packet, 'tcp'):
+    # Ekstrak flag
+    if hasattr(packet, 'tcp') and hasattr(packet.tcp, 'flags'):
         flags = packet.tcp.flags
         features["flag_SF"] = 1 if "SF" in flags else 0
         features["flag_S0"] = 1 if "S0" in flags else 0
-        # Tambahkan flag lainnya sesuai kebutuhan
+        features["flag_REJ"] = 1 if "REJ" in flags else 0
+        features["flag_RSTO"] = 1 if "RSTO" in flags else 0
+        features["flag_RSTOS0"] = 1 if "RSTOS0" in flags else 0
+        features["flag_RSTR"] = 1 if "RSTR" in flags else 0
+        features["flag_S1"] = 1 if "S1" in flags else 0
+        features["flag_S2"] = 1 if "S2" in flags else 0
+        features["flag_S3"] = 1 if "S3" in flags else 0
+        features["flag_SH"] = 1 if "SH" in flags else 0
 
     # Konversi ke DataFrame
     df = pd.DataFrame([features])
@@ -142,20 +191,24 @@ def process_packet(packet):
 
     # Cetak data yang digunakan untuk prediksi
     print("Data untuk Prediksi:")
-    print(df)
-
-    # Cetak probabilitas prediksi
-    proba = model.predict_proba(df)
-    print("Probabilitas Prediksi:", proba)
+    # print(df)
 
     # Lakukan prediksi
+    proba = model.predict_proba(df)
     prediction = model.predict(df)
-    df["prediction"] = model.predict(df.drop(columns=["label", "encoded_label"], errors="ignore"))
 
-# Cek hasil prediksi
-    print(df[["prediction"]].head())  
-    # print("Prediction:", prediction)
+    # Cetak probabilitas prediksi
+    # print("Probabilitas Prediksi:", proba)
+
+    # Filter hasil prediksi berdasarkan threshold
+    threshold = 0.2
+    if max(proba[0]) < threshold:
+        print("Model tidak yakin dengan prediksi.")
+    else:
+        predicted_label = label_mapping.get(prediction[0], "unknown")
+        print(f"Predicted Label: {predicted_label}")
 
 # Mulai menangkap paket secara real-time
-capture = pyshark.LiveCapture(interface='wlp0s20f3')  # Ganti dengan interface yang sesuai
-capture.apply_on_packets(process_packet, packet_count=10)  # Menangkap 10 paket
+interface = 'wlp0s20f3'  # Ganti dengan interface yang sesuai
+capture = pyshark.LiveCapture(interface=interface)
+capture.apply_on_packets(process_packet, packet_count=1000)  # Menangkap 10 paket

@@ -1,6 +1,6 @@
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth import authenticate, login
+from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
 from django.contrib import messages
 from django.contrib.auth import logout
 import psutil, os, subprocess
@@ -8,6 +8,8 @@ from django.http import JsonResponse
 from datetime import datetime
 import socket
 import requests
+from two_factor.views import LoginView as TwoFactorLoginView
+from two_factor.utils import default_device
 
 @login_required
 def chatAI(request):
@@ -21,24 +23,99 @@ def index(request):
 def dashboard(request):
     return render(request, "dashboard.html", { 'headTitle':'Dashboard' })
 
+
+
 def user_login(request):
     if request.method == "POST":
-        username = request.POST["username"]
-        password = request.POST["password"]
+        username = request.POST.get("username")
+        password = request.POST.get("password")
         user = authenticate(request, username=username, password=password)
 
         if user is not None:
-            login(request, user)
-            return redirect("dashboard") 
+            # Perform "semi-login" by logging the user in temporarily
+            auth_login(request, user)
+
+            # Set the user's session as inactive
+            user.profile.is_active_session = False
+            user.profile.save()
+
+            # Redirect to setup 2FA for OTP verification
+            return redirect("setup_2fa")
         else:
             messages.error(request, "Invalid username or password")
 
     return render(request, "login.html")
 
-def user_logout(request):
-    logout(request)
-    return redirect("login")  
+import base64
+from django_otp.plugins.otp_totp.models import TOTPDevice
+from django.conf import settings
+import qrcode
+from io import BytesIO
+from django.contrib import messages
+from django.shortcuts import redirect, render
 
+def setup_2fa(request):
+    # Check if the user is authenticated
+    if not request.user.is_authenticated:
+        return redirect("login")  # Redirect to login if not authenticated
+
+    user = request.user
+
+    # Get or create the TOTP device for the user
+    device, created = TOTPDevice.objects.get_or_create(user=user, defaults={'confirmed': False})
+
+    if request.method == "POST":
+        otp = request.POST.get("otp")
+        if device and device.verify_token(otp):
+            if not device.confirmed:
+                # Mark 2FA as confirmed
+                device.confirmed = True
+                device.save()
+                messages.success(request, "2FA has been activated successfully.")
+
+            # Mark the user's session as active
+            user.profile.is_active_session = True
+            user.profile.save()
+
+            # Redirect to dashboard after successful OTP verification
+            return redirect("dashboard")
+        else:
+            messages.error(request, "Invalid OTP. Please try again.")
+
+    # Generate QR code only if 2FA is not yet confirmed
+    qr_code_base64 = None
+    if not device.confirmed:
+        # Encode bin_key to Base32 for compatibility with Google Authenticator
+        secret_key = base64.b32encode(device.bin_key).decode('utf-8').rstrip('=')
+
+        # Use user's email or username in the label
+        user_label = f"{user.email}" if user.email else f"{user.username}"
+        label = f"NeuroSys-AI:{user_label}"
+
+        # Generate QR code URL for Google Authenticator
+        qr_code_url = f"otpauth://totp/{label}?secret={secret_key}&issuer=NeuroSys-AI"
+        
+        # Generate QR code image
+        img = qrcode.make(qr_code_url)
+        buffer = BytesIO()
+        img.save(buffer, format="PNG")
+        qr_code_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+    return render(request, "setup_2fa.html", {
+        "qr_code_base64": qr_code_base64,
+        "is_2fa_activated": device.confirmed
+    })
+
+def user_logout(request):
+    user = request.user
+    if user.is_authenticated:
+        # Deactivate the user's session
+        user.profile.is_active_session = False
+        user.profile.save()
+
+    # Perform logout
+    auth_logout(request)
+    return redirect("login")
 
 
 def system_monitor(request):

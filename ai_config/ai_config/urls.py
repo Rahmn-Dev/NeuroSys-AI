@@ -33,6 +33,7 @@ urlpatterns = [
     path('dashboard/', views.dashboard, name='dashboard'),
     path('login/', views.user_login, name='login'),
     path('logout/', views.user_logout, name='logout'),
+     path('2fa/', views.setup_2fa, name='setup_2fa'),  # Add this line
     path('system_monitor/', views.system_monitor, name='system_monitor'),
     path('api/v1/', include((router.urls, 'api_v1'), namespace='v1')),
     path('api/v1/chat/', chatbot_views.chat_with_ai, name='chat_with_ai'),

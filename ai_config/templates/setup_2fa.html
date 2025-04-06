@@ -1,0 +1,370 @@
+
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+  <head>
+    <meta charset="utf-8">
+
+    <!-- Page Title-->
+    <title>Sys AI - Login</title>
+
+  
+    <!-- Template Styles Start -->
+    <link rel="stylesheet" type="text/css" href="/static/css/loaders/loader-light.css">
+    <link rel="stylesheet" type="text/css" href="/static/css/plugins.css">
+    <link rel="stylesheet" type="text/css" href="/static/css/main.css">
+    <link rel="stylesheet" type="text/css" href="/static/css/colors/color-light.css">
+    <!-- Template Styles End -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+
+    <!-- Custom Browser Color Start -->
+    <meta name="theme-color" content="#563789">
+    <meta name="msapplication-navbutton-color" content="#563789">
+    <meta name="apple-mobile-web-app-status-bar-style" content="#563789">
+    <!-- Custom Browser Color End -->
+
+  </head>
+
+  <body>
+
+    <!-- Loader Start -->
+    <div class="loader">
+      <div class="loader-content">
+        <div class="loader-logo fadeIn">
+          <!-- Your Logo Here -->
+          <div class="logo">
+            <h4 class="subtitle " style="
+            margin-top: 10px;
+            margin-bottom: 10px;
+        ">
+                <span class="theme-gradient">Sys AI</span></h4>
+        </div>
+        </div>
+      </div>
+    </div>
+    <!-- Loader End -->
+
+    <!-- Header Start -->
+    <header id="header" class="header">
+
+      <!-- Template Logo Start -->
+      <div class="header__logo replace-to-light">
+        <!-- Your Logo Here -->
+        <div class="logo">
+            <h4 class="subtitle " style="
+            margin-top: 10px;
+            margin-bottom: 10px;
+        ">
+                <span class="theme-gradient">Sys AI</span></h4>
+        </div>
+      </div>
+      <!-- Template Logo End -->
+
+      <!-- Header Controls Start -->
+      <div class="header__controls">
+        <!-- menu trigger -->
+        <div class="menu-button">
+       
+        </div>
+      </div>
+      <!-- Header Controls Start -->
+
+      <!-- Header Underlines Start -->
+      <div class="header__underline underline-1 light-desktop"></div>
+      <div class="header__underline underline-2"></div>
+      <!-- Header Underlines End -->
+
+    </header>
+    <!-- Header End -->
+
+   
+
+    <!-- Main Section Start -->
+    <section id="main" class="main active-section">
+      <div class="container-fluid p-0 fullheight">
+        <div class="row g-0 fullheight">
+
+          <!-- Main Section Intro (left on desktop) Start -->
+          <div class="col-12 col-xl-6 main__intro">
+            <!-- Main Intro SVG background -->
+            <div class="color-layer color-layer-svg color-layer-svg-main"></div>
+
+            <!-- Headline Start -->
+            <div class="intro__headline">
+              <span class="headline__subtitle">Sys AI</span>
+              
+              <div class="logo">
+                <h4 class="subtitle" style="margin-top: 10px; margin-bottom: 10px;">
+                    <span class="headline__title">Two-Factor Authentication</span>
+                </h4>
+            </div>
+                {% if messages %}
+                <div class="alert alert-danger">
+                    <p class="headline__descr" style="color: red;">
+                        {% for message in messages %}
+                            {{ message }}
+                        {% endfor %}
+
+                    </p>
+                </div>
+            {% endif %}
+              <form method="post">
+                {% csrf_token %}
+                
+                <div class="input-section mail-section" style="
+                display: flex;
+                flex-direction: row;
+                flex-wrap: nowrap;
+                align-content: center;
+                justify-content: center;
+                gap: 10px;
+                align-items: center;
+            ">
+                    <div class="icon"><i class="fa-solid fa-key"></i></div>
+                    <input type="text" name="otp" placeholder="Enter OTP" required><br>
+                </div>
+                <div style="
+                display: flex;
+                flex-direction: row;
+                flex-wrap: wrap;
+                justify-content: space-between;
+                align-content: center;
+            ">
+
+                    <a href="/logout/" class="btn link-l">
+                        <i class="fa-solid fa-chevron-left"></i>
+                        log out
+                        
+                     </a>
+                    <button type="submit" class="btn btn-solid link-l">Submit OTP</button>
+                </div>
+            </form>
+            
+            </div>
+            <!-- Headline End -->
+
+            <!-- Notify Popup Start -->
+            <div id="notify" class="notify">
+
+              <!-- Popup Controls Start -->
+              <div class="popup-controls">
+                <a href="#0" id="notify-close" class="notify-close link-s"></a>
+              </div>
+              <!-- Popup Controls End -->
+
+              <!-- Popup Content Start -->
+              <div class="popup-content">
+
+                <!-- Popup Title Start -->
+                <div class="popup-title">
+                  <span class="popup-title__subtitle">Stay in touch</span>
+                  <p class="popup-title__title">We are almost here</p>
+                  <p class="popup-title__text">Subscribe to our newsletter and we will send you a notification about the launch of our brand new site.</p>
+                </div>
+                <!-- Popup Title End -->
+
+                <!-- Popup Content Block Start -->
+                <div class="form-container">
+
+                  <!-- Reply Messages Start-->
+                  <div class="reply-group subscription-ok">
+                    <svg class="reply-group__svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                      <path d="M0 0h24v24H0V0z" fill="none"/>
+                      <circle cx="15.5" cy="9.5" r="1.5"/>
+                      <circle cx="8.5" cy="9.5" r="1.5"/>
+                      <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 
+                      20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm-5-6c.78 2.34 2.72 4 5 4s4.22-1.66 5-4H7z"/>
+                    </svg>
+                    <p class="reply-group__title txt-light">Done!</p>
+                    <span class="reply-group__text">Thanks for subscribing. We will send you a notification about the launch of our brand new website.</span>
+                  </div>
+                  <div class="reply-group subscription-error">
+                    <svg class="reply-group__svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                      <path d="M0 0h24v24H0V0z" fill="none"/>
+                      <circle cx="15.5" cy="9.5" r="1.5"/>
+                      <circle cx="8.5" cy="9.5" r="1.5"/>
+                      <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 
+                      0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm0-6c-2.33 0-4.32 1.45-5.12 3.5h1.67c.69-1.19 1.97-2 3.45-2s2.75.81 3.45 2h1.67c-.8-2.05-2.79-3.5-5.12-3.5z"/>
+                    </svg>
+                    <p class="reply-group__title">Ooops!</p>
+                    <span class="reply-group__text">Something went wrong. Please try again later.</span>
+                  </div>
+                  <!-- Reply Messages End-->
+
+                  <!-- Notify Contact Form Start-->
+                  <form class="form notify-form">
+                    
+                    <span class="inputs-description">*Required fields</span>
+                    <button class="btn btn-solid link-l" type="submit">
+                      <span>Send</span>
+                    </button>
+                  </form>
+                
+                  <!-- Notify Contact Form End-->
+
+                </div>
+                <!-- Popup Content Block End -->
+
+              </div>
+              <!-- Popup Content End -->
+
+            </div>
+            <!-- Notify Popup End -->
+
+            <!-- Intro Socials Start -->
+            <div class="intro__socials">
+             
+            </div>
+            <!-- Intro Socials End -->
+
+            <!-- Intro Copyright Start -->
+            <div class="intro__copyright">
+             
+            </div>
+            <!-- Intro Copyright End -->
+
+          </div>
+          <!-- Main Section Intro (left on desktop) End -->
+
+          <!-- Main Section Media (right on desktop) Start -->
+          <div class="col-12 col-xl-6 main__media">
+
+            <!-- Media Content Start -->
+            <div class="media__content">
+
+              <!-- Background Effect Start -->
+              <!-- single image background -->
+              <div class="media__image media-bg-1">
+                
+              </div>
+              <!-- Background Effect End -->
+
+              <!-- Color Layer Start -->
+              <div class="color-layer color-layer-gradient"></div>
+              <!-- Color Layer End -->
+
+              <!-- Countdown Start -->
+              <div class="media__countdown">
+                {% if is_2fa_activated %}
+                      
+                    {% else %}
+                    <div style="
+                    display: flex;
+                    flex-direction: column;
+                    flex-wrap: nowrap;
+                    align-content: center;
+                    justify-content: flex-end;
+                    gap: 10px;
+                    align-items: center;
+                ">
+                        <p class="title" style="color: white;">Scan the QR code below with your authenticator app:</p>
+                        
+                        <!-- QR Code Image -->
+                        <img src="data:image/png;base64,{{ qr_code_base64 }}" alt="QR Code" style="width: 50%;"><br>
+
+                    </div>
+                   
+                    {% endif %}
+                <div id="countdown" style="font-size: 5rem;"></div>
+                <p class="help-text">Time Now</p>
+              </div>
+              <!-- Countdown End -->
+
+            </div>
+            <!-- Media Content End -->
+
+            <!-- Media Cover (is visible when Notify is open) Start -->
+            <div class="media__cover color-layer color-layer-gradient"></div>
+            <!-- Media Cover (is visible when Notify is open) End -->
+
+          </div>
+          <!-- Main Section Media (right on desktop) End -->
+
+        </div>
+      </div>
+    </section>
+    <!-- Main Section End -->
+
+
+
+   
+
+    <!-- Root element of PhotoSwipe. Must have class pswp. -->
+    <div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+      <!-- Background of PhotoSwipe.
+      It's a separate element, as animating opacity is faster than rgba(). -->
+      <div class="pswp__bg"></div>
+
+      <!-- Slides wrapper with overflow:hidden. -->
+      <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. PhotoSwipe keeps only 3 slides in DOM to save memory. -->
+        <!-- don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+          <div class="pswp__top-bar">
+
+            <!--  Controls are self-explanatory. Order can be changed. -->
+
+            <div class="pswp__counter"></div>
+
+            <button class="pswp__button pswp__button--close link-s" title="Close (Esc)"></button>
+
+            <button class="pswp__button pswp__button--share link-s" title="Share"></button>
+
+            <button class="pswp__button pswp__button--fs link-s" title="Toggle fullscreen"></button>
+
+            <button class="pswp__button pswp__button--zoom link-s" title="Zoom in/out"></button>
+
+            <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+            <!-- element will get class pswp__preloader-active when preloader is running -->
+            <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                      <div class="pswp__preloader__cut">
+                        <div class="pswp__preloader__donut"></div>
+                      </div>
+                    </div>
+            </div>
+          </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left link-l" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right link-l" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Custom Cursor -->
+    <div class="cursor"></div>
+
+    <!-- Load Scripts Start -->
+    <script src="/static/js/libs.min.js"></script>
+    <script src="/static/js/gallery-init.js"></script>
+    <script src="/static/js/beldon-custom.js"></script>
+  
+    <!-- Load Scripts End -->
+
+  </body>
+
+</html>

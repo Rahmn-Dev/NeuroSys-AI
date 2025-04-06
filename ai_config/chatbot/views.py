@@ -431,7 +431,14 @@ def execute_step(step):
                 "requires_input": True,  # Set requires_input to True
                 "input_type": "password"
             }
-        
+        if "Do you want to continue?" in output:
+            return {
+                "status": "pending",
+                "message": "User confirmation (Y/N) is required.",
+                "requires_input": True,
+                "input_type": "confirmation"
+            }
+
         # Verify the result using AI
         verification_result_ai = verify_with_ai(command, output)
         
@@ -446,11 +453,13 @@ def execute_step(step):
 
 import pexpect
 import subprocess
+import pexpect
+import subprocess
 
 def execute_step_with_input(step, additional_input):
     description = step.get("description", "")
     command = step.get("command", "").strip()
-    logger.info(f"Executing step with password: {additional_input}")
+    logger.info(f"Executing step : {additional_input}")
 
     if not command:
         logger.info("Empty command")

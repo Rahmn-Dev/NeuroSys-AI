@@ -45,6 +45,11 @@ INSTALLED_APPS = [
     'chatbot',
     # 'corsheaders',
     'psutil',
+
+    'django_otp',  # Core OTP support
+    'django_otp.plugins.otp_totp',  # Time-based OTP (TOTP)
+    'django_otp.plugins.otp_static',  # Static OTP (backup codes)
+    'two_factor',  # Two-factor authentication app
 ]
 CORS_ALLOWED_ORIGINS = [
     "https://experimental.rahmn.tech",
@@ -68,6 +73,8 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
      "whitenoise.middleware.WhiteNoiseMiddleware",
+     'django_otp.middleware.OTPMiddleware',
+     'chatbot.middleware.EnforceActiveSessionMiddleware',
     #  'corsheaders.middleware.CorsMiddleware', 
 ]
 
