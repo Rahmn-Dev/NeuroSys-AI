@@ -10,6 +10,8 @@ import socket
 import requests
 from two_factor.views import LoginView as TwoFactorLoginView
 from two_factor.utils import default_device
+from django_ratelimit.decorators import ratelimit
+
 
 @login_required
 def chatAI(request):
@@ -24,14 +26,37 @@ def dashboard(request):
     return render(request, "dashboard.html", { 'headTitle':'Dashboard' })
 
 
+from django.core.cache import cache
+from django.contrib import messages
+from django.shortcuts import render, redirect
+from django_ratelimit.decorators import ratelimit
 
+@ratelimit(key='ip', rate='3/1m', block=False)
 def user_login(request):
+    ip_address = request.META.get('REMOTE_ADDR')
+    cache_key = f'login_attempts:{ip_address}'
+    attempts = cache.get(cache_key, 0)
+
+    if getattr(request, 'limited', False):  # Cek apakah pengguna telah melebihi batas
+        remaining_time = cache.ttl(cache_key)  # Hitung waktu tersisa dalam detik
+        if remaining_time > 0:
+            minutes = remaining_time // 60
+            seconds = remaining_time % 60
+            return render(request, 'login.html', {
+                'rate_limit_exceeded': True,
+                'remaining_minutes': minutes,
+                'remaining_seconds': seconds,
+            })
+
     if request.method == "POST":
         username = request.POST.get("username")
         password = request.POST.get("password")
         user = authenticate(request, username=username, password=password)
 
         if user is not None:
+            # Reset login attempts cache on successful login
+            cache.delete(cache_key)
+
             # Perform "semi-login" by logging the user in temporarily
             auth_login(request, user)
 
@@ -42,6 +67,8 @@ def user_login(request):
             # Redirect to setup 2FA for OTP verification
             return redirect("setup_2fa")
         else:
+            # Increment login attempts
+            cache.set(cache_key, attempts + 1, timeout=60)  # Timeout 1 menit
             messages.error(request, "Invalid username or password")
 
     return render(request, "login.html")
@@ -112,6 +139,12 @@ def user_logout(request):
         # Deactivate the user's session
         user.profile.is_active_session = False
         user.profile.save()
+    
+
+        # Reset login attempts cache on logout
+        ip_address = request.META.get('REMOTE_ADDR')
+        cache_key = f'login_attempts:{ip_address}'
+        cache.delete(cache_key)
 
     # Perform logout
     auth_logout(request)

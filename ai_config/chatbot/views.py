@@ -387,7 +387,7 @@ def verify_with_ai(command, output):
 
     if "inactive (dead)" in output.lower():
         return True
-    logger.error(command)
+    logger.info(command)
     ollama_payload = {
         "model": "qwen2.5-coder:latest",
         "prompt": f"""
@@ -395,16 +395,18 @@ def verify_with_ai(command, output):
             Analyze the following command and its output to determine if the task was successful:
             Command: {safe_command}
             Output: {safe_output}
-            If the output indicates that the service is 'inactive (dead)' but was stopped successfully, return "True".
-            Otherwise, return "True" if the task was successful, and "False" if it failed.
+            If the output indicates that the service is 'inactive (dead)' but was stopped successfully,Return only one word: "True".
+            Otherwise,Return only one word: "True" if the task was successful, and "False" if it failed. No explanation.
         """,
         "stream": False
     }
     response = requests.post(OLLAMA_URL, json=ollama_payload)
     if response.status_code == 200:
         ai_response = response.json().get("response", "").strip()
+        logger.info(f"dia status 200 dengan response {ai_response}")
         return ai_response.lower() == "true"
-    return False
+    else :
+        return False
 
 def execute_step(step):
     description = step.get("description", "")
@@ -441,7 +443,7 @@ def execute_step(step):
 
         # Verify the result using AI
         verification_result_ai = verify_with_ai(command, output)
-        
+        logger.info(f"hasil verifikasi AI: {verification_result_ai} dengan command {command} dan output {output}")
         return {
             "status": "success" if success and verification_result_ai else "error",
             "message": output,

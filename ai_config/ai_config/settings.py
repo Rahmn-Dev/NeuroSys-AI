@@ -166,3 +166,13 @@ STATICFILES_DIRS = [
     os.path.join(BASE_DIR, "static")  # Hanya mengarah ke folder static yang benar
 ]   
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")  # Tempat hasil collectstatic
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': 'redis://127.0.0.1:6379/1',  # Ganti dengan lokasi Redis Anda
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        }
+    }
+}
