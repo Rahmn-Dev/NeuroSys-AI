@@ -118,3 +118,38 @@ async def websocket_endpoint(websocket: WebSocket):
         if websocket.client_state.name != "CLOSED":
             await websocket.close()  # Ensure WebSocket is properly closed
         print("WebSocket connection closed")
+
+
+# import time
+# # Tail Suricata logs
+# def tail_log(file_path):
+#     with open(file_path, 'r') as file:
+#         # Pindah ke akhir file
+#         file.seek(0, 2)
+#         while True:
+#             line = file.readline()
+#             if not line:
+#                 time.sleep(0.1)  # Tunggu sampai ada baris baru
+#                 continue
+#             yield line
+
+# @app.websocket("/ws/suricata_monitor/")
+# async def websocket_suricata_monitor(websocket: WebSocket):
+#     await websocket.accept()
+#     try:
+#         log_file = "/var/log/suricata/fast.log"
+#         for new_line in tail_log(log_file):
+#             # Kirim log ke klien melalui WebSocket
+#             await websocket.send_json({
+#                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+#                 "message": new_line.strip()
+#             })
+#             await asyncio.sleep(0.1)  # Jeda kecil untuk menghindari overload
+
+#     except Exception as e:
+#         print(f"WebSocket error: {e}")
+    
+#     finally:
+#         if websocket.client_state.name != "CLOSED":
+#             await websocket.close()  # Pastikan WebSocket ditutup dengan benar
+#         print("Suricata Monitor WebSocket connection closed")

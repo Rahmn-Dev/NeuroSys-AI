@@ -5,6 +5,7 @@ import requests
 import subprocess
 import asyncio  # Import asyncio for async sleep
 from datetime import datetime
+import time
 from channels.generic.websocket import AsyncWebsocketConsumer
 
 # Try importing pynvml for VRAM usage
@@ -98,3 +99,36 @@ class SystemMonitorConsumer(AsyncWebsocketConsumer):
         except subprocess.CalledProcessError:
             pass
         return devices
+    
+
+class SuricataLogConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        await self.accept()
+        await self.send_suricata_logs()
+
+    async def disconnect(self, close_code):
+        pass
+
+    async def send_suricata_logs(self):
+        log_file = "/var/log/suricata/fast.log"
+        async for new_line in self.tail_log(log_file):  # Gunakan async for
+            if new_line is None:  # Skip empty lines
+                continue
+
+            # Send the log message to the WebSocket client
+            await self.send(text_data=json.dumps({
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "message": new_line.strip()
+            }))
+            await asyncio.sleep(0.1)  # Small delay to avoid overload
+
+    async def tail_log(self, file_path):
+        with open(file_path, 'r') as file:
+            # Move to the end of the file
+            file.seek(0, 2)
+            while True:
+                line = file.readline()
+                if not line:
+                    await asyncio.sleep(0.1)  # Use asyncio.sleep instead of time.sleep
+                    continue
+                yield line.strip()

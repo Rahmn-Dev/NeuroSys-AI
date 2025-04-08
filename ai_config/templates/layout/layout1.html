@@ -52,6 +52,78 @@
     {% block script %}
 
     {% endblock %} 
+   
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<script>
+    new Vue({
+        el: '#app',
+        data: {
+            notifications: [], // Menyimpan daftar notifikasi
+            unreadCount: 0, // Jumlah notifikasi yang belum dibaca
+        },
+        methods: {
+            initWebSocket() {
+                const isLocal = window.location.hostname === "localhost" || window.location.hostname.startsWith("192.168.");
+                const wsProtocol = isLocal ? "ws" : "wss";
+                const wsHost = isLocal ? "192.168.101.20:8000" : "experimental.rahmn.tech";
+                const socket = new WebSocket(`${wsProtocol}://${wsHost}/ws/suricata_monitor/`);
+
+                socket.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+
+                    // Tambahkan notifikasi baru ke daftar
+                    this.notifications.unshift(data);
+                    this.unreadCount++;
+
+                    // Perbarui badge notifikasi
+                    document.getElementById('notification-badge').innerText = this.unreadCount;
+                    document.getElementById('notification-badge').style.display = 'inline-block';
+
+                    // Tampilkan notifikasi SweetAlert2
+                    Swal.fire({
+                        title: 'Suricata Alert!',
+                        text: data.message,
+                        icon: 'warning',
+                        toast: true,
+                        position: 'top-end',
+                        showConfirmButton: false,
+                        timer: 3000,
+                    });
+                };
+
+                socket.onclose = () => {
+                    console.error("WebSocket Closed. Trying to reconnect...");
+                    setTimeout(() => location.reload(), 5000);
+                };
+            },
+            showNotifications() {
+                // Tampilkan daftar notifikasi dalam modal SweetAlert2
+                Swal.fire({
+                    title: 'Notifications',
+                    html: this.notifications.map((notif, index) => `
+                        <div style="margin-bottom: 10px;">
+                            <strong>${notif.timestamp}</strong>: ${notif.message}
+                        </div>
+                    `).join(''),
+                    showCloseButton: true,
+                    showConfirmButton: false,
+                    width: '500px',
+                });
+
+                // Reset jumlah notifikasi yang belum dibaca
+                this.unreadCount = 0;
+                document.getElementById('notification-badge').style.display = 'none';
+            },
+        },
+        mounted() {
+            this.initWebSocket();
+
+            // Tambahkan event listener untuk tombol notifikasi
+            document.getElementById('notification-btn').addEventListener('click', this.showNotifications);
+        },
+    });
+</script>
 </body>
 
 </html>          
