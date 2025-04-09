@@ -1,12 +1,13 @@
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, permissions
 from rest_framework.response import Response
 from rest_framework.decorators import action
-from .models import ChatSession, ChatMessage
+from . import models
 from .serializers import ChatSessionSerializer, ChatMessageSerializer
-
+from . import serializers
 class ChatSessionViewSet(viewsets.ModelViewSet):
-    queryset = ChatSession.objects.all()
+    queryset = models.ChatSession.objects.all()
     serializer_class = ChatSessionSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
     # Custom action untuk mengirim pesan ke sesi tertentu
     @action(detail=True, methods=['post'])
@@ -21,7 +22,7 @@ class ChatSessionViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Invalid sender. Must be "user" or "ai".'}, status=status.HTTP_400_BAD_REQUEST)
 
         # Buat pesan baru
-        ChatMessage.objects.create(session=session, sender=sender, message=message)
+        models.ChatMessage.objects.create(session=session, sender=sender, message=message)
 
         # Kembalikan response sukses
         return Response({'status': 'Message sent successfully'}, status=status.HTTP_201_CREATED)
@@ -41,12 +42,19 @@ class ChatSessionViewSet(viewsets.ModelViewSet):
 
 
 class ChatMessageViewSet(viewsets.ModelViewSet):
-    queryset = ChatMessage.objects.all()
+    queryset = models.ChatMessage.objects.all()
     serializer_class = ChatMessageSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
     # Override get_queryset untuk filter pesan berdasarkan sesi
     def get_queryset(self):
         session_id = self.kwargs.get('session_id')
         if session_id:
-            return ChatMessage.objects.filter(session_id=session_id)
-        return ChatMessage.objects.all()
+            return models.ChatMessage.objects.filter(session_id=session_id)
+        return models.ChatMessage.objects.all()
+
+
+class SuricataLogsViewSet(viewsets.ModelViewSet):
+    queryset = models.SuricataLog.objects.all()
+    serializer_class = serializers.SuricataSerializer
+    permission_classes = [permissions.IsAuthenticated]

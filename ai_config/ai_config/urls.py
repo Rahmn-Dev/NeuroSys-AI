@@ -17,12 +17,13 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from . import views
-from chatbot.api import ChatSessionViewSet, ChatMessageViewSet
+from chatbot.api import ChatSessionViewSet, ChatMessageViewSet, SuricataLogsViewSet
 from rest_framework.routers import DefaultRouter
 from chatbot import views as chatbot_views
 router = DefaultRouter()
 router.register(r'chat-sessions', ChatSessionViewSet)
 router.register(r'chat-sessions/(?P<session_id>[^/.]+)/messages', ChatMessageViewSet, basename='chatmessage')
+router.register("suricata-logs", SuricataLogsViewSet, basename="suricata logs")
 
 
 urlpatterns = [
@@ -39,3 +40,4 @@ urlpatterns = [
     path('api/v1/chat/', chatbot_views.chat_with_ai, name='chat_with_ai'),
     path('api/v1/system_status/', chatbot_views.system_status, name='system_status'),
 ]
+

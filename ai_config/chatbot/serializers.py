@@ -7,6 +7,11 @@ class ChatMessageSerializer(serializers.ModelSerializer):
         model = models.ChatMessage
         fields = ['id','sender', 'message', 'created_at']
 
+class SuricataSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.SuricataLog
+        fields = "__all__"
+
 class ChatSessionSerializer(serializers.ModelSerializer):
     messages = ChatMessageSerializer(many=True, read_only=True)
 
@@ -30,3 +35,5 @@ class ChatSessionSerializer(serializers.ModelSerializer):
 
 #         ChatMessage.objects.create(session=session, sender=sender, message=message)
 #         return Response({'status': 'message sent'})
+
+

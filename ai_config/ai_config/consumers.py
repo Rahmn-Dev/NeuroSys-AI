@@ -101,6 +101,38 @@ class SystemMonitorConsumer(AsyncWebsocketConsumer):
         return devices
     
 
+
+
+import re
+from datetime import datetime
+
+# Regex pattern untuk parsing log Suricata
+LOG_PATTERN = re.compile(
+    r'^(?P<timestamp>\d{2}/\d{2}/\d{4}-\d{2}:\d{2}:\d{2}\.\d+)'
+    r'\s+\[\*\*\]\s+\[(?P<sid>\d+):(?P<gid>\d+):(?P<rev>\d+)\]\s+(?P<message>[^\[]+)'
+    r'\[\*\*\]\s+\[Classification:\s+(?P<classification>[^\]]+)\]'
+    r'\s+\[Priority:\s+(?P<priority>\d+)\]\s+\{(?P<protocol>\w+)\}'
+    r'\s+(?P<source_ip>\S+):(?P<source_port>\d+)\s+->\s+(?P<destination_ip>\S+):(?P<destination_port>\d+)$'
+)
+
+def parse_suricata_log(line):
+    match = LOG_PATTERN.match(line)
+    if not match:
+        return None  # Return None jika log tidak sesuai format
+
+    data = match.groupdict()
+    # Convert timestamp to datetime object
+    data['timestamp'] = datetime.strptime(data['timestamp'], '%m/%d/%Y-%H:%M:%S.%f')
+    # Convert priority to integer
+    data['priority'] = int(data['priority'])
+    # Convert source and destination ports to integers
+    data['source_port'] = int(data['source_port'])
+    data['destination_port'] = int(data['destination_port'])
+
+    return data
+
+from asgiref.sync import sync_to_async  # Import sync_to_async
+
 class SuricataLogConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         await self.accept()
@@ -114,7 +146,24 @@ class SuricataLogConsumer(AsyncWebsocketConsumer):
         async for new_line in self.tail_log(log_file):  # Gunakan async for
             if new_line is None:  # Skip empty lines
                 continue
-
+            parsed_data = parse_suricata_log(new_line.strip())
+            if not parsed_data:
+                continue 
+            from chatbot.models import SuricataLog
+            # Use sync_to_async to save the log asynchronously
+            await sync_to_async(SuricataLog.objects.create)(
+                timestamp=parsed_data['timestamp'],
+                message=parsed_data['message'],
+                severity="High" if parsed_data['priority'] >= 3 else "Low",  # Contoh logika severity
+                source_ip=parsed_data['source_ip'],
+                source_port=parsed_data['source_port'],
+                destination_ip=parsed_data['destination_ip'],
+                destination_port=parsed_data['destination_port'],
+                protocol=parsed_data['protocol'],
+                classification=parsed_data['classification'],
+                priority=parsed_data['priority'],
+            )
+            
             # Send the log message to the WebSocket client
             await self.send(text_data=json.dumps({
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),

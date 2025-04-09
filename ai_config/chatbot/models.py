@@ -50,3 +50,22 @@ def create_or_update_user_profile(sender, instance, created, **kwargs):
             instance.profile.save()
         except Profile.DoesNotExist:
             Profile.objects.create(user=instance)
+
+class SuricataLog(models.Model):
+    timestamp = models.DateTimeField()
+    message = models.TextField()
+    severity = models.CharField(max_length=50, blank=True, null=True)
+    source_ip = models.GenericIPAddressField(blank=True, null=True)
+    source_port = models.IntegerField(blank=True, null=True)  # Add this field
+    destination_ip = models.GenericIPAddressField(blank=True, null=True)
+    destination_port = models.IntegerField(blank=True, null=True)  # Add this field
+    protocol = models.CharField(max_length=10, blank=True, null=True)
+    classification = models.CharField(max_length=100, blank=True, null=True)
+    priority = models.IntegerField(blank=True, null=True)
+
+    def __str__(self):
+        return f"{self.timestamp} - {self.message[:50]}"
+
+    class Meta:
+        ordering = ['-timestamp']
+        
