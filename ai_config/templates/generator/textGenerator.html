@@ -132,22 +132,109 @@
                 </div>
 
                 <div class="chat-history-section">
-                    <h6 class="title">Today</h6>
-                    <ul class="chat-history-list">
-                        <li v-for="session in filteredChatSessions" :key="session.id" :class="['history-box', { active: session.id === activeSession }]" @click="changeSession(session.id)">
-                            <span>[[ session.id ]]</span>
-                            <div class="dropdown history-box-dropdown">
-                                <button type="button" class="more-info-icon dropdown-toggle" data-bs-toggle="dropdown">
-                                    <i class="feather-more-horizontal"></i>
-                                </button>
-                                <ul class="dropdown-menu">
-                                  
-                                    <li><a class="dropdown-item delete-item" href="#" @click="deleteChat(session.id)"><i class="feather-trash-2"></i> Delete Chat</a></li>
-                                </ul>
-                            </div>
-                        </li>
-                      
-                    </ul>
+                    <!-- Today -->
+                    <template v-if="filteredChatSessions.today.length > 0">
+                        <h6 class="title">Today</h6>
+                        <ul class="chat-history-list">
+                            <li
+                                v-for="session in filteredChatSessions.today"
+                                :key="session.id"
+                                :class="['history-box', { active: session.id === activeSession }]"
+                                @click="changeSession(session.id)"
+                            >
+                                <span>[[ session.id ]]</span>
+                                <div class="dropdown history-box-dropdown">
+                                    <button type="button" class="more-info-icon dropdown-toggle" data-bs-toggle="dropdown">
+                                        <i class="feather-more-horizontal"></i>
+                                    </button>
+                                    <ul class="dropdown-menu">
+                                        <li><a class="dropdown-item delete-item" href="#" @click="deleteChat(session.id)">
+                                            <i class="feather-trash-2"></i> Delete Chat
+                                        </a></li>
+                                    </ul>
+                                </div>
+                            </li>
+                        </ul>
+                        <div v-if="filteredChatSessions.today.length < chatSessions.filter(s => isSameDay(new Date(s.created_at), new Date())).length" class="rbt-show-more-btn" @click="showMore('today')">Show More</div>
+                    </template>
+                
+                    <!-- Yesterday -->
+                    <template v-if="filteredChatSessions.yesterday.length > 0">
+                        <h6 class="title">Yesterday</h6>
+                        <ul class="chat-history-list">
+                            <li
+                                v-for="session in filteredChatSessions.yesterday"
+                                :key="session.id"
+                                :class="['history-box', { active: session.id === activeSession }]"
+                                @click="changeSession(session.id)"
+                            >
+                                <span>[[ session.id ]]</span>
+                                <div class="dropdown history-box-dropdown">
+                                    <button type="button" class="more-info-icon dropdown-toggle" data-bs-toggle="dropdown">
+                                        <i class="feather-more-horizontal"></i>
+                                    </button>
+                                    <ul class="dropdown-menu">
+                                        <li><a class="dropdown-item delete-item" href="#" @click="deleteChat(session.id)">
+                                            <i class="feather-trash-2"></i> Delete Chat
+                                        </a></li>
+                                    </ul>
+                                </div>
+                            </li>
+                        </ul>
+                        <div v-if="filteredChatSessions.yesterday.length < chatSessions.filter(s => isSameDay(new Date(s.created_at), new Date(new Date().setDate(new Date().getDate() - 1)))).length" class="rbt-show-more-btn" @click="showMore('yesterday')">Show More</div>
+                    </template>
+                
+                    <!-- Last Week -->
+                    <template v-if="filteredChatSessions.lastWeek.length > 0">
+                        <h6 class="title">Last Week</h6>
+                        <ul class="chat-history-list">
+                            <li
+                                v-for="session in filteredChatSessions.lastWeek"
+                                :key="session.id"
+                                :class="['history-box', { active: session.id === activeSession }]"
+                                @click="changeSession(session.id)"
+                            >
+                                <span>[[ session.id ]]</span>
+                                <div class="dropdown history-box-dropdown">
+                                    <button type="button" class="more-info-icon dropdown-toggle" data-bs-toggle="dropdown">
+                                        <i class="feather-more-horizontal"></i>
+                                    </button>
+                                    <ul class="dropdown-menu">
+                                        <li><a class="dropdown-item delete-item" href="#" @click="deleteChat(session.id)">
+                                            <i class="feather-trash-2"></i> Delete Chat
+                                        </a></li>
+                                    </ul>
+                                </div>
+                            </li>
+                        </ul>
+                        <div v-if="filteredChatSessions.lastWeek.length < chatSessions.filter(s => isWithinLastWeek(new Date(s.created_at), new Date())).length" class="rbt-show-more-btn" @click="showMore('lastWeek')">Show More</div>
+                    </template>
+                
+                    <!-- Older -->
+                    <template v-if="filteredChatSessions.older.length > 0">
+                        <h6 class="title">Older</h6>
+                        <ul class="chat-history-list">
+                            <li
+                                v-for="session in filteredChatSessions.older"
+                                :key="session.id"
+                                :class="['history-box', { active: session.id === activeSession }]"
+                                @click="changeSession(session.id)"
+                            >
+                                <span>[[ session.id ]]</span>
+                                <div class="dropdown history-box-dropdown">
+                                    <button type="button" class="more-info-icon dropdown-toggle" data-bs-toggle="dropdown">
+                                        <i class="feather-more-horizontal"></i>
+                                    </button>
+                                    <ul class="dropdown-menu">
+                                        <li><a class="dropdown-item delete-item" href="#" @click="deleteChat(session.id)">
+                                            <i class="feather-trash-2"></i> Delete Chat
+                                        </a></li>
+                                    </ul>
+                                </div>
+                            </li>
+                        </ul>
+                        <div v-if="filteredChatSessions.older.length < chatSessions.filter(s => !isSameDay(new Date(s.created_at), new Date()) && !isSameDay(new Date(s.created_at), new Date(new Date().setDate(new Date().getDate() - 1))) && !isWithinLastWeek(new Date(s.created_at), new Date())).length" class="rbt-show-more-btn" @click="showMore('older')">Show More</div>
+                    </template>
                 </div>
             </div>
         </div>
@@ -182,22 +269,30 @@ new Vue({
         searchQuery: '',
         csrfToken: '',
         currentPrompt: '',
-
+        visibleSessions: {
+            today: 5,    // Awalnya tampilkan 5 sesi
+            yesterday: 5,
+            lastWeek: 5,
+            older: 5
+        }
     },
     computed: {
         filteredChatSessions() {
-        return this.chatSessions.filter(session => {
-            const matchId = session.id.toLowerCase().includes(this.searchQuery.toLowerCase());
-
-            const matchMessage = session.messages.some(msg => 
-                msg.message.toLowerCase().includes(this.searchQuery.toLowerCase())
-            );
-
-            return matchId || matchMessage;
-        });
+        const groupedSessions = this.groupSessionsByDate(this.chatSessions);
+        return {
+            today: groupedSessions.today.slice(0, this.visibleSessions.today),
+            yesterday: groupedSessions.yesterday.slice(0, this.visibleSessions.yesterday),
+            lastWeek: groupedSessions.lastWeek.slice(0, this.visibleSessions.lastWeek),
+            older: groupedSessions.older.slice(0, this.visibleSessions.older)
+        };
     }
     },
     methods: {
+        showMore(category) {
+            if (this.visibleSessions[category] < this.chatSessions.length) {
+                this.visibleSessions[category] += 5; // Tambahkan 5 sesi lagi
+            }
+        },
         fetchMessagesForSession(sessionId) {
             this.messages = [];
             const chatContainer = document.getElementById("chatContainer");
@@ -255,6 +350,50 @@ new Vue({
             return `
             <span class="rainbow-badge-card">AI</span>
             `;
+        },
+        // Fungsi untuk mengelompokkan sesi berdasarkan tanggal
+        groupSessionsByDate(sessions) {
+            const today = new Date();
+            const yesterday = new Date();
+            yesterday.setDate(today.getDate() - 1);
+
+            const groupedSessions = {
+                today: [],
+                yesterday: [],
+                lastWeek: [],
+                older: []
+            };
+
+            sessions.forEach(session => {
+                const sessionDate = new Date(session.created_at); // Pastikan session memiliki properti created_at
+                if (this.isSameDay(sessionDate, today)) {
+                    groupedSessions.today.push(session);
+                } else if (this.isSameDay(sessionDate, yesterday)) {
+                    groupedSessions.yesterday.push(session);
+                } else if (this.isWithinLastWeek(sessionDate, today)) {
+                    groupedSessions.lastWeek.push(session);
+                } else {
+                    groupedSessions.older.push(session);
+                }
+            });
+
+            return groupedSessions;
+        },
+
+        // Fungsi untuk memeriksa apakah dua tanggal adalah hari yang sama
+        isSameDay(date1, date2) {
+            return (
+                date1.getFullYear() === date2.getFullYear() &&
+                date1.getMonth() === date2.getMonth() &&
+                date1.getDate() === date2.getDate()
+            );
+        },
+
+        // Fungsi untuk memeriksa apakah tanggal berada dalam 7 hari terakhir
+        isWithinLastWeek(date, today) {
+            const oneWeekAgo = new Date(today);
+            oneWeekAgo.setDate(today.getDate() - 7);
+            return date >= oneWeekAgo && date < today;
         },
         getEditButtons() {
             return `
