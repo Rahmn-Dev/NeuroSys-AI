@@ -204,10 +204,11 @@
     popupleftdashboard: function (e) {
       function updateSidebar() {
         if ($(window).width() >= 1200) {
-          $(".popup-dashboardleft-btn").removeClass("collapsed");
-          $(".popup-dashboardleft-section").removeClass("collapsed");
-          $(".rbt-main-content").removeClass("area-left-expanded");
-          $(".rbt-static-bar").removeClass("area-left-expanded");
+         
+          $(".popup-dashboardleft-btn").addClass("collapsed");
+          $(".popup-dashboardleft-section").addClass("collapsed");
+          $(".rbt-main-content").addClass("area-left-expanded");
+          $(".rbt-static-bar").addClass("area-left-expanded");
         } else {
           $(".popup-dashboardleft-section").addClass("collapsed");
           $(".rbt-main-content").addClass("area-left-expanded");

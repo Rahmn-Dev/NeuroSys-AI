@@ -33,118 +33,125 @@
             </div>
             <div class="banner-area">
                 <div class="row" id="row1">
-                    <!-- CPU Usage Card -->
+                  <!-- CPU Usage Card -->
                     <div class="col-md-3 col-sm-6 col-lg-3" style="padding: 12px;">
                         <div class="card is" style="border-radius: 14px; background: var(--Neutral-100, #1e1e1e); padding: 33px 22px; position: relative; overflow: hidden; height: 150px;">
                             <!-- Text for CPU Usage -->
                             <div class="row" style="position: relative; z-index: 2; text-align: center;">
-                              
-                              
                                 <div class="col-6 text-center " style="left: 53%; top: 40%;">
                                     <h5 style="color: white;" id="cpuUsage">0%</h5>
                                 </div>
                                 <div class="col-6 text-center " style="left: 55%; top: 80%;">
                                     <h5 style="color: rgba(255, 255, 255, 0.8); font-size: 14px; font-weight: 400;">CPU Usage</h5>
                                 </div>
+                                <div class="col-12 text-center" style="top: 110%; position: absolute;">
+                                    <small style="color: rgba(255, 255, 255, 0.6); font-size: 12px;" id="cpuSpecs">Cores: N/A, Frequency: N/A GHz</small>
+                                </div>
                             </div>
                             <!-- Div for CPU Chart -->
-                            <div id="cpuChart" style="position: absolute;  left: 0; width: 100%; height: 100%; z-index: 1;"></div>
+                            <div id="cpuChart" style="position: absolute; left: 0; width: 100%; height: 100%; z-index: 1;"></div>
                         </div>
                     </div>
-            
+
                     <!-- RAM Usage Card -->
                     <div class="col-md-3 col-sm-6 col-lg-3" style="padding: 12px;">
                         <div class="card is" style="border-radius: 14px; background: white; padding: 33px 22px; position: relative; overflow: hidden; height: 150px;">
                             <!-- Text for RAM Usage -->
-                          
                             <div class="row" style="position: relative; z-index: 2; text-align: center;">
-                              
-                              
                                 <div class="col-6 text-center " style="left: 53%; top: 40%;">
                                     <h5 style="color: var(--Neutral-100, #1E1E1E);" id="ramUsage">0%</h5>
                                 </div>
                                 <div class="col-6 text-center " style="left: 55%; top: 80%;">
                                     <h5 style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;">RAM Usage</h5>
                                 </div>
+                                <div class="col-12 text-center" style="top: 110%; position: absolute;">
+                                    <small style="color: var(--Neutral-80, #737373); font-size: 12px;" id="ramSpecs">Total: N/A GB</small>
+                                </div>
                             </div>
                             <!-- Div for RAM Chart -->
-                            <div id="ramChart" style="position: absolute;  left: 0; width: 100%; height: 100%; z-index: 1;"></div>
+                            <div id="ramChart" style="position: absolute; left: 0; width: 100%; height: 100%; z-index: 1;"></div>
                         </div>
                     </div>
-            
+
                     <!-- Disk Usage Card -->
                     <div class="col-md-3 col-sm-6 col-lg-3" style="padding: 12px;">
                         <div class="card is" style="border-radius: 14px; background: white; padding: 33px 22px; position: relative; overflow: hidden; height: 150px;">
-                        <!-- Text for Disk Usage -->
+                            <!-- Text for Disk Usage -->
                             <div class="row" style="position: relative; z-index: 2; text-align: center;">
-                              
-                              
                                 <div class="col-6 text-center " style="left: 53%; top: 40%;">
-                                   
                                     <h5 style="color: var(--Neutral-100, #1E1E1E);" id="diskUsage">0%</h5>
                                 </div>
                                 <div class="col-6 text-center " style="left: 55%; top: 80%;">
-                                   
                                     <h5 style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;">Disk Usage</h5>
+                                </div>
+                                <div class="col-12 text-center" style="top: 110%; position: absolute;">
+                                    <small style="color: var(--Neutral-80, #737373); font-size: 12px;" id="diskSpecs">Total: N/A GB</small>
                                 </div>
                             </div>
                             <!-- Div for Disk Chart -->
-                            <div id="diskChart" style="position: absolute;  left: 0; width: 100%; height: 100%; z-index: 1;"></div>
+                            <div id="diskChart" style="position: absolute; left: 0; width: 100%; height: 100%; z-index: 1;"></div>
                         </div>
                     </div>
-                     <!-- VRAM Usage Card -->
-                     <div class="col-md-3 col-sm-6 col-lg-3" style="padding: 12px;">
+
+                    <!-- VRAM Usage Card -->
+                    <div class="col-md-3 col-sm-6 col-lg-3" style="padding: 12px;">
                         <div class="card is" style="border-radius: 14px; background: white; padding: 33px 22px; position: relative; overflow: hidden; height: 150px;">
                             <!-- Text for VRAM Usage -->
-                         
                             <div class="row" style="position: relative; z-index: 2; text-align: center;">
-                              
-                              
                                 <div class="col-6 text-center " style="left: 53%; top: 40%;">
                                     <h5 style="color: var(--Neutral-100, #1E1E1E);" id="vramUsage">N/A</h5>
                                 </div>
                                 <div class="col-6 text-center " style="left: 55%; top: 80%;">
                                     <h5 style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;">VRAM Usage</h5>
                                 </div>
+                                <div class="col-12 text-center" style="top: 110%; position: absolute;">
+                                    <small style="color: var(--Neutral-80, #737373); font-size: 12px;" id="vramSpecs">Total: N/A GB</small>
+                                </div>
                             </div>
                             <!-- Div for VRAM Chart -->
-                            <div id="vramChart" style="position: absolute;  left: 0; width: 100%; height: 100%; z-index: 1;"></div>
+                            <div id="vramChart" style="position: absolute; left: 0; width: 100%; height: 100%; z-index: 1;"></div>
                         </div>
                     </div>
                 </div>
                 <div class="row" id="row2">
 
-                    <!-- Network Overview Card --> 
-                      <div class="col-md-5 col-sm-12 col-lg-5 h-100" style="padding: 12px;">
-                        <div class="card is" style="border-radius: 14px; background: white; display: flex; padding: 20px; align-items: center; gap: 5px; flex: 1 0 0; overflow: hidden;">
-                            <h5>Network Overview</h4>
-                            <p style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;"><strong>Server IP:</strong> <span id="serverIp">Loading...</span></p>
-                            <p style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;"><strong>External IP:</strong> <span id="externalIp">Loading...</span></p>
-                            <p style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;"><strong>RX:</strong> <span id="rx">Loading...</span></p>
-                            <p style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;"><strong>TX:</strong> <span id="tx">Loading...</span></p>
-                            <p style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;"><strong>Active Connections:</strong> <span id="activeConnections">Loading...</span></p>
-                            
+                     <!-- Network Overview Card -->
+                        <div class="col-md-6 col-sm-12 col-lg-6 h-100" style="padding: 12px;">
+                            <div class="card is" style="border-radius: 14px; background: white; padding: 20px; position: relative; overflow: hidden;">
+                                <h5>Network Overview</h5>
+                                <p style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;"><strong>Server IP:</strong> <span id="serverIp">Loading...</span></p>
+                                <p style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;"><strong>External IP:</strong> <span id="externalIp">Loading...</span></p>
+                                <p style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;"><strong>Location:</strong> <span id="location">Loading...</span></p>
+                                <p style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;"><strong>ISP:</strong> <span id="isp">Loading...</span></p>
+                                <p style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;"><strong>RX:</strong> <span id="rx">Loading...</span></p>
+                                <p style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;"><strong>TX:</strong> <span id="tx">Loading...</span></p>
+                                <p style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;"><strong>Active Connections:</strong> <span id="activeConnections">Loading...</span></p>
+                                <!-- Interactive Map -->
+                                <div id="map" style="height: 200px; margin-top: 10px;"></div>
+                            </div>
                         </div>
-                       
-                    </div>
-                    <div class="col-md-7 col-sm-12 col-lg-7 h-100" style="padding: 12px;">
-                        <div class="card is" style="border-radius: 14px; background: white; display: flex; padding: 20px; align-items: center; gap: 10px; flex: 1 0 0; overflow: hidden;">
-                            <h5>Connected Devices</h4>
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th style="color: var(--Neutral-80, #737373); font-size: 14px; "   >IP Address</th>
-                                        <th style="color: var(--Neutral-80, #737373); font-size: 14px; ">MAC Address</th>
-                                        <th style="color: var(--Neutral-80, #737373); font-size: 14px; ">Hostname</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="connectedDevices">
-                                    <tr><td colspan="3">Fetching data...</td></tr>
-                                </tbody>
-                            </table>
+
+                        <!-- Connected Devices Card -->
+                        <div class="col-md-6 col-sm-12 col-lg-6 h-100" style="padding: 12px;">
+                            <div class="card is" style="border-radius: 14px; background: white; padding: 20px; position: relative; overflow: hidden;">
+                                <h5>Connected Devices</h5>
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th style="color: var(--Neutral-80, #737373); font-size: 14px;">IP Address</th>
+                                            <th style="color: var(--Neutral-80, #737373); font-size: 14px;">MAC Address</th>
+                                            <th style="color: var(--Neutral-80, #737373); font-size: 14px;">Hostname</th>
+                                            <th style="color: var(--Neutral-80, #737373); font-size: 14px;">Device Type</th>
+                                            <th style="color: var(--Neutral-80, #737373); font-size: 14px;">OS</th>
+                                            <th style="color: var(--Neutral-80, #737373); font-size: 14px;">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="connectedDevices">
+                                        <tr><td colspan="6">Fetching data...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
-                       
-                    </div>
                     <!-- Network Connections Card -->
                     <div class="col-md-12 col-sm-12 col-lg-12" style="padding: 12px;">
                         <div class="card is" style="border-radius: 14px; background: white; display: flex; padding: 20px; align-items: center; gap: 10px; flex: 1 0 0; overflow: hidden;">
@@ -207,21 +214,104 @@
 
 {% endblock content %}
 {% block script %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://code.highcharts.com/highcharts.js"></script>
-
+<script src="https://code.highcharts.com/highcharts-more.js"></script>
+<script src="https://code.highcharts.com/modules/solid-gauge.js"></script>
 <script>
+   async function fetchGeolocation(ip) {
+        const maxRetries = 3;
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                const response = await fetch(`/fetch_geolocation/?ip=${ip}`);
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    console.error(`Attempt ${attempt}: ${errorData.error}`);
+                    throw new Error(errorData.error);
+                }
+                const data = await response.json();
+                return {
+                    location: `${data.city}, ${data.region}, ${data.country_name}`,
+                    isp: data.org,
+                    latitude: data.latitude,
+                    longitude: data.longitude,
+                };
+            } catch (error) {
+                console.error(`Attempt ${attempt} failed: ${error.message}`);
+                if (attempt === maxRetries) {
+                    return {
+                        location: "Unknown",
+                        isp: "Unknown",
+                        latitude: null,
+                        longitude: null,
+                    };
+                }
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before retrying
+            }
+        }
+    }
+    function initializeMap(latitude, longitude) {
+        const mapDiv = document.getElementById('map');
+        if (!mapDiv._leaflet_map) { // Check if the map is already initialized
+            const map = L.map('map').setView([latitude, longitude], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '© OpenStreetMap contributors',
+            }).addTo(map);
+            L.marker([latitude, longitude]).addTo(map)
+                .bindPopup('External IP Location')
+                .openPopup();
+            mapDiv._leaflet_map = map; // Store the map instance
+        } else {
+            mapDiv._leaflet_map.setView([latitude, longitude], 13); // Update the map view
+        }
+    }
+    function updateConnectedDevices(devices) {
+        const deviceList = document.getElementById('connectedDevices');
+        deviceList.innerHTML = ''; // Clear previous content
+
+        if (devices.length > 0) {
+            devices.forEach(device => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td style="color: var(--Neutral-80, #737373); font-size: 14px;">${device.ip || "Unknown"}</td>
+                    <td style="color: var(--Neutral-80, #737373); font-size: 14px;">${device.mac || "Unknown"}</td>
+                    <td style="color: var(--Neutral-80, #737373); font-size: 14px;">${device.hostname || "Unknown"}</td>
+                    <td style="color: var(--Neutral-80, #737373); font-size: 14px;">${device.device_type || "Unknown"}</td>
+                    <td style="color: var(--Neutral-80, #737373); font-size: 14px;">${device.os || "Unknown"}</td>
+                    <td style="color: var(--Neutral-80, #737373); font-size: 14px;">${device.status || "Unknown"}</td>
+                `;
+                deviceList.appendChild(row);
+            });
+        } else {
+            deviceList.innerHTML = `<tr><td colspan="6">No connected devices found.</td></tr>`;
+        }
+    }
+
     const isLocal = window.location.hostname === "localhost" || window.location.hostname.startsWith("192.168.");
     const wsProtocol = isLocal ? "ws" : "wss";
     const wsHost = isLocal ? "192.168.101.20:8000" : "experimental.rahmn.tech";
 
     const socket = new WebSocket(`${wsProtocol}://${wsHost}/ws/system_monitor/`);
-    socket.onmessage = function(event) {
+    socket.onmessage = async function(event) {
         const data = JSON.parse(event.data);
 
-        document.getElementById('cpuUsage').innerText = data.cpu + "%";
+             // Update CPU usage and specs
+            document.getElementById('cpuUsage').innerText = data.cpu + "%";
+            document.getElementById('cpuSpecs').innerText = `Cores: ${data.cpu_info.cores}, Frequency: ${data.cpu_info.frequency} GHz`;
+
+            // Update RAM usage and specs
             document.getElementById('ramUsage').innerText = data.ram + "%";
+            document.getElementById('ramSpecs').innerText = `Total: ${data.ram_info.total} GB`;
+
+            // Update Disk usage and specs
             document.getElementById('diskUsage').innerText = data.disk + "%";
-            document.getElementById("vramUsage").innerText = data.vram !== "N/A" ? data.vram + "%" : "N/A";
+            document.getElementById('diskSpecs').innerText = `Total: ${data.disk_info.total} GB`;
+
+            // Update VRAM usage and specs
+            document.getElementById('vramUsage').innerText = data.vram !== "N/A" ? data.vram + "%" : "N/A";
+            document.getElementById('vramSpecs').innerText = `Total: ${data.vram_info.total} GB`;
             
             const now = new Date();
             const timeLabel = `${now.getHours()}:${now.getMinutes()}:${now.getSeconds()}`;
@@ -241,44 +331,35 @@
             }
 
             // Update charts
-            cpuChart.series[0].setData(cpuData);
-            ramChart.series[0].setData(ramData);
-            vramChart.series[0].setData(vramData);
-            diskChart.series[0].setData(diskData);
+            if (cpuChart && cpuChart.series) cpuChart.series[0].setData([data.cpu]);
+            if (ramChart && ramChart.series) ramChart.series[0].setData([data.ram]);
+            if (diskChart && diskChart.series) diskChart.series[0].setData([data.disk]);
+            if (vramChart && vramChart.series && data.vram !== "N/A") vramChart.series[0].setData([data.vram]);
             // Format network connections and services for better readability
             // document.getElementById('networkStatus').innerText = formatOutput(data.network);
             formatOutputTable(data.network);
             formatServices(data.services);
             // document.getElementById('serviceStatus').innerText = formatOutput(data.services);
 
-                // Update Network Overview (Ensure the elements exist in HTML)
+                // Update Network Overview
             document.getElementById('serverIp').innerText = data.network_overview.server_ip;
             document.getElementById('externalIp').innerText = data.network_overview.external_ip;
             document.getElementById('rx').innerText = data.network_overview.rx + " KB";
             document.getElementById('tx').innerText = data.network_overview.tx + " KB";
             document.getElementById('activeConnections').innerText = data.network_overview.active_connections;
 
-            let deviceList = document.getElementById('connectedDevices');
-            if (deviceList) {
-                deviceList.innerHTML = ""; // Clear previous content
+            // Fetch geolocation data
+            const geoData = await fetchGeolocation(data.network_overview.external_ip);
+            document.getElementById('location').innerText = geoData.location;
+            document.getElementById('isp').innerText = geoData.isp;
 
-                if (data.network_overview.connected_devices.length > 0) {
-                    data.network_overview.connected_devices.forEach(device => {
-                        let row = document.createElement('tr');
-                        row.innerHTML = `
-                            <td style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;">${device.ip || "Unknown"}</td>
-                            <td style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;">${device.mac || "Unknown"}</td>
-                            <td style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;">${device.hostname || "Unknown"}</td>
-                        `;
-                        deviceList.appendChild(row);
-                    });
-                } else {
-                    // If no devices are connected, show a message
-                    deviceList.innerHTML = `<tr><td colspan="3">No connected devices found.</td></tr>`;
-                }
-            } else {
-                console.error("Connected devices table not found in HTML.");
+            // Initialize or update the map
+            if (geoData.latitude && geoData.longitude) {
+                initializeMap(geoData.latitude, geoData.longitude);
             }
+
+            // Update Connected Devices Table
+            updateConnectedDevices(data.network_overview.connected_devices);
 
     };
 
@@ -465,157 +546,136 @@
         return text.split("\n").slice(0, 100).join("\n"); // Show only the first 10 lines for readability
     }
 
-    let cpuChart, ramChart, vramChart;
+    let cpuChart, ramChart, vramChart, diskChart;
     let timeLabels = []; // Array to store time labels
     let cpuData = []; // Array to store CPU usage data
     let ramData = []; // Array to store RAM usage data
     let vramData = []; // Array to store VRAM usage data
     let diskData = [];
     function initializeCharts() {
-        // CPU Chart
-        Highcharts.setOptions({
-            credits: {
-                enabled: false // Menyembunyikan credit Highcharts
-            }
-        });
-        cpuChart = Highcharts.chart('cpuChart', {
-            chart: {
-                type: 'line',
-                backgroundColor: 'transparent',
-                height: 100,
+    console.log("Initializing charts...");
+
+    const gaugeOptions = {
+        chart: {
+            type: 'solidgauge',
+            backgroundColor: 'transparent',
+            height: 100,
+        },
+        title: { text: null },
+        pane: {
+            center: ['50%', '50%'],
+            size: '100%',
+            startAngle: -90,
+            endAngle: 90,
+            background: {
+                backgroundColor: '#EEE',
+                innerRadius: '60%',
+                outerRadius: '100%',
+                shape: 'arc',
             },
-            title: { text: null },
-            legend: { enabled: false },
-            xAxis: {
-                labels: { enabled: false }, // Hide x-axis labels
-                lineWidth: 0, // Hide x-axis line
-                tickLength: 0, // Hide x-axis ticks
-            },
-            yAxis: {
-                labels: { enabled: false }, // Hide y-axis labels
-                gridLineWidth: 0, // Hide y-axis grid lines
-                title: { text: null },
-                min: 0,
-                max: 100,
-            },
-            plotOptions: {
-                series: {
-                    color: '#FF6384', // Line color
-                    marker: { enabled: false }, // Hide markers
-                    lineWidth: 2, // Line thickness
+        },
+        tooltip: {
+            enabled: false,
+        },
+        yAxis: {
+            min: 0,
+            max: 100,
+            lineWidth: 0,
+            tickPositions: [],
+        },
+        plotOptions: {
+            solidgauge: {
+                dataLabels: {
+                    y: 5,
+                    borderWidth: 0,
+                    useHTML: true,
                 },
             },
-            series: [{
-                name: 'CPU Usage',
-                data: [],
-            }],
-        });
+        },
+    };
 
-        // Disk Chart
-        diskChart = Highcharts.chart('diskChart', {
-            chart: {
-                type: 'line',
-                backgroundColor: 'transparent',
-                height: 100,
-            },
-            title: { text: null },
-            legend: { enabled: false },
-            xAxis: {
-                labels: { enabled: false }, // Hide x-axis labels
-                lineWidth: 0, // Hide x-axis line
-                tickLength: 0, // Hide x-axis ticks
-            },
-            yAxis: {
-                labels: { enabled: false }, // Hide y-axis labels
-                gridLineWidth: 0, // Hide y-axis grid lines
-                title: { text: null },
-                min: 0,
-                max: 100,
-            },
-            plotOptions: {
-                series: {
-                    color: '#FFA500', // Line color (orange)
-                    marker: { enabled: false }, // Hide markers
-                    lineWidth: 2, // Line thickness
-                },
-            },
-            series: [{
-                name: 'Disk Usage',
-                data: [],
-            }],
-        });
+    // CPU Gauge
+    cpuChart = Highcharts.chart('cpuChart', {
+        ...gaugeOptions,
+        yAxis: {
+            ...gaugeOptions.yAxis,
+            stops: [
+                [0.1, '#FF6384'], // Red
+                [0.5, '#FFA500'], // Orange
+                [0.9, '#36A2EB'], // Blue
+            ],
+        },
+        series: [{
+            name: 'CPU Usage',
+            data: [0],
+           
+        }],
+    });
 
-        // RAM Chart
-        ramChart = Highcharts.chart('ramChart', {
-            chart: {
-                type: 'line',
-                backgroundColor: 'transparent',
-                height: 100,
+    // RAM Gauge
+    ramChart = Highcharts.chart('ramChart', {
+        ...gaugeOptions,
+        yAxis: {
+            ...gaugeOptions.yAxis,
+            stops: [
+                [0.1, '#36A2EB'], // Blue
+                [0.5, '#FFA500'], // Orange
+                [0.9, '#FF6384'], // Red
+            ],
+        },
+        series: [{
+            name: 'RAM Usage',
+            data: [0],
+            dataLabels: {
+                format: '<div style="text-align:center"><span style="font-size:16px;color:white">{y}%</span></div>',
             },
-            title: { text: null },
-            legend: { enabled: false },
-            xAxis: {
-                labels: { enabled: false },
-                lineWidth: 0,
-                tickLength: 0,
-            },
-            yAxis: {
-                labels: { enabled: false },
-                gridLineWidth: 0,
-                title: { text: null },
-                min: 0,
-                max: 100,
-            },
-            plotOptions: {
-                series: {
-                    color: '#36A2EB', // Line color
-                    marker: { enabled: false },
-                    lineWidth: 2,
-                },
-            },
-            series: [{
-                name: 'RAM Usage',
-                data: [],
-            }],
-        });
+        }],
+    });
 
-        // VRAM Chart
-        vramChart = Highcharts.chart('vramChart', {
-            chart: {
-                type: 'line',
-                backgroundColor: 'transparent',
-                height: 100,
+    // Disk Gauge
+    diskChart = Highcharts.chart('diskChart', {
+        ...gaugeOptions,
+        yAxis: {
+            ...gaugeOptions.yAxis,
+            stops: [
+                [0.1, '#FFA500'], // Orange
+                [0.5, '#FF6384'], // Red
+                [0.9, '#36A2EB'], // Blue
+            ],
+        },
+        series: [{
+            name: 'Disk Usage',
+            data: [0],
+            dataLabels: {
+                format: '<div style="text-align:center"><span style="font-size:16px;color:white">{y}%</span></div>',
             },
-            title: { text: null },
-            legend: { enabled: false },
-            xAxis: {
-                labels: { enabled: false },
-                lineWidth: 0,
-                tickLength: 0,
-            },
-            yAxis: {
-                labels: { enabled: false },
-                gridLineWidth: 0,
-                title: { text: null },
-                min: 0,
-                max: 100,
-            },
-            plotOptions: {
-                series: {
-                    color: '#4BC0C0', // Line color
-                    marker: { enabled: false },
-                    lineWidth: 2,
-                },
-            },
-            series: [{
-                name: 'VRAM Usage',
-                data: [],
-            }],
-        });
-    }
+        }],
+    });
 
-    // Call the function to initialize charts
+    // VRAM Gauge
+    vramChart = Highcharts.chart('vramChart', {
+        ...gaugeOptions,
+        yAxis: {
+            ...gaugeOptions.yAxis,
+            stops: [
+                [0.1, '#4BC0C0'], // Teal
+                [0.5, '#FFA500'], // Orange
+                [0.9, '#FF6384'], // Red
+            ],
+        },
+        series: [{
+            name: 'VRAM Usage',
+            data: [0],
+            dataLabels: {
+                format: '<div style="text-align:center"><span style="font-size:16px;color:white">{y}%</span></div>',
+            },
+        }],
+    });
+}
+
+document.addEventListener("DOMContentLoaded", function () {
     initializeCharts();
+});
 
 </script>
 {% endblock %}

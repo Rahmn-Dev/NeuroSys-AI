@@ -39,11 +39,36 @@ class SystemMonitorConsumer(AsyncWebsocketConsumer):
             capture_output=True, text=True
         ).stdout
 
+        # Get total CPU cores and frequency
+        cpu_info = {
+            "cores": psutil.cpu_count(logical=True),
+            "frequency": round(psutil.cpu_freq().current / 1000, 2) if psutil.cpu_freq() else "N/A",
+        }
+
+        # Get total RAM in GB
+        ram_info = {
+            "total": round(psutil.virtual_memory().total / (1024 ** 3), 2),
+        }
+
+        # Get total disk space in GB
+        disk_info = {
+            "total": round(psutil.disk_usage('/').total / (1024 ** 3), 2),
+        }
+
+        # Get total VRAM in GB
+        vram_info = {
+            "total": self.get_total_vram(),
+        }
+
         return {
             "cpu": psutil.cpu_percent(),
+            "cpu_info": cpu_info,
             "ram": psutil.virtual_memory().percent,
+            "ram_info": ram_info,
             "disk": psutil.disk_usage('/').percent,
+            "disk_info": disk_info,
             "vram": self.get_vram_usage(),
+            "vram_info": vram_info,
             "network": net_stat,
             "network_overview": {
                 "server_ip": socket.gethostbyname(socket.gethostname()),
@@ -56,7 +81,6 @@ class SystemMonitorConsumer(AsyncWebsocketConsumer):
             "services": services,
             "timestamp": datetime.now().strftime("%H:%M:%S"),
         }
-
     def get_vram_usage(self):
         if NVML_AVAILABLE:
             try:
@@ -66,6 +90,18 @@ class SystemMonitorConsumer(AsyncWebsocketConsumer):
                 vram_usage = (info.used / info.total) * 100
                 nvmlShutdown()
                 return round(vram_usage, 2)
+            except Exception as e:
+                return f"Error: {str(e)}"
+        return "N/A"
+    def get_total_vram(self):
+        if NVML_AVAILABLE:
+            try:
+                nvmlInit()
+                handle = nvmlDeviceGetHandleByIndex(0)
+                info = nvmlDeviceGetMemoryInfo(handle)
+                total_vram = round(info.total / (1024 ** 3), 2)  # Convert bytes to GB
+                nvmlShutdown()
+                return total_vram
             except Exception as e:
                 return f"Error: {str(e)}"
         return "N/A"

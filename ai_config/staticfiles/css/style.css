@@ -20663,23 +20663,23 @@ body.active-light-mode .rbt-utilize-area .rbt-default-sidebar-list li.has-submen
   text-align: center;
 }
 .rbt-static-bar.area-left-expanded {
-  width: calc(100% - var(--sidebar-width));
+  width: calc(93% - var(--sidebar-width));
 }
 @media only screen and (max-width: 1199px) {
   .rbt-static-bar.area-left-expanded {
-    width: 100%;
+    width: 93%;
   }
 }
 .rbt-static-bar.area-right-expanded {
-  width: calc(100% - var(--sidebar-width));
+  width: calc(93% - var(--sidebar-width));
 }
 @media only screen and (max-width: 1199px) {
   .rbt-static-bar.area-right-expanded {
-    width: 100%;
+    width: 93%;
   }
 }
 .rbt-static-bar.area-right-expanded.area-left-expanded {
-  width: 100%;
+  width: 93%;
 }
 .rbt-static-bar .staticbar-btn-grp {
   margin: 0;
