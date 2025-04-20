@@ -116,20 +116,77 @@
                 <div class="row" id="row2">
 
                      <!-- Network Overview Card -->
-                        <div class="col-md-6 col-sm-12 col-lg-6 h-100" style="padding: 12px;">
-                            <div class="card is" style="border-radius: 14px; background: white; padding: 20px; position: relative; overflow: hidden;">
-                                <h5>Network Overview</h5>
-                                <p style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;"><strong>Server IP:</strong> <span id="serverIp">Loading...</span></p>
-                                <p style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;"><strong>External IP:</strong> <span id="externalIp">Loading...</span></p>
-                                <p style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;"><strong>Location:</strong> <span id="location">Loading...</span></p>
-                                <p style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;"><strong>ISP:</strong> <span id="isp">Loading...</span></p>
-                                <p style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;"><strong>RX:</strong> <span id="rx">Loading...</span></p>
-                                <p style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;"><strong>TX:</strong> <span id="tx">Loading...</span></p>
-                                <p style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 400;"><strong>Active Connections:</strong> <span id="activeConnections">Loading...</span></p>
-                                <!-- Interactive Map -->
-                                <div id="map" style="height: 200px; margin-top: 10px;"></div>
+                     <div class="col-md-6 col-sm-12 col-lg-6 h-100" style="padding: 12px;">
+                        <div class="card is" style="
+                            border-radius: 14px; 
+                            background: linear-gradient(135deg, #ffffff, #f8f9fa); /* Subtle gradient background */
+                            padding: 20px; 
+                            position: relative; 
+                            overflow: hidden;
+                            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.06); /* Soft shadow */
+                        ">
+                            <!-- Title -->
+                            <h5 style="
+                                margin-bottom: 16px; 
+                                font-size: 18px; 
+                                font-weight: 600; 
+                                color: var(--Neutral-100, #1E1E1E);
+                            ">Network Overview</h5>
+                    
+                            <!-- Example: Server IP -->
+                            <div class="info-row" style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                <span style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 500;">
+                                    <i class="fas fa-server" style="margin-right: 8px;"></i>Server IP:
+                                </span>
+                                <span id="serverIp" style="color: var(--Neutral-100, #1E1E1E); font-size: 14px; font-weight: 500;">Loading...</span>
                             </div>
+                    
+                            <!-- External IP -->
+                            <div class="info-row" style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                <span style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 500;">External IP:</span>
+                                <span id="externalIp" style="color: var(--Neutral-100, #1E1E1E); font-size: 14px; font-weight: 500;">Loading...</span>
+                            </div>
+                    
+                            <!-- Location -->
+                            <div class="info-row" style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                <span style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 500;">Location:</span>
+                                <span id="location" style="color: var(--Neutral-100, #1E1E1E); font-size: 14px; font-weight: 500;">Loading...</span>
+                            </div>
+                    
+                            <!-- ISP -->
+                            <div class="info-row" style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                <span style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 500;">ISP:</span>
+                                <span id="isp" style="color: var(--Neutral-100, #1E1E1E); font-size: 14px; font-weight: 500;">Loading...</span>
+                            </div>
+                    
+                            <!-- RX -->
+                            <div class="info-row" style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                <span style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 500;">RX:</span>
+                                <span id="rx" style="color: var(--Neutral-100, #1E1E1E); font-size: 14px; font-weight: 500;" title="Received Data">Loading...</span>
+                            </div>
+                    
+                            <!-- TX -->
+                            <div class="info-row" style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                <span style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 500;">TX:</span>
+                                <span id="tx" style="color: var(--Neutral-100, #1E1E1E); font-size: 14px; font-weight: 500;">Loading...</span>
+                            </div>
+                    
+                            <!-- Active Connections -->
+                            <div class="info-row" style="display: flex; justify-content: space-between; margin-bottom: 16px;">
+                                <span style="color: var(--Neutral-80, #737373); font-size: 14px; font-weight: 500;">Active Connections:</span>
+                                <span id="activeConnections" style="color: var(--Neutral-100, #1E1E1E); font-size: 14px; font-weight: 500;">Loading...</span>
+                            </div>
+                    
+                            <!-- Interactive Map -->
+                            <div id="map" style="
+                                height: 200px; 
+                                margin-top: 10px; 
+                                border-radius: 10px; 
+                                overflow: hidden;
+                                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                            "></div>
                         </div>
+                    </div>
 
                         <!-- Connected Devices Card -->
                         <div class="col-md-6 col-sm-12 col-lg-6 h-100" style="padding: 12px;">
@@ -141,9 +198,11 @@
                                             <th style="color: var(--Neutral-80, #737373); font-size: 14px;">IP Address</th>
                                             <th style="color: var(--Neutral-80, #737373); font-size: 14px;">MAC Address</th>
                                             <th style="color: var(--Neutral-80, #737373); font-size: 14px;">Hostname</th>
-                                            <th style="color: var(--Neutral-80, #737373); font-size: 14px;">Device Type</th>
-                                            <th style="color: var(--Neutral-80, #737373); font-size: 14px;">OS</th>
-                                            <th style="color: var(--Neutral-80, #737373); font-size: 14px;">Status</th>
+                                            <th style="color: var(--Neutral-80, #737373); font-size: 14px;">Login Time</th>
+                                            <th style="color: var(--Neutral-80, #737373); font-size: 14px;">Idle Time</th>
+                                            <th style="color: var(--Neutral-80, #737373); font-size: 14px;">JCPU</th>
+                                            <th style="color: var(--Neutral-80, #737373); font-size: 14px;">PCPU</th>
+                                            <th style="color: var(--Neutral-80, #737373); font-size: 14px;">Activity</th>
                                         </tr>
                                     </thead>
                                     <tbody id="connectedDevices">
@@ -153,7 +212,7 @@
                             </div>
                         </div>
                     <!-- Network Connections Card -->
-                    <div class="col-md-12 col-sm-12 col-lg-12" style="padding: 12px;">
+                    <div class="col-md-6 col-sm-12 col-lg-6" style="padding: 12px;">
                         <div class="card is" style="border-radius: 14px; background: white; display: flex; padding: 20px; align-items: center; gap: 10px; flex: 1 0 0; overflow: hidden;">
                             <h5 style="color: var(--Neutral-100, #1E1E1E);">Network Connections</h4>
                             <!-- Add a search input field -->
@@ -181,7 +240,7 @@
             
                     <!-- Running Services Card -->
                   <!-- Running Services Card -->
-                    <div class="col-md-12 col-sm-12 col-lg-12" style="padding: 12px;">
+                    <div class="col-md-6 col-sm-12 col-lg-6" style="padding: 12px;">
                         <div class="card is" style="border-radius: 14px; background: white; display: flex; padding: 20px; align-items: center; gap: 10px; flex: 1 0 0; overflow: hidden;">
                             <h5 style="color: var(--Neutral-100, #000000);">Running Services</h4>
                             <!-- Add a search input field -->
@@ -219,6 +278,9 @@
 <script src="https://code.highcharts.com/highcharts.js"></script>
 <script src="https://code.highcharts.com/highcharts-more.js"></script>
 <script src="https://code.highcharts.com/modules/solid-gauge.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.min.js"></script>
 <script>
    async function fetchGeolocation(ip) {
         const maxRetries = 3;
@@ -251,42 +313,55 @@
             }
         }
     }
-    function initializeMap(latitude, longitude) {
+    function initializeMap(latitude, longitude, external_ip) {
         const mapDiv = document.getElementById('map');
         if (!mapDiv._leaflet_map) { // Check if the map is already initialized
-            const map = L.map('map').setView([latitude, longitude], 13);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                maxZoom: 19,
-                attribution: '© OpenStreetMap contributors',
+            var map = L.map('map').setView([latitude, longitude], 13);
+
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                subdomains: 'abcd',
+                maxZoom: 19
             }).addTo(map);
-            L.marker([latitude, longitude]).addTo(map)
-                .bindPopup('External IP Location')
+            var awesomeIcon = L.AwesomeMarkers.icon({
+                icon: 'fa-location-dot',
+                markerColor: 'blue',
+                prefix: 'fa',
+                iconColor: 'white'
+            });
+
+            L.marker([latitude, longitude], { icon: awesomeIcon }).addTo(map)
+                .bindPopup(external_ip)
                 .openPopup();
+           
             mapDiv._leaflet_map = map; // Store the map instance
         } else {
             mapDiv._leaflet_map.setView([latitude, longitude], 13); // Update the map view
         }
     }
-    function updateConnectedDevices(devices) {
-        const deviceList = document.getElementById('connectedDevices');
-        deviceList.innerHTML = ''; // Clear previous content
-
-        if (devices.length > 0) {
-            devices.forEach(device => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td style="color: var(--Neutral-80, #737373); font-size: 14px;">${device.ip || "Unknown"}</td>
-                    <td style="color: var(--Neutral-80, #737373); font-size: 14px;">${device.mac || "Unknown"}</td>
-                    <td style="color: var(--Neutral-80, #737373); font-size: 14px;">${device.hostname || "Unknown"}</td>
-                    <td style="color: var(--Neutral-80, #737373); font-size: 14px;">${device.device_type || "Unknown"}</td>
-                    <td style="color: var(--Neutral-80, #737373); font-size: 14px;">${device.os || "Unknown"}</td>
-                    <td style="color: var(--Neutral-80, #737373); font-size: 14px;">${device.status || "Unknown"}</td>
-                `;
-                deviceList.appendChild(row);
-            });
-        } else {
-            deviceList.innerHTML = `<tr><td colspan="6">No connected devices found.</td></tr>`;
-        }
+    function updateConnectedDevices(data) {
+        let deviceList = document.getElementById('connectedDevices');
+            if (deviceList) {
+                deviceList.innerHTML = ""; // Clear previous content
+                if (data.network_overview.connected_devices.length > 0) {
+                    data.network_overview.connected_devices.forEach(device => {
+                        let row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${device.ip}</td>
+                            <td>${device.mac}</td>
+                            <td>${device.hostname}</td>
+                            <td>${device.login}</td>
+                            <td>${device.idle}</td>
+                            <td>${device.jcpu}</td>
+                            <td>${device.pcpu}</td>
+                            <td>${device.what}</td>
+                        `;
+                        deviceList.appendChild(row);
+                    });
+                } else {
+                    deviceList.innerHTML = `<tr><td colspan="8">No connected devices found.</td></tr>`;
+                }
+            }
     }
 
     const isLocal = window.location.hostname === "localhost" || window.location.hostname.startsWith("192.168.");
@@ -342,24 +417,26 @@
             // document.getElementById('serviceStatus').innerText = formatOutput(data.services);
 
                 // Update Network Overview
+             // Update Network Overview
             document.getElementById('serverIp').innerText = data.network_overview.server_ip;
             document.getElementById('externalIp').innerText = data.network_overview.external_ip;
+
+            // Update Geolocation Data
+            const geolocation = data.network_overview.geolocation || {};
+            document.getElementById('location').innerText = `${geolocation.city}, ${geolocation.region}, ${geolocation.country_name} ` || "Unknown";
+            document.getElementById('isp').innerText = geolocation.org || "Unknown";
             document.getElementById('rx').innerText = data.network_overview.rx + " KB";
             document.getElementById('tx').innerText = data.network_overview.tx + " KB";
             document.getElementById('activeConnections').innerText = data.network_overview.active_connections;
 
-            // Fetch geolocation data
-            const geoData = await fetchGeolocation(data.network_overview.external_ip);
-            document.getElementById('location').innerText = geoData.location;
-            document.getElementById('isp').innerText = geoData.isp;
 
             // Initialize or update the map
-            if (geoData.latitude && geoData.longitude) {
-                initializeMap(geoData.latitude, geoData.longitude);
+            if (geolocation.latitude && geolocation.longitude) {
+                initializeMap(geolocation.latitude, geolocation.longitude, data.network_overview.external_ip);
             }
 
             // Update Connected Devices Table
-            updateConnectedDevices(data.network_overview.connected_devices);
+            updateConnectedDevices(data);
 
     };
 

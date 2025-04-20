@@ -6,6 +6,9 @@ import subprocess
 import asyncio  # Import asyncio for async sleep
 from datetime import datetime
 import time
+import requests
+from asgiref.sync import async_to_sync
+from django.core.cache import cache
 from channels.generic.websocket import AsyncWebsocketConsumer
 
 # Try importing pynvml for VRAM usage
@@ -16,6 +19,9 @@ except ImportError:
     NVML_AVAILABLE = False
 
 class SystemMonitorConsumer(AsyncWebsocketConsumer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.last_external_ip = None  # Store the last external IP
     async def connect(self):
         await self.accept()
         await self.send_system_data()
@@ -59,7 +65,8 @@ class SystemMonitorConsumer(AsyncWebsocketConsumer):
         vram_info = {
             "total": self.get_total_vram(),
         }
-
+        external_ip = self.get_external_ip()
+        geolocation = self.get_geolocation_if_changed(external_ip)
         return {
             "cpu": psutil.cpu_percent(),
             "cpu_info": cpu_info,
@@ -72,7 +79,8 @@ class SystemMonitorConsumer(AsyncWebsocketConsumer):
             "network": net_stat,
             "network_overview": {
                 "server_ip": socket.gethostbyname(socket.gethostname()),
-                "external_ip": self.get_external_ip(),
+                "external_ip": external_ip,
+                "geolocation": geolocation,
                 "rx": self.get_bandwidth_usage()["rx"],
                 "tx": self.get_bandwidth_usage()["tx"],
                 "active_connections": self.get_active_connections(),
@@ -105,6 +113,18 @@ class SystemMonitorConsumer(AsyncWebsocketConsumer):
             except Exception as e:
                 return f"Error: {str(e)}"
         return "N/A"
+    
+    def get_geolocation_if_changed(self, current_ip):
+        """Fetch geolocation only if the external IP has changed."""
+        if current_ip != self.last_external_ip:
+            print(f"IP changed from {self.last_external_ip} to {current_ip}. Fetching new geolocation...")
+            self.last_external_ip = current_ip  # Update the last external IP
+            return self.fetch_geolocation(current_ip)
+        else:
+            print("External IP has not changed. Using cached geolocation...")
+            cache_key = f'geolocation_{current_ip}'
+            cached_data = cache.get(cache_key)
+            return cached_data if cached_data else {'error': 'No cached geolocation data'}
 
     def get_external_ip(self):
         try:
@@ -126,17 +146,89 @@ class SystemMonitorConsumer(AsyncWebsocketConsumer):
 
     def get_connected_devices(self):
         devices = []
+
+        # Step 2: Get active users and their details using `w -h`
         try:
-            arp_output = subprocess.check_output("arp -a", shell=True, text=True)
-            for line in arp_output.split("\n"):
+            w_output = subprocess.check_output("w -h", shell=True, text=True)
+            print(f"w -h Output: {w_output}")  # Debug w -h output
+            for line in w_output.split("\n"):
+                if not line.strip():
+                    continue
                 parts = line.split()
-                if len(parts) >= 3:
-                    devices.append({"ip": parts[0], "mac": parts[1], "hostname": parts[-1] if len(parts) > 3 else "Unknown"})
-        except subprocess.CalledProcessError:
-            pass
+                print(f"Parsing w -h Line: {line}")  # Debug each line
+
+                # Ensure the line has enough parts
+                if len(parts) >= 8:
+                    user = parts[0]
+                    ip = parts[1]
+                    # from_ip = parts[2]
+                    login_time = parts[2]
+                    jcpu = parts[4]
+                    pcpu = parts[5]
+                    what1 = parts[6]
+                    what2 = " ".join(parts[7:])
+
+                    # Check if the device is already in the list
+                    device_exists = False
+                    for device in devices:
+                        if device["ip"] == ip:
+                            device.update({
+                                "user": user,
+                                "ip": ip,
+                                "login": login_time,
+                                "idle": "N/A",
+                                "jcpu": jcpu,
+                                "pcpu": pcpu,
+                                "what": what2
+                            })
+                            device_exists = True
+                            break
+
+                    # If the device is not in the list, add it
+                    if not device_exists:
+                        devices.append({
+                            "user": user,
+                            "ip": ip,
+                            "mac": "N/A",  # MAC address not available without ARP
+                            "hostname": "N/A",  # Hostname not available without ARP
+                            "login": login_time,
+                            "idle": "N/A",
+                            "jcpu": jcpu,
+                            "pcpu": pcpu,
+                           "what": what2
+                        })
+            # Step 2: Get ARP table for connected devices
+    
+        except subprocess.CalledProcessError as e:
+            print(f"Error running 'w -h': {e}")
+
+        
+
+        print(f"Final Devices: {devices}")  # Debug final devices list
         return devices
     
+    def fetch_geolocation(self, ip):
+        cache_key = f'geolocation_{ip}'
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            return cached_data
 
+        try:
+            response = requests.get(f'https://ipapi.co/{ip}/json/', timeout=10)
+            if response.status_code != 200:
+                return {'error': f'Failed to fetch data: {response.status_code}'}
+            
+            data = response.json()
+            if 'error' in data:
+                return {'error': data['error']}
+            
+            # Cache the data for 1 hour
+            cache.set(cache_key, data, timeout=3600)
+            return data
+        
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching geolocation data: {e}")
+            return {'error': 'Unable to fetch geolocation data'}
 
 
 import re

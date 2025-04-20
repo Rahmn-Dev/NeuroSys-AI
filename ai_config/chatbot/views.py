@@ -562,33 +562,33 @@ def chat_with_ai(request):
             return Response({"error": f"Gagal memproses permintaan: {str(e)}"}, status=500)
 
 
-import requests
-from django.http import JsonResponse
-from django.core.cache import cache
+# import requests
+# from django.http import JsonResponse
+# from django.core.cache import cache
 
-def fetch_geolocation(request):
-    ip = request.GET.get('ip', '')
-    if not ip:
-        return JsonResponse({'error': 'IP address is required'}, status=400)
+# def fetch_geolocation(request):
+#     ip = request.GET.get('ip', '')
+#     if not ip:
+#         return JsonResponse({'error': 'IP address is required'}, status=400)
 
-    cache_key = f'geolocation_{ip}'
-    cached_data = cache.get(cache_key)
-    if cached_data:
-        return JsonResponse(cached_data)
+#     cache_key = f'geolocation_{ip}'
+#     cached_data = cache.get(cache_key)
+#     if cached_data:
+#         return JsonResponse(cached_data)
 
-    try:
-        response = requests.get(f'https://ipapi.co/{ip}/json/', timeout=10)
-        if response.status_code != 200:
-            return JsonResponse({'error': f'Failed to fetch data: {response.status_code}'}, status=response.status_code)
+#     try:
+#         response = requests.get(f'https://ipapi.co/{ip}/json/', timeout=10)
+#         if response.status_code != 200:
+#             return JsonResponse({'error': f'Failed to fetch data: {response.status_code}'}, status=response.status_code)
         
-        data = response.json()
-        if 'error' in data:
-            return JsonResponse({'error': data['error']}, status=400)
+#         data = response.json()
+#         if 'error' in data:
+#             return JsonResponse({'error': data['error']}, status=400)
         
-        # Cache the data for 1 hour
-        cache.set(cache_key, data, timeout=3600)
-        return JsonResponse(data)
+#         # Cache the data for 1 hour
+#         cache.set(cache_key, data, timeout=3600)
+#         return JsonResponse(data)
     
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching geolocation data: {e}")
-        return JsonResponse({'error': 'Unable to fetch geolocation data'}, status=500)
+#     except requests.exceptions.RequestException as e:
+#         print(f"Error fetching geolocation data: {e}")
+#         return JsonResponse({'error': 'Unable to fetch geolocation data'}, status=500)
