@@ -39,6 +39,7 @@ urlpatterns = [
     path('system_monitor/', views.system_monitor, name='system_monitor'),
     path('api/v1/', include((router.urls, 'api_v1'), namespace='v1')),
     path('api/v1/chat/', chatbot_views.chat_with_ai, name='chat_with_ai'),
+    path('api/sudo-command/', views.sudo_command, name='sudo_command'),
     path('api/v1/system_status/', chatbot_views.system_status, name='system_status'),
     # path('fetch_geolocation/', chatbot_views.fetch_geolocation, name='fetch_geolocation'),
 ]

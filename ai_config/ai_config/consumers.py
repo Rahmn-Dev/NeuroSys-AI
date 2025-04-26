@@ -40,10 +40,40 @@ class SystemMonitorConsumer(AsyncWebsocketConsumer):
         net_stat = subprocess.run(["ss", "-tulpn"], capture_output=True, text=True).stdout
 
         # Running services
-        services = subprocess.run(
+        result = subprocess.run(
             ["systemctl", "list-units", "--type=service", "--state=running", "--no-pager"],
             capture_output=True, text=True
-        ).stdout
+        )
+        services = []
+        lines = result.stdout.split('\n')
+
+        # Filter baris yang tidak relevan (legenda, footer, dll.)
+        filtered_lines = [
+            line for line in lines
+            if not line.startswith("Legend:")  # Hapus legenda
+            and not line.startswith("To show all installed unit files")  # Hapus footer
+            and not line.endswith("loaded units listed.")  # Hapus jumlah unit
+            and not line.strip().startswith("LOAD")  # Hapus header kolom
+            and not line.strip().startswith("ACTIVE")
+            and not line.strip().startswith("SUB")
+            and line.strip()  # Hapus baris kosong
+        ]
+        for line in filtered_lines:
+            parts = line.split()
+            if len(parts) < 4:  # Pastikan baris memiliki cukup kolom
+                continue
+
+            # Ekstrak informasi layanan
+            name = parts[0]
+            status = parts[3]
+            description = " ".join(parts[4:]) if len(parts) > 4 else "N/A"
+
+            # Tambahkan ke daftar layanan
+            services.append({
+                'name': name,
+                'status': status,
+                'description': description
+            })
 
         # Get total CPU cores and frequency
         cpu_info = {
@@ -314,9 +344,10 @@ class SuricataLogConsumer(AsyncWebsocketConsumer):
 
 class ServiceControlConsumer(AsyncWebsocketConsumer):
     async def connect(self):
-        await self.accept()
-        # Kirim daftar layanan yang sedang berjalan saat koneksi dibuka
-        await self.get_running_services()
+            await self.accept()
+            # Kirim daftar layanan yang sedang berjalan saat koneksi dibuka
+            await self.get_running_services()
+            
 
     async def disconnect(self, close_code):
         pass
@@ -356,35 +387,66 @@ class ServiceControlConsumer(AsyncWebsocketConsumer):
             return {'status': 'error', 'message': str(e)}
 
     async def get_running_services(self):
-        try:
-            result = subprocess.run(
-            ["systemctl", "list-units", "--type=service", "--state=running", "--no-pager"],
-            capture_output=True, text=True
-            )
-            services = []
-            lines = result.stdout.split('\n')
-            
-            # Hapus baris legenda dan footer (misalnya "45 listed.")
-            filtered_lines = [line for line in lines if not line.startswith("Legend:") and not line.endswith("listed.")]
+        while True:
+            try:
+                # Jalankan perintah systemctl untuk mendapatkan daftar layanan
+                result = subprocess.run(
+                    ["systemctl", "list-units", "--type=service", "--all", "--no-pager"],
+                    capture_output=True, text=True
+                )
+                services = []
+                lines = result.stdout.split('\n')
 
-            for line in filtered_lines:
-                if not line.strip():
-                    continue
-                parts = line.split()
-                if len(parts) < 4:
-                    continue
-                name = parts[0]
-                status = parts[3]
-                description = " ".join(parts[4:]) if len(parts) > 4 else "N/A"
-                services.append({
-                    'name': name,
-                    'status': status,
-                    'description': description
-                })
-            # return services
+                # Filter baris yang tidak relevan (legenda, footer, dll.)
+                filtered_lines = [
+                    line for line in lines
+                    if not line.startswith("Legend:")  # Hapus legenda
+                    and not line.startswith("To show all installed unit files")  # Hapus footer
+                    and not line.endswith("loaded units listed.")  # Hapus jumlah unit
+                    and not line.strip().startswith("LOAD")  # Hapus header kolom
+                    and not line.strip().startswith("ACTIVE")
+                    and not line.strip().startswith("SUB")
+                    and line.strip()  # Hapus baris kosong
+                ]
 
-            # Kirim data layanan ke frontend
-            await self.send(json.dumps({'status': 'success', 'services': services}))
+                 # Hitung statistik layanan
+                total_services = 0
+                active_services = 0
+                inactive_services = 0
 
-        except Exception as e:
-            await self.send(json.dumps({'status': 'error', 'message': str(e)}))
+                # Proses setiap baris yang relevan
+                for line in filtered_lines:
+                    parts = line.split()
+                    if len(parts) < 4:  # Pastikan baris memiliki cukup kolom
+                        continue
+
+                    total_services += 1
+                    if parts[2] == "active":
+                        active_services += 1
+                    elif parts[2] == "inactive":
+                        inactive_services += 1
+                    # Ekstrak informasi layanan
+                    name = parts[0]
+                    status = parts[3]
+                    description = " ".join(parts[4:]) if len(parts) > 4 else "N/A"
+
+                    # Tambahkan ke daftar layanan
+                    services.append({
+                        'name': name,
+                        'status': status,
+                        'description': description
+                    })
+
+                # Kirim data layanan ke frontend
+                await self.send(json.dumps({'status': 'success', 'services': services, "service_stats": {
+                    "total": total_services,
+                    "active": active_services,
+                    "inactive": inactive_services,
+                }
+                }
+                )
+                )
+
+            except Exception as e:
+                await self.send(json.dumps({'status': 'error', 'message': str(e)}))
+            await asyncio.sleep(1)

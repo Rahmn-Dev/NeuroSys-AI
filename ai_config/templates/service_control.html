@@ -1,120 +1,279 @@
 {% extends './layout/layout1.html' %}
 {% block content %}
-<div class="rbt-main-content">
+
+<div class="rbt-main-content mr--0 ">
     <div class="rbt-daynamic-page-content">
-        <div class="rbt-dashboard-content" style="
-        padding-left: 20px;
-    ">
-           
-    <div class="card">
-        <div class="card-header">
-            <h5>Services Control</h5>
-        </div>
-        <div class="card-body">
-            <input type="text" id="serviceSearchInput" placeholder="Search services..." class="form-control mb-3" />
-            <table class="table table-striped">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Status</th>
-                        <th>Description</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="serviceConnections"></tbody>
-            </table>
+        <div class="rbt-dashboard-content" style="padding-left: 20px;padding-right: 20px;">
+            <!-- Header Dashboard -->
+            <div class="row mb-4" style="
+            display: flex;
+            align-content: center;
+            justify-content: center;
+            align-items: center;
+            flex-direction: row;
+            flex-wrap: nowrap;
+        ">
+                <div class="col-md-6">
+                    <h3 class="text-primary theme-gradient">Service Monitoring & Control</h3>
+                    <p class="text-muted">Monitor and manage your Linux services in real-time.</p>
+                </div>
+                <div class="col-md-6 text-end" >
+                    <button class="btn btn-sm btn-default" onclick="refreshServices()">
+                        <i class="fas "></i> Refresh Services
+                    </button>
+                </div>
+            </div>
+
+            <!-- Search Bar -->
+          
+            <!-- Service Status Overview -->
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="card bg-success " style=" color: white;border-radius: 14px; background: white; padding: 33px 22px; position: relative; overflow: hidden; ">
+                        <div class="card-body">
+                            <h5 class="card-title text-white"><i class="fas fa-check-circle"></i> Active Services</h5>
+                            <p class="card-text" id="activeServicesCount" style="
+                            color: white;
+                            font-size: 25px;
+                            font-weight: 900;
+                        ">0</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card bg-danger " style="color: white; border-radius: 14px; background: white; padding: 33px 22px; position: relative; overflow: hidden; ">
+                        <div class="card-body">
+                            <h5 class="card-title text-white"><i class="fas fa-times-circle"></i> Inactive Services</h5>
+                            <p class="card-text" id="inactiveServicesCount" style="
+                            color: white;
+                            font-size: 25px;
+                            font-weight: 900;
+                        ">0</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card bg-warning " style="color: white; border-radius: 14px; background: white; padding: 33px 22px; position: relative; overflow: hidden; ">
+                        <div class="card-body">
+                            <h5 class="card-title text-white"><i class="fas fa-exclamation-triangle"></i> Total Services</h5>
+                            <p class="card-text" id="totalServicesCount" style="
+                            color: white;
+                            font-size: 25px;
+                            font-weight: 900;
+                        ">0</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="mb-4">
+                <input type="text" id="serviceSearchInput" placeholder="Search services..." class="form-control form-control-lg" />
+            </div>
+
+            <!-- Services Table -->
+            <div class="card">
+                <div class="card-header bg-dark " style="color: white; border-top-left-radius: 14px;border-top-right-radius: 14px;  padding: 33px 22px; position: relative; overflow: hidden; ">
+                    <h5 class="text-white"><i class="fas fa-server"></i> Services List</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-hover table-responsive">
+                        <thead class="bg-light">
+                            <tr>
+                                <th>Name</th>
+                                <th>Status</th>
+                                <th>Description</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="serviceConnections"></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 </div>
-</div>
-</div>
 {% endblock %}
+
 {% block script %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
     const isLocal = window.location.hostname === "localhost" || window.location.hostname.startsWith("192.168.");
-const wsProtocol = isLocal ? "ws" : "wss";
-const wsHost = isLocal ? "192.168.101.20:8000" : "experimental.rahmn.tech";
-const socket = new WebSocket(`${wsProtocol}://${wsHost}/ws/services/`);
+    const wsProtocol = isLocal ? "ws" : "wss";
+    const wsHost = isLocal ? "192.168.101.20:8000" : "experimental.rahmn.tech";
+    const socket = new WebSocket(`${wsProtocol}://${wsHost}/ws/services/`);
+    let openDropdownId = null;
+    // Handle incoming messages from the server
+    socket.onmessage = function(event) {
+        const data = JSON.parse(event.data);
 
-// Handle incoming messages from the server
-socket.onmessage = function(event) {
-    const data = JSON.parse(event.data);
+        if (data.status === 'success' && data.services) {
+            populateServicesTable(data.services);
+            updateDashboardCounts(data.service_stats);
+        } else if (data.message) {
+            alert(data.message); // Show success/error message
+        }
+    };
 
-    if (data.status === 'success' && data.services) {
-        // Populate the services table
-        populateServicesTable(data.services);
-    } else if (data.message) {
-        alert(data.message); // Show success/error message
+    // Populate the services table
+    function populateServicesTable(services) {
+        const tbody = document.getElementById('serviceConnections');
+        tbody.innerHTML = ''; // Clear previous content
+
+        services.forEach(service => {
+            const row = document.createElement('tr');
+
+            // Service Name
+            const serviceName = document.createElement('td');
+            serviceName.textContent = service.name;
+            row.appendChild(serviceName);
+
+            // Status
+            const status = document.createElement('td');
+            status.innerHTML = getStatusBadge(service.status);
+            row.appendChild(status);
+
+            // Description
+            const description = document.createElement('td');
+            description.textContent = service.description || "N/A";
+            row.appendChild(description);
+
+            // Actions
+            const actions = document.createElement('td');
+            actions.innerHTML = `
+                <div class="dropdown">
+                    <button class="btn btn-secondary dropdown-toggle" type="button" id="actionsDropdown_${service.name}" data-bs-toggle="dropdown" aria-expanded="false">
+                        Actions
+                    </button>
+                    <ul class="dropdown-menu" aria-labelledby="actionsDropdown_${service.name}">
+                        <li><a class="dropdown-item text-success" href="#" onclick="controlService('${service.name}', 'start')"><i class="fas fa-play"></i> Start</a></li>
+                        <li><a class="dropdown-item text-danger" href="#" onclick="controlService('${service.name}', 'stop')"><i class="fas fa-stop"></i> Stop</a></li>
+                        <li><a class="dropdown-item text-warning" href="#" onclick="controlService('${service.name}', 'restart')"><i class="fas fa-redo"></i> Restart</a></li>
+                    </ul>
+                </div>
+            `;
+            row.appendChild(actions);
+
+            tbody.appendChild(row);
+        });
+        // Restore open dropdown state after re-rendering
+        if (openDropdownId) {
+            const dropdownButton = document.getElementById(openDropdownId);
+            if (dropdownButton) {
+                const dropdown = new bootstrap.Dropdown(dropdownButton);
+                dropdown.show();
+            }
+        }
+        // Apply the search filter after updating the table
+        filterServiceTable();
     }
-};
-function populateServicesTable(services) {
-    const tbody = document.getElementById('serviceConnections');
-    tbody.innerHTML = ''; // Clear previous content
+    
+    // Update dashboard counts
+    function updateDashboardCounts(services) {
+        document.getElementById('activeServicesCount').textContent = services.active;
+        document.getElementById('inactiveServicesCount').textContent = services.inactive;
+        document.getElementById('totalServicesCount').textContent = services.total;
+    }
 
-    services.forEach(service => {
-        const row = document.createElement('tr');
+    // Generate status badge
+    function getStatusBadge(status) {
+        const statusLower = status.toLowerCase();
+        let badgeClass = '';
+        if (statusLower === 'active' || statusLower === 'running') badgeClass = 'badge bg-success';
+        else if (statusLower === 'inactive' || statusLower === 'dead' ) badgeClass = 'badge bg-danger';
+        else if (statusLower === 'exited' ) badgeClass = 'badge bg-warning';
+        else badgeClass = 'badge bg-secondary';
 
-        // Service Name
-        const serviceName = document.createElement('td');
-        serviceName.textContent = service.name;
-        row.appendChild(serviceName);
+        return `<span class="${badgeClass}">${status}</span>`;
+    }
 
-        // Status
-        const status = document.createElement('td');
-        status.textContent = service.status;
-        row.appendChild(status);
+    // Filter services table rows based on search input
+    function filterServiceTable() {
+        const searchInput = document.getElementById('serviceSearchInput');
+        const filter = searchInput.value.toLowerCase();
+        const rows = document.querySelectorAll('#serviceConnections tr');
 
-        // Description
-        const description = document.createElement('td');
-        description.textContent = service.description || "N/A";
-        row.appendChild(description);
+        rows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            let match = false;
 
-        // Actions
-        const actions = document.createElement('td');
-        actions.innerHTML = `
-            <button class="btn btn-sm btn-success" onclick="controlService('${service.name}', 'start')">Start</button>
-            <button class="btn btn-sm btn-danger" onclick="controlService('${service.name}', 'stop')">Stop</button>
-            <button class="btn btn-sm btn-warning" onclick="controlService('${service.name}', 'restart')">Restart</button>
-        `;
-        row.appendChild(actions);
+            cells.forEach(cell => {
+                if (cell.textContent.toLowerCase().includes(filter)) {
+                    match = true;
+                }
+            });
 
-        tbody.appendChild(row);
-    });
-
-    // Apply the search filter after updating the table
-    filterServiceTable();
-}
-
-function controlService(serviceName, action) {
-    const message = JSON.stringify({ action: action, service_name: serviceName });
-    socket.send(message);
-}
-
-// Function to filter services table rows based on search input
-function filterServiceTable() {
-    const searchInput = document.getElementById('serviceSearchInput');
-    const filter = searchInput.value.toLowerCase(); // Get the search term and convert to lowercase
-    const rows = document.querySelectorAll('#serviceConnections tr'); // Get all table rows
-
-    rows.forEach(row => {
-        const cells = row.querySelectorAll('td'); // Get all cells in the row
-        let match = false;
-
-        cells.forEach(cell => {
-            if (cell.textContent.toLowerCase().includes(filter)) {
-                match = true;
+            if (match) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
             }
         });
+    }
 
-        if (match) {
-            row.style.display = ''; // Show the row
-        } else {
-            row.style.display = 'none'; // Hide the row
-        }
+    // Add an event listener to the services search input
+    document.getElementById('serviceSearchInput').addEventListener('input', filterServiceTable);
+
+    // Refresh services button
+    function refreshServices() {
+        socket.send(JSON.stringify({ action: 'refresh' }));
+        Swal.fire("Refreshing", "Services are being refreshed...", "info");
+    }
+    // Track dropdown state
+    document.addEventListener('show.bs.dropdown', function(event) {
+        openDropdownId = event.target.id; // Save the ID of the opened dropdown
     });
-}
 
-// Add an event listener to the services search input
-document.getElementById('serviceSearchInput').addEventListener('input', filterServiceTable);
+    document.addEventListener('hide.bs.dropdown', function(event) {
+        openDropdownId = null; // Clear the ID when the dropdown is closed
+    });
+
+    // Control service actions
+    async function controlService(serviceName, action) {
+        const requiresSudo = ["restart", "stop", "start"].includes(action);
+
+        let password = null;
+        if (requiresSudo) {
+            const { value: enteredPassword } = await Swal.fire({
+                title: "Authentication Required",
+                text: "Please enter your sudo password:",
+                input: "password",
+                inputAttributes: {
+                    autocapitalize: "off",
+                    autocorrect: "off",
+                },
+                showCancelButton: true,
+                confirmButtonText: "Submit",
+                cancelButtonText: "Cancel",
+                inputValidator: (value) => {
+                    if (!value) {
+                        return "Password is required!";
+                    }
+                },
+            });
+
+            if (!enteredPassword) {
+                Swal.fire("Cancelled", "Operation cancelled.", "info");
+                return;
+            }
+
+            password = enteredPassword;
+        }
+
+        const response = await fetch('/api/sudo-command/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                password: password,
+                command: `systemctl ${action} ${serviceName}`,
+            }),
+        });
+
+        const result = await response.json();
+
+        if (result.status === 'success') {
+            Swal.fire("Success", result.message, "success");
+        } else {
+            Swal.fire("Error", result.message, "error");
+        }
+    }
 </script>
 {% endblock %}

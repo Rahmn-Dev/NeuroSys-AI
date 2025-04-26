@@ -248,3 +248,29 @@ from django.views.decorators.csrf import csrf_exempt
 @login_required
 def service_control(request):
     return render(request,"service_control.html",{'headTitle' : 'Service Control'})
+
+import json
+
+@login_required
+@csrf_exempt
+def sudo_command(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            password = data.get('password')
+            command = data.get('command')
+
+            if not password or not command:
+                return JsonResponse({'status': 'error', 'message': 'Password and command are required.'}, status=400)
+
+            # Jalankan perintah dengan sudo menggunakan password
+            full_command = f'echo {password} | sudo -S {command}'
+            result = subprocess.run(full_command, shell=True, capture_output=True, text=True)
+
+            if result.returncode == 0:
+                return JsonResponse({'status': 'success', 'message': result.stdout})
+            else:
+                return JsonResponse({'status': 'error', 'message': result.stderr}, status=500)
+
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
