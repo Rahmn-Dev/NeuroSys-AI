@@ -1,0 +1,120 @@
+{% extends './layout/layout1.html' %}
+{% block content %}
+<div class="rbt-main-content">
+    <div class="rbt-daynamic-page-content">
+        <div class="rbt-dashboard-content" style="
+        padding-left: 20px;
+    ">
+           
+    <div class="card">
+        <div class="card-header">
+            <h5>Services Control</h5>
+        </div>
+        <div class="card-body">
+            <input type="text" id="serviceSearchInput" placeholder="Search services..." class="form-control mb-3" />
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Status</th>
+                        <th>Description</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="serviceConnections"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+</div>
+</div>
+{% endblock %}
+{% block script %}
+<script>
+    const isLocal = window.location.hostname === "localhost" || window.location.hostname.startsWith("192.168.");
+const wsProtocol = isLocal ? "ws" : "wss";
+const wsHost = isLocal ? "192.168.101.20:8000" : "experimental.rahmn.tech";
+const socket = new WebSocket(`${wsProtocol}://${wsHost}/ws/services/`);
+
+// Handle incoming messages from the server
+socket.onmessage = function(event) {
+    const data = JSON.parse(event.data);
+
+    if (data.status === 'success' && data.services) {
+        // Populate the services table
+        populateServicesTable(data.services);
+    } else if (data.message) {
+        alert(data.message); // Show success/error message
+    }
+};
+function populateServicesTable(services) {
+    const tbody = document.getElementById('serviceConnections');
+    tbody.innerHTML = ''; // Clear previous content
+
+    services.forEach(service => {
+        const row = document.createElement('tr');
+
+        // Service Name
+        const serviceName = document.createElement('td');
+        serviceName.textContent = service.name;
+        row.appendChild(serviceName);
+
+        // Status
+        const status = document.createElement('td');
+        status.textContent = service.status;
+        row.appendChild(status);
+
+        // Description
+        const description = document.createElement('td');
+        description.textContent = service.description || "N/A";
+        row.appendChild(description);
+
+        // Actions
+        const actions = document.createElement('td');
+        actions.innerHTML = `
+            <button class="btn btn-sm btn-success" onclick="controlService('${service.name}', 'start')">Start</button>
+            <button class="btn btn-sm btn-danger" onclick="controlService('${service.name}', 'stop')">Stop</button>
+            <button class="btn btn-sm btn-warning" onclick="controlService('${service.name}', 'restart')">Restart</button>
+        `;
+        row.appendChild(actions);
+
+        tbody.appendChild(row);
+    });
+
+    // Apply the search filter after updating the table
+    filterServiceTable();
+}
+
+function controlService(serviceName, action) {
+    const message = JSON.stringify({ action: action, service_name: serviceName });
+    socket.send(message);
+}
+
+// Function to filter services table rows based on search input
+function filterServiceTable() {
+    const searchInput = document.getElementById('serviceSearchInput');
+    const filter = searchInput.value.toLowerCase(); // Get the search term and convert to lowercase
+    const rows = document.querySelectorAll('#serviceConnections tr'); // Get all table rows
+
+    rows.forEach(row => {
+        const cells = row.querySelectorAll('td'); // Get all cells in the row
+        let match = false;
+
+        cells.forEach(cell => {
+            if (cell.textContent.toLowerCase().includes(filter)) {
+                match = true;
+            }
+        });
+
+        if (match) {
+            row.style.display = ''; // Show the row
+        } else {
+            row.style.display = 'none'; // Hide the row
+        }
+    });
+}
+
+// Add an event listener to the services search input
+document.getElementById('serviceSearchInput').addEventListener('input', filterServiceTable);
+</script>
+{% endblock %}

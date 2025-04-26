@@ -311,3 +311,80 @@ class SuricataLogConsumer(AsyncWebsocketConsumer):
                     await asyncio.sleep(0.1)  # Use asyncio.sleep instead of time.sleep
                     continue
                 yield line.strip()
+
+class ServiceControlConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        await self.accept()
+        # Kirim daftar layanan yang sedang berjalan saat koneksi dibuka
+        await self.get_running_services()
+
+    async def disconnect(self, close_code):
+        pass
+
+    async def receive(self, text_data):
+        try:
+            data = json.loads(text_data)
+            action = data.get('action')  # start, stop, restart, reload
+            service_name = data.get('service_name')
+
+            if not service_name or not action:
+                await self.send(json.dumps({'error': 'Service name and action are required.'}))
+                return
+
+            # Jalankan perintah systemctl
+            result = await sync_to_async(self.run_systemctl_command)(action, service_name)
+
+            if result['status'] == 'success':
+                await self.send(json.dumps({'status': 'success', 'message': result['message']}))
+            else:
+                await self.send(json.dumps({'status': 'error', 'message': result['message']}))
+
+        except Exception as e:
+            await self.send(json.dumps({'status': 'error', 'message': str(e)}))
+
+    def run_systemctl_command(self, action, service_name):
+        try:
+            command = ['systemctl', action, service_name]
+            result = subprocess.run(command, capture_output=True, text=True)
+
+            if result.returncode == 0:
+                return {'status': 'success', 'message': result.stdout}
+            else:
+                return {'status': 'error', 'message': result.stderr}
+
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    async def get_running_services(self):
+        try:
+            result = subprocess.run(
+            ["systemctl", "list-units", "--type=service", "--state=running", "--no-pager"],
+            capture_output=True, text=True
+            )
+            services = []
+            lines = result.stdout.split('\n')
+            
+            # Hapus baris legenda dan footer (misalnya "45 listed.")
+            filtered_lines = [line for line in lines if not line.startswith("Legend:") and not line.endswith("listed.")]
+
+            for line in filtered_lines:
+                if not line.strip():
+                    continue
+                parts = line.split()
+                if len(parts) < 4:
+                    continue
+                name = parts[0]
+                status = parts[3]
+                description = " ".join(parts[4:]) if len(parts) > 4 else "N/A"
+                services.append({
+                    'name': name,
+                    'status': status,
+                    'description': description
+                })
+            # return services
+
+            # Kirim data layanan ke frontend
+            await self.send(json.dumps({'status': 'success', 'services': services}))
+
+        except Exception as e:
+            await self.send(json.dumps({'status': 'error', 'message': str(e)}))

@@ -1,7 +1,8 @@
 from django.urls import re_path, path
-from ai_config.consumers import SystemMonitorConsumer, SuricataLogConsumer
+from ai_config import consumers
 
 websocket_urlpatterns = [
-    path("ws/system_monitor/", SystemMonitorConsumer.as_asgi()),
-    path("ws/suricata_monitor/", SuricataLogConsumer.as_asgi()), 
+    path("ws/system_monitor/", consumers.SystemMonitorConsumer.as_asgi()),
+    path("ws/suricata_monitor/", consumers.SuricataLogConsumer.as_asgi()), 
+    path("ws/services/", consumers.ServiceControlConsumer.as_asgi()), 
 ]

@@ -242,3 +242,9 @@ def get_running_services():
         return services
     except subprocess.CalledProcessError:
         return []
+    
+from django.views.decorators.csrf import csrf_exempt
+
+@login_required
+def service_control(request):
+    return render(request,"service_control.html",{'headTitle' : 'Service Control'})
