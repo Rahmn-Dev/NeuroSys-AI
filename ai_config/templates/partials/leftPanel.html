@@ -36,7 +36,7 @@
                                     <span>Chat AI</span>
                                 </a>
                             </li>
-                            <li style="height: 50px;" data-bs-toggle="tooltip" data-bs-placement="right" title="Services Monitoring & Control ">
+                            <li style="height: 50px;" data-bs-toggle="tooltip" data-bs-placement="right" title="Services Monitoring ">
                                 <a href="/services-control/" style="gap: 5px;" id="service-sidebar">
                                     <!-- <i class="boxed-logo-dark fas fa-cogs"></i> -->
                                     <!-- <i class="boxed-logo-light fas fa-cogs" style="color: #000;"></i> -->
@@ -53,7 +53,7 @@
                                     target="#service-sidebar"
                                     style="width:25px;height:25px">
                                 </lord-icon>
-                                    <span>Services Control</span>
+                                    <span>Services Monitoring</span>
                                 </a>
                             </li>
                             <li style="height: 50px;" data-bs-toggle="tooltip" data-bs-placement="right" title="Network & Security ">
@@ -127,25 +127,45 @@
                                
                                     <ul style="/* padding-left: 0px; *//* padding-right: 0px; */left: 0px;padding-left: 0px;">
                                         <li>
-                                            <a data-bs-toggle="tooltip" data-bs-placement="right" title="Dark " href="javascript: void(0);" data-theme="dark" class="setColor dark"  style="
-                                            font-size: 14px;
+                                            <a id="dark" style="gap: 5px;" data-bs-toggle="tooltip" data-bs-placement="right" title="Dark " href="javascript: void(0);" data-theme="dark" class="setColor dark"  style="
+                                            font-size: 14px; 
                                         ">
-                                                    <img class="moon-light" src="/static/images/light/switch/vector.svg" alt="Switcher Image" style="
-                                                    width: 20px;
-                                                    height: 20px;
-                                                ">
+                                                 <lord-icon class="boxed-logo-dark"
+                                                 src="https://cdn.lordicon.com/yodwgokk.json"
+                                                 trigger="hover"
+                                                 target="#dark"
+                                                 colors="primary:#ffffff,secondary:#08a88a"
+                                                 style="width:25px;height:25px">
+                                             </lord-icon>
+                                             <lord-icon class="boxed-logo-light"
+                                                src="https://cdn.lordicon.com/yodwgokk.json"
+                                                trigger="hover"
+                                                target="#dark"
+                                                colors="primary:#000000,secondary:#08a88a"
+                                                style="width:25px;height:25px">
+                                            </lord-icon>
                                                 <span class="text" title="Dark Mode">
                                                     Dark</span>
                                                 </a>
                                             </li>
                                             <li>
-                                                <a data-bs-toggle="tooltip" data-bs-placement="right" title="Light " href="javascript: void(0);"  data-theme="light" class="setColor light" style="
+                                                <a id="light" style="gap: 5px;" data-bs-toggle="tooltip" data-bs-placement="right" title="Light " href="javascript: void(0);"  data-theme="light" class="setColor light" style="
                                             font-size: 14px;
                                             ">
-                                                <img src="/static/images/light/switch/sun-01.svg" alt="Switcher Image" style="
-                                                width: 20px;
-                                                height: 20px;
-                                            ">
+                                                <lord-icon class="boxed-logo-dark"
+                                                src="https://cdn.lordicon.com/iwjzoila.json"
+                                                trigger="hover"
+                                                target="#light"
+                                                colors="primary:#ffffff,secondary:#08a88a"
+                                                style="width:25px;height:25px">
+                                            </lord-icon>
+                                            <lord-icon class="boxed-logo-light"
+                                                src="https://cdn.lordicon.com/iwjzoila.json"
+                                                trigger="hover"
+                                                target="#light"
+                                                colors="primary:#000000,secondary:#08a88a"
+                                                style="width:25px;height:25px">
+                                            </lord-icon>
                                                 <span class="text" title="Light Mode">Light</span>
                                             </a>
                                         </li>
