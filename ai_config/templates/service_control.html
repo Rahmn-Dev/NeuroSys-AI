@@ -90,6 +90,23 @@
         </div>
     </div>
 </div>
+<div id="configModal" class="modal fade" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Service Configuration</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <textarea id="configEditor" rows="20" style="width: 100%;"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveConfig()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block script %}
@@ -111,7 +128,55 @@
             alert(data.message); // Show success/error message
         }
     };
+    let currentServiceName = null;
+    function openConfigModal(serviceName) {
+    // Hapus .service jika ada
+        if (serviceName.endsWith('.service')) {
+            serviceName = serviceName.slice(0, -8);
+        }
 
+        currentServiceName = serviceName;
+        fetch(`/api/get-service-config/${serviceName}/`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error("Network response was not ok");
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.error) {
+                    Swal.fire("Error", data.error, "error");
+                } else {
+                    document.getElementById('configEditor').value = data.config;
+                    new bootstrap.Modal(document.getElementById('configModal')).show();
+                }
+            })
+            .catch(error => {
+                console.error("Error fetching service config:", error);
+                Swal.fire("Error", "Failed to fetch service configuration.", "error");
+            });
+    }
+    function saveConfig() {
+        const configContent = document.getElementById('configEditor').value;
+        fetch(`/api/save-service-config/${currentServiceName}/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ config: configContent }),
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    Swal.fire("Error", data.error, "error");
+                } else {
+                    Swal.fire("Success", data.message, "success");
+                    bootstrap.Modal.getInstance(document.getElementById('configModal')).hide();
+                }
+            })
+            .catch(error => {
+                console.error("Error saving service config:", error);
+                Swal.fire("Error", "Failed to save service configuration.", "error");
+            });
+    }
     // Populate the services table
     function populateServicesTable(services) {
         const tbody = document.getElementById('serviceConnections');
@@ -143,6 +208,8 @@
                         Actions
                     </button>
                     <ul class="dropdown-menu" aria-labelledby="actionsDropdown_${service.name}">
+                        
+                        <li><a class="dropdown-item text-secondary" href="#" onclick="openConfigModal('${service.name}', 'config')"><i class="fas fa-wrench"></i></i> Config</a></li>
                         <li><a class="dropdown-item text-success" href="#" onclick="controlService('${service.name}', 'start')"><i class="fas fa-play"></i> Start</a></li>
                         <li><a class="dropdown-item text-danger" href="#" onclick="controlService('${service.name}', 'stop')"><i class="fas fa-stop"></i> Stop</a></li>
                         <li><a class="dropdown-item text-warning" href="#" onclick="controlService('${service.name}', 'restart')"><i class="fas fa-redo"></i> Restart</a></li>

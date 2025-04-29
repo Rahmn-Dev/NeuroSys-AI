@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from datasets import load_dataset
 import ansible_runner
 import re
+from django.http import JsonResponse
 
 @api_view(['GET'])
 def system_status(request):
@@ -592,3 +593,4 @@ def chat_with_ai(request):
 #     except requests.exceptions.RequestException as e:
 #         print(f"Error fetching geolocation data: {e}")
 #         return JsonResponse({'error': 'Unable to fetch geolocation data'}, status=500)
+

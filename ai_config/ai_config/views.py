@@ -11,7 +11,7 @@ import requests
 from two_factor.views import LoginView as TwoFactorLoginView
 from two_factor.utils import default_device
 from django_ratelimit.decorators import ratelimit
-
+from rest_framework.decorators import api_view
 
 @login_required
 def chatAI(request):
@@ -274,3 +274,49 @@ def sudo_command(request):
 
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+        
+
+
+SERVICE_DIR = "/etc/systemd/system/"
+
+@api_view(['GET'])
+def get_service_config(request, service_name):
+    """
+    Endpoint untuk membaca isi file konfigurasi layanan.
+    """
+    try:
+        config_path = os.path.join(SERVICE_DIR, f"{service_name}.service")
+        if not os.path.exists(config_path):
+            return JsonResponse({"error": f"Service file {service_name} not found."}, status=404)
+        
+        with open(config_path, 'r') as f:
+            config_content = f.read()
+        
+        return JsonResponse({"config": config_content})
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+    
+@api_view(['POST'])
+def save_service_config(request, service_name):
+    """
+    Endpoint untuk menyimpan perubahan pada file konfigurasi layanan.
+    """
+    try:
+        new_config = request.data.get("config", "").strip()
+        if not new_config:
+            return JsonResponse({"error": "Configuration content is required."}, status=400)
+        
+        config_path = os.path.join(SERVICE_DIR, f"{service_name}.service")
+        if not os.path.exists(config_path):
+            return JsonResponse({"error": f"Service file {service_name}.service not found."}, status=404)
+        
+        # Simpan perubahan ke file
+        with open(config_path, 'w') as f:
+            f.write(new_config)
+        
+        # Reload systemd untuk menerapkan perubahan
+        subprocess.run(["systemctl", "daemon-reload"], check=True)
+        
+        return JsonResponse({"message": f"Configuration for {service_name} saved successfully."})
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)

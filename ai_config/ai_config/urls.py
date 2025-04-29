@@ -40,6 +40,8 @@ urlpatterns = [
     path('api/v1/', include((router.urls, 'api_v1'), namespace='v1')),
     path('api/v1/chat/', chatbot_views.chat_with_ai, name='chat_with_ai'),
     path('api/sudo-command/', views.sudo_command, name='sudo_command'),
+    path('api/get-service-config/<str:service_name>/', views.get_service_config, name='get_service_config'),
+    path('api/save-service-config/<str:service_name>/', views.save_service_config, name='save_service_config'),
     path('api/v1/system_status/', chatbot_views.system_status, name='system_status'),
     # path('fetch_geolocation/', chatbot_views.fetch_geolocation, name='fetch_geolocation'),
 ]
