@@ -188,27 +188,55 @@
 
                         <!-- Connected Devices Card -->
                         <div class="col-md-6 col-sm-12 col-lg-6 h-100" style="padding: 12px;">
-                            <div class="card is rainbow-address bg-flashlight" style="border-radius: 14px; background: white; padding: 20px; position: relative; overflow: hidden;">
-                                <h4 class="theme-gradient text-center">Connected Devices</h5>
-                                <table>
-                                    <thead>
-                                        <tr>
-                                            <th style=" font-size: 14px;">IP Address</th>
-                                            <th style=" font-size: 14px;">MAC Address</th>
-                                            <th style=" font-size: 14px;">Hostname</th>
-                                            <th style=" font-size: 14px;">Login Time</th>
-                                            <th style=" font-size: 14px;">Idle Time</th>
-                                            <th style=" font-size: 14px;">JCPU</th>
-                                            <th style=" font-size: 14px;">PCPU</th>
-                                            <th style=" font-size: 14px;">Activity</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="connectedDevices">
-                                        <tr><td colspan="6">Fetching data...</td></tr>
-                                    </tbody>
-                                </table>
+                            <div class="col-md-12">
+
+                                <div class="card is rainbow-address bg-flashlight" style="border-radius: 14px; background: white; padding: 20px; position: relative; overflow: hidden;">
+                                    <h4 class="theme-gradient text-center">Connected Devices</h5>
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th style=" font-size: 14px;">IP Address</th>
+                                                <th style=" font-size: 14px;">MAC Address</th>
+                                                <th style=" font-size: 14px;">Hostname</th>
+                                                <th style=" font-size: 14px;">Login Time</th>
+                                                <th style=" font-size: 14px;">Idle Time</th>
+                                                <th style=" font-size: 14px;">JCPU</th>
+                                                <th style=" font-size: 14px;">PCPU</th>
+                                                <th style=" font-size: 14px;">Activity</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="connectedDevices">
+                                            <tr><td colspan="6">Fetching data...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="card is rainbow-address bg-flashlight" style="border-radius: 14px; background: white; padding: 20px; position: relative; overflow: hidden;">
+                                    <h4 class="theme-gradient text-center">Logs and Activity</h4>
+                                    <!-- Chart for Logs -->
+                                    <div id="logsDoughnutChart" style="height: 300px; margin-bottom: 20px;"></div>
+                                    <!-- Search Input -->
+                                    <input type="text" id="logSearchInput" placeholder="Search logs..." style="padding: 8px; border-radius: 14px; border: 1px solid #ccc; width: 100%; margin-bottom: 10px;">
+                                    <!-- Table for Logs -->
+                                    <table id="logsTable" class="display" style="width: 100%;">
+                                        <thead>
+                                            <tr>
+                                                <th>Timestamp</th>
+                                                <th>Message</th>
+                                                <th>Severity</th>
+                                                <th>Source IP</th>
+                                                <th>Destination IP</th>
+                                                <th>Protocol</th>
+                                                <th>Classification</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
+                       
                     <!-- Network Connections Card -->
                     <div class="col-md-6 col-sm-12 col-lg-6" style="padding: 12px;">
                         <div class="card is rainbow-address bg-flashlight" style="border-radius: 14px; background: white; display: flex; padding: 20px; align-items: center; gap: 10px; flex: 1 0 0; overflow: hidden;">
@@ -274,6 +302,7 @@
 <script src="https://code.highcharts.com/highcharts.js"></script>
 <script src="https://code.highcharts.com/highcharts-more.js"></script>
 <script src="https://code.highcharts.com/modules/solid-gauge.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/luxon/build/global/luxon.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.min.js"></script>
@@ -587,6 +616,7 @@
     let ramData = []; // Array to store RAM usage data
     let vramData = []; // Array to store VRAM usage data
     let diskData = [];
+  
     function initializeCharts() {
     console.log("Initializing charts...");
 
@@ -704,10 +734,99 @@
          //   },
         }],
     });
+   
+}
+let logsData = [];
+let filteredLogs = [];
+async function fetchLogs() {
+    try {
+        const response = await fetch('/api/v1/suricata-logs/');
+        if (!response.ok) {
+            throw new Error('Failed to fetch logs');
+        }
+        const data = await response.json();
+        logsData = data;
+        updateLogsDoughnutChart();
+        initializeDataTables(); // Inisialisasi Tabulator setelah data diterima
+    } catch (error) {
+        console.error('Error fetching logs:', error);
+    }
+}
+function initializeDataTables() {
+    const table = $('#logsTable').DataTable({
+        data: logsData,
+        columns: [
+            { data: "timestamp", render: (data) => new Date(data).toLocaleString() },
+            { data: "message" },
+            { data: "severity" },
+            { data: "source_ip" },
+            { data: "destination_ip" },
+            { data: "protocol" },
+            { data: "classification" },
+        ],
+        paging: true, // Aktifkan paginasi
+        searching: true, // Aktifkan pencarian
+        ordering: true, // Aktifkan pengurutan
+        pageLength: 10, // Jumlah baris per halaman
+    });
+}
+// Inisialisasi doughnut chart untuk logs
+function initializeLogsDoughnutChart() {
+    Highcharts.chart('logsDoughnutChart', {
+        chart: {
+            type: 'pie',
+            backgroundColor: 'transparent',
+            height: 300,
+        },
+        title: { text: null },
+        plotOptions: {
+            pie: {
+                innerSize: '60%', // Membuat chart menjadi donat
+                allowPointSelect: true,
+                cursor: 'pointer',
+                dataLabels: {
+                    enabled: true,
+                    format: '<b>{point.name}</b>: {point.percentage:.1f} %',
+                },
+            },
+        },
+        tooltip: {
+            pointFormat: '{series.name}: <b>{point.percentage:.1f}%</b>',
+        },
+        series: [{
+            name: 'Logs by Category',
+            colorByPoint: true,
+            data: [], // Data akan diisi secara dinamis
+        }],
+    });
+}
+
+// Fungsi untuk memperbarui doughnut chart logs
+function updateLogsDoughnutChart() {
+    const classificationCounts = {};
+    logsData.forEach(log => {
+        if (classificationCounts[log.classification]) {
+            classificationCounts[log.classification]++;
+        } else {
+            classificationCounts[log.classification] = 1;
+        }
+    });
+
+    const chart = Highcharts.charts.find(chart => chart.renderTo.id === 'logsDoughnutChart');
+    if (chart) {
+        chart.series[0].setData(
+            Object.keys(classificationCounts).map(key => ({
+                name: key,
+                y: classificationCounts[key],
+            }))
+        );
+    }
 }
 
 document.addEventListener("DOMContentLoaded", function () {
     initializeCharts();
+    initializeLogsDoughnutChart();
+    fetchLogs();
 });
 
 </script>

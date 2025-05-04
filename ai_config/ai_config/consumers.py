@@ -307,7 +307,7 @@ class SuricataLogConsumer(AsyncWebsocketConsumer):
             parsed_data = parse_suricata_log(new_line.strip())
             if not parsed_data:
                 continue 
-            if parsed_data['priority'] not in [1, 2]:
+            if parsed_data['priority'] not in [1]:
                 continue
             from chatbot.models import SuricataLog
             # Use sync_to_async to save the log asynchronously
