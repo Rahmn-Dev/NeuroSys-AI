@@ -12,6 +12,8 @@ from two_factor.views import LoginView as TwoFactorLoginView
 from two_factor.utils import default_device
 from django_ratelimit.decorators import ratelimit
 from rest_framework.decorators import api_view
+from rest_framework import status
+from rest_framework.response import Response
 
 @login_required
 def chatAI(request):
@@ -277,7 +279,30 @@ def sudo_command(request):
         
 
 
-SERVICE_DIR = "/etc/systemd/system/"
+SERVICE_DIR_ETC = "/etc/systemd/system/"
+SERVICE_DIR_LIB = "/lib/systemd/system/"
+def find_service_file(service_name):
+    """
+    Cari file layanan di /etc/systemd/system/ dan /lib/systemd/system/.
+    Return path file jika ditemukan, atau None jika tidak ditemukan.
+    """
+    # Hapus .service jika ada
+    if service_name.endswith('.service'):
+        service_name = service_name[:-8]
+
+    # Cek di /etc/systemd/system/
+    etc_path = os.path.join(SERVICE_DIR_ETC, f"{service_name}.service")
+    if os.path.exists(etc_path):
+        return etc_path
+
+    # Cek di /lib/systemd/system/
+    lib_path = os.path.join(SERVICE_DIR_LIB, f"{service_name}.service")
+    if os.path.exists(lib_path):
+        return lib_path
+
+    # Jika tidak ditemukan di kedua lokasi
+    return None
+
 
 @api_view(['GET'])
 def get_service_config(request, service_name):
@@ -285,10 +310,13 @@ def get_service_config(request, service_name):
     Endpoint untuk membaca isi file konfigurasi layanan.
     """
     try:
-        config_path = os.path.join(SERVICE_DIR, f"{service_name}.service")
-        if not os.path.exists(config_path):
+        # Cari file layanan
+        config_path = find_service_file(service_name)
+        if not config_path:
             return JsonResponse({"error": f"Service file {service_name} not found."}, status=404)
         
+
+        # Baca isi file
         with open(config_path, 'r') as f:
             config_content = f.read()
         
@@ -298,25 +326,44 @@ def get_service_config(request, service_name):
     
 @api_view(['POST'])
 def save_service_config(request, service_name):
-    """
-    Endpoint untuk menyimpan perubahan pada file konfigurasi layanan.
-    """
     try:
+        # Gunakan request.data untuk membaca data JSON
         new_config = request.data.get("config", "").strip()
+        password = request.data.get("password")
+
         if not new_config:
-            return JsonResponse({"error": "Configuration content is required."}, status=400)
-        
-        config_path = os.path.join(SERVICE_DIR, f"{service_name}.service")
-        if not os.path.exists(config_path):
-            return JsonResponse({"error": f"Service file {service_name}.service not found."}, status=404)
-        
-        # Simpan perubahan ke file
-        with open(config_path, 'w') as f:
-            f.write(new_config)
-        
-        # Reload systemd untuk menerapkan perubahan
-        subprocess.run(["systemctl", "daemon-reload"], check=True)
-        
-        return JsonResponse({"message": f"Configuration for {service_name} saved successfully."})
+            return Response({"error": "Configuration content is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Hapus .service jika ada
+        if service_name.endswith('.service'):
+            service_name = service_name[:-8]
+
+        config_path = f"/etc/systemd/system/{service_name}.service"
+
+        # Simpan konfigurasi baru dengan sudo menggunakan subprocess
+        write_command = ['sudo', '-S', 'tee', config_path]
+        write_result = subprocess.run(
+            write_command,
+            input=f'{password}\n{new_config}',  # Kirim password dan konfigurasi baru sebagai input
+            capture_output=True,
+            text=True
+        )
+
+        if write_result.returncode != 0:
+            return Response({"error": f"Failed to save configuration: {write_result.stderr}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Reload systemd
+        reload_command = ['sudo', '-S', 'systemctl', 'daemon-reload']
+        reload_result = subprocess.run(
+            reload_command,
+            input=password,  # Kirim hanya password sebagai input
+            capture_output=True,
+            text=True
+        )
+
+        if reload_result.returncode != 0:
+            return Response({"error": f"Failed to reload systemd: {reload_result.stderr}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response({"message": f"Configuration for {service_name} saved successfully."}, status=status.HTTP_200_OK)
     except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

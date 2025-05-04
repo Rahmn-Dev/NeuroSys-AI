@@ -98,6 +98,8 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
+                <input type="hidden" id="csrfToken" value="{{ csrf_token }}">
+                
                 <textarea id="configEditor" rows="20" style="width: 100%;"></textarea>
             </div>
             <div class="modal-footer">
@@ -110,7 +112,7 @@
 {% endblock %}
 
 {% block script %}
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
 <script>
     const isLocal = window.location.hostname === "localhost" || window.location.hostname.startsWith("192.168.");
     const wsProtocol = isLocal ? "ws" : "wss";
@@ -156,12 +158,47 @@
                 Swal.fire("Error", "Failed to fetch service configuration.", "error");
             });
     }
-    function saveConfig() {
+    async function saveConfig() {
         const configContent = document.getElementById('configEditor').value;
+
+        // Close the configuration modal first
+        const modalElement = document.getElementById('configModal');
+        const modalInstance = bootstrap.Modal.getInstance(modalElement);
+        modalInstance.hide();
+
+        // Wait for the modal to fully close before showing the password prompt
+        await new Promise(resolve => setTimeout(resolve, 300)); // Adjust delay if necessary
+
+        // Show the SweetAlert2 password prompt
+        const { value: enteredPassword } = await Swal.fire({
+            title: "Authentication Required",
+            text: "Please enter your sudo password:",
+            input: "password",
+            showCancelButton: true,
+            confirmButtonText: "Submit",
+            cancelButtonText: "Cancel",
+            inputValidator: (value) => {
+                if (!value) {
+                    return "Password is required!";
+                }
+            },
+        });
+
+        if (!enteredPassword) {
+            Swal.fire("Cancelled", "Operation cancelled.", "info");
+            return;
+        }
+
+        console.log("Password entered:", enteredPassword);
+        const csrftoken = document.getElementById('csrfToken').value;
+        // Send the request to the backend with the password and configuration
         fetch(`/api/save-service-config/${currentServiceName}/`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ config: configContent }),
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken,
+            },
+            body: JSON.stringify({ config: configContent, password: enteredPassword }),
         })
             .then(response => response.json())
             .then(data => {
@@ -169,7 +206,6 @@
                     Swal.fire("Error", data.error, "error");
                 } else {
                     Swal.fire("Success", data.message, "success");
-                    bootstrap.Modal.getInstance(document.getElementById('configModal')).hide();
                 }
             })
             .catch(error => {
@@ -295,9 +331,11 @@
     // Control service actions
     async function controlService(serviceName, action) {
         const requiresSudo = ["restart", "stop", "start"].includes(action);
-
         let password = null;
+
         if (requiresSudo) {
+          
+
             const { value: enteredPassword } = await Swal.fire({
                 title: "Authentication Required",
                 text: "Please enter your sudo password:",
@@ -324,21 +362,25 @@
             password = enteredPassword;
         }
 
-        const response = await fetch('/api/sudo-command/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                password: password,
-                command: `systemctl ${action} ${serviceName}`,
-            }),
-        });
+        try {
+            const response = await fetch('/api/sudo-command/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    password: password,
+                    command: `systemctl ${action} ${serviceName}`,
+                }),
+            });
 
-        const result = await response.json();
-
-        if (result.status === 'success') {
-            Swal.fire("Success", result.message, "success");
-        } else {
-            Swal.fire("Error", result.message, "error");
+            const result = await response.json();
+            if (result.status === 'success') {
+                Swal.fire("Success", result.message, "success");
+            } else {
+                Swal.fire("Error", result.message, "error");
+            }
+        } catch (error) {
+            console.error("Error controlling service:", error);
+            Swal.fire("Error", "An unexpected error occurred.", "error");
         }
     }
 </script>
