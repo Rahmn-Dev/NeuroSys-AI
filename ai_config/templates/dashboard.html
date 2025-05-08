@@ -215,9 +215,8 @@
                                 <div class="card is rainbow-address bg-flashlight" style="border-radius: 14px; background: white; padding: 20px; position: relative; overflow: hidden;">
                                     <h4 class="theme-gradient text-center">Logs and Activity</h4>
                                     <!-- Chart for Logs -->
-                                    <div id="logsDoughnutChart" style="height: 300px; margin-bottom: 20px;"></div>
+                                    <canvas id="logsPolarChart" style="height: 300px; margin-bottom: 20px;"></canvas>
                                     <!-- Search Input -->
-                                    <input type="text" id="logSearchInput" placeholder="Search logs..." style="padding: 8px; border-radius: 14px; border: 1px solid #ccc; width: 100%; margin-bottom: 10px;">
                                     <!-- Table for Logs -->
                                     <table id="logsTable" class="display" style="width: 100%;">
                                         <thead>
@@ -746,7 +745,7 @@ async function fetchLogs() {
         }
         const data = await response.json();
         logsData = data;
-        updateLogsDoughnutChart();
+        updateLogsPolarChart();
         initializeDataTables(); // Inisialisasi Tabulator setelah data diterima
     } catch (error) {
         console.error('Error fetching logs:', error);
@@ -771,38 +770,54 @@ function initializeDataTables() {
     });
 }
 // Inisialisasi doughnut chart untuk logs
-function initializeLogsDoughnutChart() {
-    Highcharts.chart('logsDoughnutChart', {
-        chart: {
-            type: 'pie',
-            backgroundColor: 'transparent',
-            height: 300,
+function initializeLogsPolarChart() {
+    const ctx = document.getElementById('logsPolarChart').getContext('2d');
+    window.logsPolarChart = new Chart(ctx, {
+        type: 'polarArea',
+        data: {
+            labels: [], // Labels akan diisi secara dinamis
+            datasets: [{
+                label: 'Logs by Classification',
+                data: [], // Data akan diisi secara dinamis
+                backgroundColor: [
+                    'rgba(255, 99, 132, 0.6)',
+                    'rgba(54, 162, 235, 0.6)',
+                    'rgba(255, 206, 86, 0.6)',
+                    'rgba(75, 192, 192, 0.6)',
+                    'rgba(153, 102, 255, 0.6)',
+                    'rgba(255, 159, 64, 0.6)',
+                ],
+                borderColor: [
+                    'rgba(255, 99, 132, 1)',
+                    'rgba(54, 162, 235, 1)',
+                    'rgba(255, 206, 86, 1)',
+                    'rgba(75, 192, 192, 1)',
+                    'rgba(153, 102, 255, 1)',
+                    'rgba(255, 159, 64, 1)',
+                ],
+                borderWidth: 1,
+            }],
         },
-        title: { text: null },
-        plotOptions: {
-            pie: {
-                innerSize: '60%', // Membuat chart menjadi donat
-                allowPointSelect: true,
-                cursor: 'pointer',
-                dataLabels: {
-                    enabled: true,
-                    format: '<b>{point.name}</b>: {point.percentage:.1f} %',
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'top',
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function (context) {
+                            return `${context.label}: ${context.raw}`;
+                        },
+                    },
                 },
             },
         },
-        tooltip: {
-            pointFormat: '{series.name}: <b>{point.percentage:.1f}%</b>',
-        },
-        series: [{
-            name: 'Logs by Category',
-            colorByPoint: true,
-            data: [], // Data akan diisi secara dinamis
-        }],
     });
 }
 
-// Fungsi untuk memperbarui doughnut chart logs
-function updateLogsDoughnutChart() {
+// Fungsi untuk memperbarui Polar Area Chart
+function updateLogsPolarChart() {
     const classificationCounts = {};
     logsData.forEach(log => {
         if (classificationCounts[log.classification]) {
@@ -812,20 +827,17 @@ function updateLogsDoughnutChart() {
         }
     });
 
-    const chart = Highcharts.charts.find(chart => chart.renderTo.id === 'logsDoughnutChart');
+    const chart = window.logsPolarChart;
     if (chart) {
-        chart.series[0].setData(
-            Object.keys(classificationCounts).map(key => ({
-                name: key,
-                y: classificationCounts[key],
-            }))
-        );
+        chart.data.labels = Object.keys(classificationCounts);
+        chart.data.datasets[0].data = Object.values(classificationCounts);
+        chart.update();
     }
 }
 
 document.addEventListener("DOMContentLoaded", function () {
     initializeCharts();
-    initializeLogsDoughnutChart();
+    initializeLogsPolarChart();
     fetchLogs();
 });
 

@@ -367,3 +367,12 @@ def save_service_config(request, service_name):
         return Response({"message": f"Configuration for {service_name} saved successfully."}, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+from ai_agent.prompt_runner import run_prompt
+
+def sysadmin_prompt(request):
+    result = ""
+    if request.method == "POST":
+        prompt = request.POST.get("prompt")
+        result = run_prompt(prompt)
+    return render(request, "sysadmin_prompt.html", {"result": result})

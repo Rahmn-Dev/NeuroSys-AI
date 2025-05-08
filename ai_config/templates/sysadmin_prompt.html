@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Sysadmin</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script>mermaid.initialize({startOnLoad:true});</script>
+</head>
+<body>
+    <h1>AI Sysadmin Prompt</h1>
+    <form method="post">
+        {% csrf_token %}
+        <textarea name="prompt" rows="4" cols="80"></textarea><br>
+        <input type="submit" value="Run">
+    </form>
+    {% if result %}
+        <h2>Output:</h2>
+        <pre>{{ result }}</pre>
+        <h2>Workflow:</h2>
+        <div class="mermaid">
+        graph TD
+            A[Start] --> B[{{ prompt|default:'Prompt' }}]
+            B --> C[Agent Reasoning]
+            C --> D[Tool Execution]
+            D --> E[Show Output]
+            E --> F[End]
+        </div>
+    {% endif %}
+</body>
+</html>

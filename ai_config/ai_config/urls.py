@@ -31,6 +31,7 @@ urlpatterns = [
     # path('api/', include('chatbot.urls')),
     path('', views.dashboard, name='index'),
     path('chat/', views.chatAI, name='chat'),
+    path('test/', views.sysadmin_prompt, name='sysadmin_prompt'),
     path('services-control/', views.service_control, name='services-control'),
     path('dashboard/', views.dashboard, name='dashboard'),
     path('login/', views.user_login, name='login'),
