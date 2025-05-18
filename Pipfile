@@ -5,6 +5,7 @@ name = "pypi"
 
 [packages]
 numpy = "==2.1"
+alembic = "*"
 
 [dev-packages]
 

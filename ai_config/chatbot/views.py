@@ -37,12 +37,12 @@ logger = logging.getLogger(__name__)
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 
-ds = load_dataset("mrheinen/linux-commands")
+# ds = load_dataset("mrheinen/linux-commands")
 DATASET_PATH = os.path.join(os.path.dirname(__file__), "../dataset/ds.json")
 with open(DATASET_PATH, "r") as f:
     data = json.load(f)
 
-command_dict = {entry["input"]: entry["output"] for entry in ds["train"]}
+# command_dict = {entry["input"]: entry["output"] for entry in ds["train"]}
 # command_dict = {entry["input"]: entry["output"] for entry in data}
 
 
