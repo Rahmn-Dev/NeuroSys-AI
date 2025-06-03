@@ -409,17 +409,39 @@ def get_failed_services():
         )
         lines = result.strip().splitlines()
         services = []
-        for line in lines[1:-7]:  # skip header & footer
-            if line.strip() and not line.startswith(" "):
-                parts = line.split()
-                service_name = parts[0]
-                description = " ".join(parts[1:-1])
-                services.append({
-                    "name": service_name,
-                    "description": description
-                })
+        
+        for line in lines:
+            line = line.strip()
+
+            # Skip baris kosong, legend, atau header
+            if not line or "UNIT" in line or "LOAD" in line or "ACTIVE" in line or line.startswith("--"):
+                continue
+
+            # Hapus ● dan split bagian-bagian
+            clean_line = line.lstrip("● ").rstrip(" loaded active running exited inactive dead")
+            parts = clean_line.split()
+
+            if len(parts) < 4:
+                continue  # hindari baris tidak valid
+
+            service_name = parts[0]
+            load_status = parts[1]
+            active_status = parts[2]
+            sub_status = parts[3]
+
+            # Gabungkan sisa bagian sebagai deskripsi
+            description = ' '.join(parts[4:-1]) if len(parts) > 6 else ' '.join(parts[4:]) if len(parts) > 4 else "No description"
+
+            services.append({
+                "name": service_name,
+                "description": description,
+                "load": load_status,
+                "active": active_status,
+                "sub": sub_status
+            })
         return services
     except Exception as e:
+        print(f"Error fetching failed services: {e}")
         return []
     
 def ai_analyze_service(request):

@@ -77,22 +77,26 @@
                             <tr>
                                 <th>Service Name</th>
                                 <th>Description</th>
+                                <th>Status</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for service in failed_services %}
-                            <tr>
-                                <td><strong>{{ service.name }}</strong></td>
-                                <td>{{ service.description }}</td>
-                                <td>
-                                    <button class="btn btn-sm btn-primary"
-                                            onclick="runAIAnalysis('{{ service.name }}')">
-                                        AI Diagnosis
-                                    </button>
-                                </td>
-                            </tr>
-                            {% endfor %}
+                                <tr>
+                                    <td><strong>{{ service.name }}</strong></td>
+                                    <td>{{ service.description }}</td>
+                                    <td>
+                                        <span class="badge bg-danger">{{ service.active }} {{ service.sub }}</span>
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-primary"
+                                                onclick="runAIAnalysis('{{ service.name }}')">
+                                            <i class="fas fa-brain"></i> AI Diagnosis
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
                         </tbody>
                     </table>
                 </div>
@@ -286,6 +290,8 @@
                         <li><a class="dropdown-item text-success" href="#" onclick="controlService('${service.name}', 'start')"><i class="fas fa-play"></i> Start</a></li>
                         <li><a class="dropdown-item text-danger" href="#" onclick="controlService('${service.name}', 'stop')"><i class="fas fa-stop"></i> Stop</a></li>
                         <li><a class="dropdown-item text-warning" href="#" onclick="controlService('${service.name}', 'restart')"><i class="fas fa-redo"></i> Restart</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item text-primary" href="#" onclick="runAIAnalysis('${service.name}')"><i class="fas fa-brain"></i> AI Diagnosis</a></li>
                     </ul>
                 </div>
             `;
