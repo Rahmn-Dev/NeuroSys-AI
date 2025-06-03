@@ -65,7 +65,43 @@
                     </div>
                 </div>
             </div>
-
+            <!-- Failed Services Table -->
+            {% if failed_services %}
+            <div class="card ">
+                <div class="card-header bg-danger " style="    margin-bottom: 0px; color: white; border-top-left-radius: 14px;border-top-right-radius: 14px;  padding: 33px 22px; position: relative; overflow: hidden; ">
+                    <h5 class="text-white"><i class="fas fa-exclamation-triangle"></i> Failed Services</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Service Name</th>
+                                <th>Description</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for service in failed_services %}
+                            <tr>
+                                <td><strong>{{ service.name }}</strong></td>
+                                <td>{{ service.description }}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-primary"
+                                            onclick="runAIAnalysis('{{ service.name }}')">
+                                        AI Diagnosis
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% else %}
+            <div class="alert alert-success mt-5">
+                <i class="fas fa-check-circle"></i> All services are running normally.
+            </div>
+            {% endif %}
             <!-- Services Table -->
             <div class="card" style="border-top-left-radius: 14px;     border-top-right-radius: 14px;">
                 <div class="card-header  single-settings-box top-flashlight light-xl leftside overflow-hidden " style="    margin-bottom: 0px; color: white; border-top-left-radius: 14px;border-top-right-radius: 14px;  padding: 33px 22px; position: relative; overflow: hidden; ">
@@ -74,6 +110,7 @@
         
                 </div>
                 <div class="card-body single-settings-box top-flashlight light-xl leftside">
+                    
                     <table class="table table-hover table-responsive">
                         <thead class="bg-light">
                             <tr>
@@ -382,6 +419,22 @@
             console.error("Error controlling service:", error);
             Swal.fire("Error", "An unexpected error occurred.", "error");
         }
+    }
+    function runAIAnalysis(serviceName) {
+        $("#analysisResult").html(`<div class="alert alert-info">Analyzing ${serviceName}...</div>`);
+
+        $.post("/ai-analyze-service/", { service: serviceName }, function(response) {
+            let content = `
+                <div class="alert alert-warning">
+                    <strong>🔍 Diagnosis:</strong><br>
+                    <pre>${response.diagnosis}</pre>
+                </div>
+                <button class="btn btn-success btn-sm" onclick="fixService('${serviceName}')">
+                    <i class="fas fa-robot"></i> Fix with AI
+                </button>
+            `;
+            $("#analysisResult").html(content);
+        });
     }
 </script>
 {% endblock %}

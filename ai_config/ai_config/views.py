@@ -14,6 +14,9 @@ from django_ratelimit.decorators import ratelimit
 from rest_framework.decorators import api_view
 from rest_framework import status
 from rest_framework.response import Response
+from langchain_ollama import OllamaLLM
+# Inisialisasi model AI
+llm = OllamaLLM(model="qwen2.5-coder:latest")
 
 @login_required
 def chatAI(request):
@@ -253,7 +256,8 @@ from django.views.decorators.csrf import csrf_exempt
 
 @login_required
 def service_control(request):
-    return render(request,"service_control.html",{'headTitle' : 'Service Control'})
+    failed_services = get_failed_services()
+    return render(request,"service_control.html",{'headTitle' : 'Service Control', 'failed_services': failed_services})
 
 import json
 
@@ -395,3 +399,68 @@ def logs_report(request):
    recommendations = models.AIRecommendation.objects.all().order_by('-created_at')[:20]
    suricata_logs = models.SuricataLog.objects.all()[:10]
    return render(request, "logs_report.html", {'recommendations': recommendations, 'suricata_logs': suricata_logs})
+
+def get_failed_services():
+    try:
+        result = subprocess.check_output(
+            "systemctl list-units --type=service --state=failed",
+            shell=True,
+            text=True
+        )
+        lines = result.strip().splitlines()
+        services = []
+        for line in lines[1:-7]:  # skip header & footer
+            if line.strip() and not line.startswith(" "):
+                parts = line.split()
+                service_name = parts[0]
+                description = " ".join(parts[1:-1])
+                services.append({
+                    "name": service_name,
+                    "description": description
+                })
+        return services
+    except Exception as e:
+        return []
+    
+def ai_analyze_service(request):
+    service = request.POST.get("service")
+    log_data = subprocess.check_output(
+        f"journalctl -u {service} --since '5 minutes ago'",
+        shell=True,
+        text=True
+    )
+
+    prompt = f"""
+    You are a Linux system assistant.
+    The following service is in failed state: {service}
+    Here are the logs from the last 5 minutes:
+
+    {log_data}
+
+    Identify the cause of the failure and recommend one action to fix it.
+    If possible, generate the exact bash command to fix the issue.
+    """
+
+    llm_response = llm.run(prompt)
+
+    return JsonResponse({
+        "diagnosis": llm_response
+    })
+
+def ai_fix_service(request):
+    service = request.POST.get("service")
+    # Ambil diagnosis dari AI (bisa dari cache/db jika sudah disimpan)
+    # Di sini kita asumsikan diagnosis menghasilkan perintah seperti:
+    command = "sudo nginx -t && sudo systemctl restart nginx"
+
+    try:
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        return JsonResponse({
+            "status": "success",
+            "output": result.stdout + "\n\n✅ Service restarted successfully."
+        })
+    except Exception as e:
+        return JsonResponse({
+            "status": "error",
+            "output": str(e)
+        })
