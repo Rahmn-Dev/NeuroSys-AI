@@ -34,6 +34,7 @@ urlpatterns = [
     path('test/', views.sysadmin_prompt, name='sysadmin_prompt'),
     path('services-control/', views.service_control, name='services-control'),
     path('dashboard/', views.dashboard, name='dashboard'),
+    path('ai-optimization/', views.ai_optimization, name='ai_optimization'),
     path('login/', views.user_login, name='login'),
     path('logout/', views.user_logout, name='logout'),
      path('2fa/', views.setup_2fa, name='setup_2fa'),  # Add this line
@@ -45,5 +46,7 @@ urlpatterns = [
     path('api/save-service-config/<str:service_name>/', views.save_service_config, name='save_service_config'),
     path('api/v1/system_status/', chatbot_views.system_status, name='system_status'),
     # path('fetch_geolocation/', chatbot_views.fetch_geolocation, name='fetch_geolocation'),
+     path('run-analysis/', views.run_analysis, name='run_analysis'),
+     path('logs-report/', views.logs_report, name='logs_report'),
 ]
 

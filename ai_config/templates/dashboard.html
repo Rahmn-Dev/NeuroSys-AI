@@ -17,7 +17,10 @@
                         <div class="content-section">
                             <h4 class="title">👋 Welcome, {{user.username}}</h4>
                         </div>
-                       
+                        <div>
+                            <button id="analyzeBtn" class="btn btn-primary">Run AI Analysis</button>
+                            <div id="status" style="margin-top: 10px;"></div>
+                        </div>
                     </div>
 
                     <!-- <div class="rainbow-generartor-section rainbow-section-gap">
@@ -211,29 +214,42 @@
                                     </table>
                                 </div>
                             </div>
-                            <div>
-                                <div class="card is rainbow-address bg-flashlight" style="border-radius: 14px; background: white; padding: 20px; position: relative; overflow: hidden;">
+                           
+                        </div>
+                        <div class="col-md-12 col-sm-12 col-lg-12 h-100" style="padding: 12px;">
+                           
+                                <div class="card is rainbow-address bg-flashlight" style="display: flex;flex-flow: wrap;     flex-direction: row;     flex-wrap: wrap;     justify-content: center; border-radius: 14px; background: white; padding: 20px; position: relative; overflow: hidden;">
+                                    <div class="col-md-12 col-lg-12 col-sm-12">
                                     <h4 class="theme-gradient text-center">Logs and Activity</h4>
-                                    <!-- Chart for Logs -->
-                                    <canvas id="logsPolarChart" style="height: 300px; margin-bottom: 20px;"></canvas>
-                                    <!-- Search Input -->
-                                    <!-- Table for Logs -->
-                                    <table id="logsTable" class="display" style="width: 100%;">
-                                        <thead>
-                                            <tr>
-                                                <th>Timestamp</th>
-                                                <th>Message</th>
-                                                <th>Severity</th>
-                                                <th>Source IP</th>
-                                                <th>Destination IP</th>
-                                                <th>Protocol</th>
-                                                <th>Classification</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody></tbody>
-                                    </table>
+                                    </div>
+                                    <div class="col-md-4 col-lg-4 col-sm-12" style="
+                                    padding: 10px;
+                                ">
+                                        <div id="logsPolarChart" style="height: 250px; margin-bottom: 20px;"></div>
+                                        <div id="logsLineChart" style="height: 250px; margin-bottom: 20px;"></div>
+                                    </div>
+                                    <div class="col-md-8 col-lg-8 col-sm-12"
+                                    style="
+    padding: 10px;
+">
+                                        <table id="logsTable" class="display" style="width: 100%;">
+                                            <thead>
+                                                <tr>
+                                                    <th>Timestamp</th>
+                                                    <th>Message</th>
+                                                    <th>Severity</th>
+                                                    <th>Source IP</th>
+                                                    <th>Destination IP</th>
+                                                    <th>Protocol</th>
+                                                    <th>Classification</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody></tbody>
+                                        </table>
+                                    </div>
+                                   
                                 </div>
-                            </div>
+                            
                         </div>
                        
                     <!-- Network Connections Card -->
@@ -296,6 +312,8 @@
 
 {% endblock content %}
 {% block script %}
+<!-- Jika menggunakan CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://code.highcharts.com/highcharts.js"></script>
@@ -746,6 +764,7 @@ async function fetchLogs() {
         const data = await response.json();
         logsData = data;
         updateLogsPolarChart();
+        updateLogsLineChart();
         initializeDataTables(); // Inisialisasi Tabulator setelah data diterima
     } catch (error) {
         console.error('Error fetching logs:', error);
@@ -766,80 +785,170 @@ function initializeDataTables() {
         paging: true, // Aktifkan paginasi
         searching: true, // Aktifkan pencarian
         ordering: true, // Aktifkan pengurutan
-        pageLength: 10, // Jumlah baris per halaman
+        pageLength: 5, // Jumlah baris per halaman
     });
 }
 // Inisialisasi doughnut chart untuk logs
+let logsPolarChart;
+
 function initializeLogsPolarChart() {
-    const ctx = document.getElementById('logsPolarChart').getContext('2d');
-    window.logsPolarChart = new Chart(ctx, {
-        type: 'polarArea',
-        data: {
-            labels: [], // Labels akan diisi secara dinamis
-            datasets: [{
-                label: 'Logs by Classification',
-                data: [], // Data akan diisi secara dinamis
-                backgroundColor: [
-                    'rgba(255, 99, 132, 0.6)',
-                    'rgba(54, 162, 235, 0.6)',
-                    'rgba(255, 206, 86, 0.6)',
-                    'rgba(75, 192, 192, 0.6)',
-                    'rgba(153, 102, 255, 0.6)',
-                    'rgba(255, 159, 64, 0.6)',
-                ],
-                borderColor: [
-                    'rgba(255, 99, 132, 1)',
-                    'rgba(54, 162, 235, 1)',
-                    'rgba(255, 206, 86, 1)',
-                    'rgba(75, 192, 192, 1)',
-                    'rgba(153, 102, 255, 1)',
-                    'rgba(255, 159, 64, 1)',
-                ],
-                borderWidth: 1,
-            }],
+    logsPolarChart = Highcharts.chart('logsPolarChart', {
+        chart: {
+            polar: true,
+            type: 'column',
+            backgroundColor: 'transparent',
         },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: {
-                    position: 'top',
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function (context) {
-                            return `${context.label}: ${context.raw}`;
-                        },
-                    },
-                },
-            },
+        title: {
+            text: 'Logs by Classification',
+            align: 'center'
         },
+        pane: {
+            size: '80%'
+        },
+        xAxis: {
+            categories: [],
+            tickmarkPlacement: 'on',
+            lineWidth: 0
+        },
+        yAxis: {
+            gridLineInterpolation: 'polygon',
+            lineWidth: 0,
+            min: 0
+        },
+        tooltip: {
+            shared: true,
+            pointFormat: '<span style="color:{series.color}">{series.name}: <b>{point.y}</b><br/>'
+        },
+        plotOptions: {
+            column: {
+                pointPadding: 0,
+                groupPadding: 0
+            }
+        },
+        series: [{
+            name: 'Log Count',
+            data: [],
+            pointPlacement: 'on'
+        }]
+    });
+}
+let logsLineChart;
+
+function initializeLogsLineChart() {
+    logsLineChart = Highcharts.chart('logsLineChart', {
+        chart: {
+            type: 'line',
+            backgroundColor: 'transparent',
+        },
+        title: {
+            text: 'Logs Over Time'
+        },
+        xAxis: {
+            type: 'datetime',
+            title: {
+                text: 'Time'
+            }
+        },
+        yAxis: {
+            title: {
+                text: 'Number of Logs'
+            }
+        },
+        tooltip: {
+            shared: true,
+            crosshairs: true,
+            xDateFormat: '%Y-%m-%d %H:%M:%S'
+        },
+        plotOptions: {
+            line: {
+                marker: {
+                    enabled: true
+                }
+            }
+        },
+        series: [{
+            name: 'Log Count',
+            data: [],
+            color: '#36A2EB'
+        }]
     });
 }
 
-// Fungsi untuk memperbarui Polar Area Chart
 function updateLogsPolarChart() {
     const classificationCounts = {};
     logsData.forEach(log => {
-        if (classificationCounts[log.classification]) {
-            classificationCounts[log.classification]++;
+        const key = log.classification || 'Unknown';
+        classificationCounts[key] = (classificationCounts[key] || 0) + 1;
+    });
+
+    const categories = Object.keys(classificationCounts);
+    const counts = categories.map(cat => classificationCounts[cat]);
+
+    if (logsPolarChart) {
+        logsPolarChart.xAxis[0].setCategories(categories);
+        logsPolarChart.series[0].setData(counts);
+    }
+}
+function updateLogsLineChart() {
+    const logTimestamps = {};
+    
+    logsData.forEach(log => {
+        // Gunakan Luxon
+        const { DateTime } = luxon;
+        const luxDate = DateTime.fromISO(log.timestamp);
+        
+        if (!luxDate.isValid) return;
+
+        const dateKey = luxDate.toFormat("yyyy-MM-dd HH:mm:ss"); // Bisa juga gunakan "yyyy-MM-dd"
+        const roundedToMinute = luxDate.set({ second: 0, millisecond: 0 }).toMillis(); // Agar lebih rapi
+        
+        if (logTimestamps[roundedToMinute]) {
+            logTimestamps[roundedToMinute]++;
         } else {
-            classificationCounts[log.classification] = 1;
+            logTimestamps[roundedToMinute] = 1;
         }
     });
 
-    const chart = window.logsPolarChart;
-    if (chart) {
-        chart.data.labels = Object.keys(classificationCounts);
-        chart.data.datasets[0].data = Object.values(classificationCounts);
-        chart.update();
+    const sortedDates = Object.keys(logTimestamps).map(Number).sort(); // Urutkan berdasarkan waktu
+    const seriesData = sortedDates.map(time => [time, logTimestamps[time]]);
+
+    if (logsLineChart) {
+        logsLineChart.series[0].setData(seriesData);
     }
 }
+
 
 document.addEventListener("DOMContentLoaded", function () {
     initializeCharts();
     initializeLogsPolarChart();
+    initializeLogsLineChart(); 
     fetchLogs();
 });
 
+$("#analyzeBtn").click(function () {
+    var button = $(this);
+    var originalText = button.text();
+
+    // Ganti teks tombol & disable
+    button.text("Running...").prop("disabled", true);
+    $("#status").text("AI analysis is running...").css("color", "orange");
+
+    // Kirim request AJAX
+    $.get("/run-analysis/", function(response) {
+        console.log("✅ Analisis selesai:", response.status);
+
+        // Kembalikan tombol ke keadaan awal
+        button.text(originalText).prop("disabled", false);
+        $("#status").text("Analysis completed successfully.").css("color", "green");
+
+        // (Opsional) reload halaman setelah selesai
+        // location.reload();
+
+    }).fail(function(error) {
+        console.error("❌ Error saat menjalankan analisis:", error.responseText);
+        button.text(originalText).prop("disabled", false);
+        $("#status").text("Error occurred during analysis.").css("color", "red");
+    });
+});
 </script>
 {% endblock %}

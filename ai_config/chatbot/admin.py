@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import ChatSession, ChatMessage, Profile, SuricataLog
+from .models import ChatSession, ChatMessage, Profile, SuricataLog, AIRecommendation
 
 
 @admin.register(ChatSession)
@@ -23,6 +23,11 @@ class ChatMessageAdmin(admin.ModelAdmin):
 class ProfileAdmin(admin.ModelAdmin):
     list_display = ('user', 'is_active_session')
     search_fields = ('user__username',)
+
+@admin.register(AIRecommendation)
+class AIRecommendationAdmin(admin.ModelAdmin):
+    list_display = ('category', 'title','description','recommendation' )
+    
 
 
 @admin.register(SuricataLog)

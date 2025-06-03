@@ -27,6 +27,10 @@ def index(request):
 def dashboard(request):
     return render(request, "dashboard.html", { 'headTitle':'Dashboard' })
 
+@login_required
+def ai_optimization(request):
+    return render(request, "ai_optimization.html", { 'headTitle':'AI Optimization' })
+
 
 from django.core.cache import cache
 from django.contrib import messages
@@ -376,3 +380,18 @@ def sysadmin_prompt(request):
         prompt = request.POST.get("prompt")
         result = run_prompt(prompt)
     return render(request, "sysadmin_prompt.html", {"result": result})
+
+from .tasks import analyze_general_and_save  # fungsi AI-mu
+
+def run_analysis(request):
+    try:
+        analyze_general_and_save()  # fungsi AI-mu
+        return JsonResponse({"status": "success", "message": "Analysis completed"})
+    except Exception as e:
+        return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+from chatbot import models
+def logs_report(request):
+   recommendations = models.AIRecommendation.objects.all().order_by('-created_at')[:20]
+   suricata_logs = models.SuricataLog.objects.all()[:10]
+   return render(request, "logs_report.html", {'recommendations': recommendations, 'suricata_logs': suricata_logs})

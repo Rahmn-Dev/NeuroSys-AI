@@ -123,10 +123,23 @@ $(window).on("load", function() {
 
 $(function() {
 
+  function updateTime() {
+    const now = new Date();
+    const timeString = now.toLocaleTimeString('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+    document.getElementById('time_count').textContent = timeString;
+  }
+
+  // Update immediately and then every second
+  updateTime();
+  setInterval(updateTime, 1000);
   // --------------------------------------------- //
   // KBW-Countdown Start
   // --------------------------------------------- //
-  $('#countdown').countdown({until: $.countdown.UTCDate(+10, 2024, 5, 12), format: 'D'});
+  $('#countdown').countdown({until: $.countdown.UTCDate(+10, 2025, 5, 12), format: 'D'});
   // --------------------------------------------- //
   // KBW-Countdown End
   // --------------------------------------------- //

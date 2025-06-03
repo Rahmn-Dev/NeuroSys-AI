@@ -79,20 +79,16 @@
 
             <div class="rbt-static-bar">
                 <form class="new-chat-form border-gradient" @submit.prevent="sendMessages()">
-                    <textarea id="txtarea" v-model="userInput" rows="1" placeholder="Send a message..." @keydown.enter.prevent="sendMessages()"></textarea>
                     <div class="left-icons">
-                        <div title="ChatenAI" class="form-icon icon-gpt">
-                            <i class="feather-aperture"></i>
-                        </div>
+                       
                     </div>
+                    <textarea  id="txtarea" v-model="userInput" rows="1" placeholder="Send a message..." @keydown.enter.prevent="sendMessages()"></textarea>
                     <div class="right-icons">
                         <div class="form-icon icon-plus" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-custom-class="custom-tooltip" data-bs-title="Choose File">
                             <input type="file" class="input-file" name="myfile" multiple>
                             <i class="feather-plus-circle"></i>
                         </div>
-                        <button class="form-icon icon-mic" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-custom-class="custom-tooltip" data-bs-title="Voice Search">
-                            <i class="feather-mic"></i>
-                        </button>
+                      
                         <button id="send" class="form-icon icon-send"  data-bs-toggle="tooltip" data-bs-placement="top" data-bs-custom-class="custom-tooltip" data-bs-title="Send message">
                             <lord-icon
     src="https://cdn.lordicon.com/vduvxizq.json"
@@ -266,6 +262,7 @@ new Vue({
         userInput: '',
         messages: [],
         activeSession: '',
+        selectedCategory: 'general',
         searchQuery: '',
         csrfToken: '',
         currentPrompt: '',

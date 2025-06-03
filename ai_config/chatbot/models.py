@@ -69,3 +69,13 @@ class SuricataLog(models.Model):
     class Meta:
         ordering = ['-timestamp']
         
+
+class AIRecommendation(models.Model):
+    category = models.CharField(max_length=50)  # security / maintenance
+    title = models.CharField(max_length=255)
+    description = models.TextField()
+    recommendation = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.category} - {self.title}"
