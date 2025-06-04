@@ -1,0 +1,166 @@
+{% extends 'layout/layout1.html' %}
+{% block style %}
+<style>
+    body { font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background-color: #f0f0f0; }
+    .main-container { display: flex; flex: 1; overflow: hidden; }
+    .left-panel { flex: 2; display: flex; flex-direction: column; padding: 10px; background-color: #fff; border-right: 1px solid #ccc; }
+    .right-panel { flex: 1; padding: 10px; background-color: #e9e9e9; overflow-y: auto; }
+    
+    #bash-output-container {
+        flex-grow: 1; /* Takes available space */
+        background-color: #282c34; /* Dark background for terminal */
+        color: #abb2bf; /* Light text for terminal */
+        padding: 15px;
+        overflow-y: auto; /* Scroll for long output */
+        border-radius: 5px;
+        margin-bottom: 10px; /* Space between terminal and AI response in left panel if layout changes */
+    }
+    #bash-output-container h3 { color: #61afef; margin-top:0; } /* Blueish for heading */
+    #bash-output-container pre { white-space: pre-wrap; word-wrap: break-word; font-family: 'Courier New', Courier, monospace; }
+
+    #ai-response-container {
+        /* flex-grow: 1; /* Takes available space, use if AI response is in its own growing panel */
+        background-color: #f9f9f9;
+        padding: 15px;
+        overflow-y: auto;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+    }
+    #ai-response-container h3 { margin-top:0; }
+
+
+    .chat-input-container { padding: 10px; background-color: #fff; border-top: 1px solid #ccc; }
+    #chat-input { width: calc(100% - 80px); padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+    #send-button { width: 70px; padding: 10px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+    #send-button:hover { background-color: #0056b3; }
+    .loader {
+        border: 4px solid #f3f3f3; border-radius: 50%; border-top: 4px solid #3498db;
+        width: 20px; height: 20px; animation: spin 1s linear infinite;
+        display: none; /* Hidden by default */ margin-left: 10px;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+</style>
+
+{% endblock %}
+{% block content %}
+<div class="rbt-main-content">
+    <div class="rbt-daynamic-page-content">
+
+        <!-- Dashboard Center Content -->
+        <div class="rbt-dashboard-content">
+            <div class="content-page">
+                <div class="main-container">
+                    <div class="left-panel">
+                        <h3>Bash Command Output</h3>
+                        <div id="bash-output-container">
+                            <pre id="command-display" style="
+                            background: black;
+                          
+                        "></pre>
+                            <hr>
+                            <pre id="stdout-display" style="
+                            background: black;
+                        "></pre>
+                            <pre id="stderr-display" style="color: #e06c75;"></pre> </div>
+                    </div>
+                    <div class="right-panel">
+                        <h3>AI Response & Explanation</h3>
+                        <div id="ai-response-container">
+                            <pre id="ai-explanation"></pre>
+                        </div>
+                    </div>
+                </div>
+            
+                <div class="chat-input-container">
+                    <input type="text" id="chat-input" placeholder="Ketik perintah Anda (misal: list files in current directory)...">
+                    <button id="send-button">Kirim</button>
+                    <div class="loader" id="loader"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock content  %}
+{% block script %}
+<script>
+    const chatInput = document.getElementById('chat-input');
+    const sendButton = document.getElementById('send-button');
+    const commandDisplay = document.getElementById('command-display');
+    const stdoutDisplay = document.getElementById('stdout-display');
+    const stderrDisplay = document.getElementById('stderr-display');
+    const aiExplanationDisplay = document.getElementById('ai-explanation');
+    const loader = document.getElementById('loader');
+
+    // Anda perlu URL yang benar ke API Django Anda
+    const apiUrl = '/api/react_chat_interface_lc/'; // Sesuaikan dengan URL di urls.py
+
+    async function sendMessage() {
+        const message = chatInput.value.trim();
+        if (!message) return;
+
+        // Tampilkan loader dan disable input
+        loader.style.display = 'inline-block';
+        sendButton.disabled = true;
+        chatInput.disabled = true;
+
+        // Kosongkan output sebelumnya
+        commandDisplay.textContent = '';
+        stdoutDisplay.textContent = '';
+        stderrDisplay.textContent = '';
+        aiExplanationDisplay.textContent = 'Memproses...';
+
+        try {
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    // 'X-CSRFToken': 'DAPATKAN_CSRF_TOKEN_JIKA_PERLU' // Untuk produksi
+                },
+                body: JSON.stringify({ message: message })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({error: `HTTP error! status: ${response.status}`}));
+                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            // aiExplanationDisplay.textContent = data.ai_explanation || "AI tidak memberikan penjelasan.";
+            aiExplanationDisplay.textContent = data.ai_final_answer || "AI tidak memberikan penjelasan.";
+            
+            if (data.generated_command) {
+                commandDisplay.textContent = `$ ${data.generated_command}`;
+            } else {
+                commandDisplay.textContent = "(Tidak ada perintah yang dieksekusi oleh AI)";
+            }
+
+            stdoutDisplay.textContent = data.command_output || "";
+            if (data.command_error) {
+                stderrDisplay.textContent = `Error: ${data.command_error}`;
+            } else {
+                 stderrDisplay.textContent = ""; // Clear previous errors
+            }
+
+        } catch (error) {
+            console.error('Error:', error);
+            aiExplanationDisplay.textContent = `Error: ${error.message}`;
+            stderrDisplay.textContent = `Error frontend: ${error.message}`;
+        } finally {
+            // Sembunyikan loader dan enable input
+            loader.style.display = 'none';
+            sendButton.disabled = false;
+            chatInput.disabled = false;
+            chatInput.value = ''; // Kosongkan input setelah dikirim
+            chatInput.focus();
+        }
+    }
+
+    sendButton.addEventListener('click', sendMessage);
+    chatInput.addEventListener('keypress', function(event) {
+        if (event.key === 'Enter') {
+            sendMessage();
+        }
+    });
+</script>
+{% endblock script %}

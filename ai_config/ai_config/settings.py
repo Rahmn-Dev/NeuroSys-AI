@@ -27,7 +27,8 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['*']
 
-
+OLLAMA_URL = "http://localhost:11434/api/generate"
+OLLAMA_MODEL = "qwen2.5-coder:latest"
 
 # Application definition
 

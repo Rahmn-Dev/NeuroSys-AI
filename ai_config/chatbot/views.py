@@ -12,7 +12,7 @@ import ansible_runner
 import re
 from django.http import JsonResponse
 from django.shortcuts import render
-
+from django.conf import settings
 @api_view(['GET'])
 def system_status(request):
     status = {
@@ -35,7 +35,8 @@ ANSIBLE_CONFIG_DIR = os.path.join(LOG_DIR, "ansible_config")
 logging.basicConfig(filename=LOG_FILE, level=logging.INFO, format="%(asctime)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
+OLLAMA_URL = getattr(settings, "OLLAMA_URL")
+
 
 # ds = load_dataset("mrheinen/linux-commands")
 DATASET_PATH = os.path.join(os.path.dirname(__file__), "../dataset/ds.json")

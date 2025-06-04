@@ -31,7 +31,11 @@ urlpatterns = [
     # path('api/', include('chatbot.urls')),
     path('', views.dashboard, name='index'),
     path('chat/', views.chatAI, name='chat'),
+    # experimental testing
+    path('api/chat/', views.chat_interface, name='chat interface'),
+    path('api/react_chat_interface_lc/', views.react_chat_interface_lc, name='react_chat_interface_lc'),
     path('test/', views.sysadmin_prompt, name='sysadmin_prompt'),
+    # end
     path('services-control/', views.service_control, name='services-control'),
     path('dashboard/', views.dashboard, name='dashboard'),
     path('ai-optimization/', views.ai_optimization, name='ai_optimization'),
