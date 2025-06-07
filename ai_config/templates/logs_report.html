@@ -64,9 +64,12 @@
                                                 </p>
                                                 <hr />
                                                 <strong>AI Recommendation:</strong>
-                                                <pre style="background: #f1f1f1; font-size: 14px; padding: 10px; border-radius: 8px; white-space: pre-wrap; word-break: break-word;">
-            {{ rec.recommendation }}
-                                                </pre>
+                                                <div class="markdown-content" data-markdown="{{ rec.recommendation|escapejs }}" style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 10px; border: 1px solid #dee2e6;">
+                                                    <!-- Content akan diisi oleh JavaScript -->
+                                                    <div class="loading-markdown">
+                                                        <i class="fas fa-spinner fa-spin"></i> Processing recommendation...
+                                                    </div>
+                                                </div>
                                                 <small class="text-muted">{{ rec.created_at|date:"Y-m-d H:i:s" }}</small>
                                             </div>
                                         </div>
@@ -161,6 +164,27 @@ pre {
 {% block script %}
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script> 
 <script>
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    function parseMarkdownWithCodeBlocks(text) {
+    if (!text) return '';
+
+    // Configure marked with options
+    marked.setOptions({
+        highlight: function(code, lang) {
+            const language = lang || 'text';
+            return `<div class="language-label">${language}</div><div class="code-block"><code class="language-${language}">${escapeHtml(code)}</code></div>`;
+        },
+        breaks: true,
+        gfm: true
+    });
+
+    // Parse markdown to HTML
+    return marked.parse(text);
+}
 $("#analyzeBtn").click(function () {
     var button = $(this);
     var originalText = button.text();

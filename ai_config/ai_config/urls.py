@@ -31,6 +31,7 @@ urlpatterns = [
     # path('api/', include('chatbot.urls')),
     path('', views.dashboard, name='index'),
     path('chat/', views.chatAI, name='chat'),
+    path('chat2/', views.chatAI2, name='chat'),
     # experimental testing
     path('api/chat/', views.chat_interface, name='chat interface'),
     path('api/react_chat_interface_lc/', views.react_chat_interface_lc, name='react_chat_interface_lc'),
@@ -52,5 +53,8 @@ urlpatterns = [
     # path('fetch_geolocation/', chatbot_views.fetch_geolocation, name='fetch_geolocation'),
      path('run-analysis/', views.run_analysis, name='run_analysis'),
      path('logs-report/', views.logs_report, name='logs_report'),
+     path('ai-analyze-service/', views.ai_analyze_service, name='ai_analyze_service'),
+     path('ai-analyze-service-v2/', views.ai_analyze_service_v2, name='ai_analyze_service_v2'),
+     path('ai-fix-service-v2/', views.ai_fix_service_v2, name='ai_fix_service_v2'),
 ]
 

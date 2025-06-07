@@ -1,4 +1,7 @@
 {% extends './layout/layout1.html' %}
+{% block style %}
+
+{% endblock style%}
 {% block content %}
 
 <div class="rbt-main-content mr--0 ">
@@ -106,6 +109,7 @@
                 <i class="fas fa-check-circle"></i> All services are running normally.
             </div>
             {% endif %}
+            <div id="analysisResult" class="mt-4"></div>
             <!-- Services Table -->
             <div class="card" style="border-top-left-radius: 14px;     border-top-right-radius: 14px;">
                 <div class="card-header  single-settings-box top-flashlight light-xl leftside overflow-hidden " style="    margin-bottom: 0px; color: white; border-top-left-radius: 14px;border-top-right-radius: 14px;  padding: 33px 22px; position: relative; overflow: hidden; ">
@@ -280,7 +284,7 @@
             // Actions
             const actions = document.createElement('td');
             actions.innerHTML = `
-                <div class="dropdown">
+                <div class="dropdown" >
                     <button class="btn btn-secondary dropdown-toggle" type="button" id="actionsDropdown_${service.name}" data-bs-toggle="dropdown" aria-expanded="false">
                         Actions
                     </button>
@@ -323,8 +327,8 @@
         const statusLower = status.toLowerCase();
         let badgeClass = '';
         if (statusLower === 'active' || statusLower === 'running') badgeClass = 'badge bg-success';
-        else if (statusLower === 'inactive' || statusLower === 'dead' ) badgeClass = 'badge bg-danger';
-        else if (statusLower === 'exited' ) badgeClass = 'badge bg-warning';
+        else if (statusLower === 'inactive' || statusLower === 'dead' || statusLower === 'failed' ) badgeClass = 'badge bg-danger';
+        else if (statusLower === 'exited' || statusLower === 'not-found' ) badgeClass = 'badge bg-warning';
         else badgeClass = 'badge bg-secondary';
 
         return `<span class="${badgeClass}">${status}</span>`;
@@ -426,20 +430,62 @@
             Swal.fire("Error", "An unexpected error occurred.", "error");
         }
     }
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    function parseMarkdownWithCodeBlocks(text) {
+    if (!text) return '';
+
+    // Configure marked with options
+    marked.setOptions({
+        highlight: function(code, lang) {
+            const language = lang || 'text';
+            return `<div class="language-label">${language}</div><div class="code-block"><code class="language-${language}">${escapeHtml(code)}</code></div>`;
+        },
+        breaks: true,
+        gfm: true
+    });
+
+    // Parse markdown to HTML
+    return marked.parse(text);
+}
     function runAIAnalysis(serviceName) {
+        const csrftoken = document.getElementById('csrfToken').value;
+
         $("#analysisResult").html(`<div class="alert alert-info">Analyzing ${serviceName}...</div>`);
 
-        $.post("/ai-analyze-service/", { service: serviceName }, function(response) {
+        $.post("/ai-analyze-service-v2/", { 
+            service: serviceName, 
+            csrfmiddlewaretoken: csrftoken  
+        }, function(response) {
+            // Parse markdown response
+            const formattedDiagnosis = parseMarkdownWithCodeBlocks(response.ai_analysis);
+            
             let content = `
                 <div class="alert alert-warning">
-                    <strong>🔍 Diagnosis:</strong><br>
-                    <pre>${response.diagnosis}</pre>
+                   <div class="col" style="
+                        display: flex;
+                        flex-direction: row;
+                        flex-wrap: nowrap;
+                        align-content: center;
+                        justify-content: space-between;
+                        align-items: center;
+                    ">
+                                        <strong>🔍 Diagnosis</strong><br>
+                                        <button class="btn btn-success btn-sm" onclick="fixService('${serviceName}')">
+                                            <i class="fas fa-robot"></i> Fix with AI
+                                        </button>
+                                        </div>
+                    ${formattedDiagnosis}
                 </div>
-                <button class="btn btn-success btn-sm" onclick="fixService('${serviceName}')">
-                    <i class="fas fa-robot"></i> Fix with AI
-                </button>
+                
             `;
             $("#analysisResult").html(content);
+            
+            // Apply syntax highlighting
+            Prism.highlightAll();
         });
     }
 </script>
