@@ -17,6 +17,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 import os
 from decouple import config
 SECRET_KEY = config("DJANGO_SECRET_KEY", default="default-secret-key")
+OPENAI_KEY = config("OPENAI_API_KEY", default="openai-key")
+GEMINI_KEY = config("GEMINI_API_KEY", default="gemini-key")
+MISTRAL_API_KEY = config("MISTRAL_API_KEY", default="mistral-key")
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
@@ -46,6 +49,7 @@ INSTALLED_APPS = [
     'chatbot',
     # 'corsheaders',
     'psutil',
+    # 'ai_config',
 
     'django_otp',  # Core OTP support
     'django_otp.plugins.otp_totp',  # Time-based OTP (TOTP)

@@ -3,6 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
 from django.contrib import messages
 from django.contrib.auth import logout
+# from django.contrib.auth.models import User
 import psutil, os, subprocess
 from django.http import JsonResponse
 from datetime import datetime
@@ -31,10 +32,15 @@ from typing import Dict, List, Optional, Any
 from langchain.agents import initialize_agent
 import time
 
+import asyncio
+
 # Inisialisasi model AI
 llm = OllamaLLM(model="qwen2.5-coder:latest")
 OLLAMA_URL = getattr(settings, "OLLAMA_URL")
 OLLAMA_MODEL = getattr(settings, "OLLAMA_MODEL")
+OPENAI_API_KEY = getattr(settings, "OPENAI_KEY")
+GEMINI_API_KEY = getattr(settings, "GEMINI_KEY")
+MISTRAL_API_KEY = getattr(settings, "MISTRAL_API_KEY")
 
 @login_required
 def chatAI(request):
@@ -1584,27 +1590,6 @@ def ai_fix_service_v2(request):
         fixer = AIServiceFixer(llm_client)
         result = fixer.analyze_and_fix(service, auto_fix=confirm_fixes)
         
-        # Mock response for demo
-        # mock_result = {
-        #     "service": service,
-        #     "fixes_applied": confirm_fixes,
-        #     "actions_taken": [
-        #         {
-        #             "type": "command",
-        #             "description": "Reloaded systemd daemon",
-        #             "success": True,
-        #             "output": "Daemon reloaded successfully"
-        #         },
-        #         {
-        #             "type": "command", 
-        #             "description": f"Restarted service {service}",
-        #             "success": True,
-        #             "output": f"Service {service} restarted successfully"
-        #         }
-        #     ],
-        #     "final_status": "Service is now running",
-        #     "mcp_enhanced": True
-        # }
         
         return JsonResponse(result)
         
@@ -1613,3 +1598,1583 @@ def ai_fix_service_v2(request):
         return JsonResponse({
             "error": f"Fix failed: {str(e)}"
         }, status=500)
+
+
+# from chatbot.smart_agent import SmartAgent
+import openai
+import google.generativeai as genai
+from mistralai import Mistral
+
+# ## terbaru ==================================
+class AITools:
+    """Collection of tools that AI can use for system administration"""
+    
+    def __init__(self):
+        self.tool_registry = {
+            "file_read": self.file_read,
+            "file_write": self.file_write,
+            "file_edit": self.file_edit,
+            "execute_command": self.execute_command,
+            "service_control": self.service_control,
+            "config_validate": self.config_validate,
+            "backup_create": self.backup_create,
+            "backup_restore": self.backup_restore,
+            "security_scan": self.security_scan,
+            "network_scan": self.network_scan,
+            "log_analyze": self.log_analyze,
+            "package_manage": self.package_manage,
+            "user_manage": self.user_manage,
+            "permission_check": self.permission_check,
+            "process_monitor": self.process_monitor
+        }
+    
+    def get_available_tools(self):
+        """Return list of available tools for AI"""
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "file_read",
+                    "description": "Read contents of a file",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "file_path": {"type": "string", "description": "Path to the file to read"},
+                            "lines": {"type": "integer", "description": "Number of lines to read (optional)"}
+                        },
+                        "required": ["file_path"]
+                    }
+                }
+            },
+            {
+                "type": "function", 
+                "function": {
+                    "name": "file_write",
+                    "description": "Write content to a file",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "file_path": {"type": "string", "description": "Path to the file to write"},
+                            "content": {"type": "string", "description": "Content to write"},
+                            "mode": {"type": "string", "description": "Write mode: 'w' (overwrite) or 'a' (append)", "default": "w"}
+                        },
+                        "required": ["file_path", "content"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "file_edit",
+                    "description": "Edit specific lines in a file or replace text patterns",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "file_path": {"type": "string", "description": "Path to the file to edit"},
+                            "operation": {"type": "string", "description": "Edit operation: 'replace_line', 'insert_line', 'delete_line', 'replace_pattern'"},
+                            "line_number": {"type": "integer", "description": "Line number for line operations"},
+                            "content": {"type": "string", "description": "New content or pattern"},
+                            "replacement": {"type": "string", "description": "Replacement text for pattern operations"}
+                        },
+                        "required": ["file_path", "operation"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "execute_command",
+                    "description": "Execute a shell command",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "command": {"type": "string", "description": "Command to execute"},
+                            "timeout": {"type": "integer", "description": "Timeout in seconds", "default": 30},
+                            "working_dir": {"type": "string", "description": "Working directory"}
+                        },
+                        "required": ["command"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "service_control",
+                    "description": "Control systemd services",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "service_name": {"type": "string", "description": "Name of the service"},
+                            "action": {"type": "string", "description": "Action: start, stop, restart, reload, enable, disable, status"}
+                        },
+                        "required": ["service_name", "action"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "config_validate",
+                    "description": "Validate configuration files",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "service_type": {"type": "string", "description": "Type of service: nginx, apache, ssh, mysql, etc."},
+                            "config_path": {"type": "string", "description": "Path to config file"}
+                        },
+                        "required": ["service_type"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "security_scan",
+                    "description": "Perform security scans and audits",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "scan_type": {"type": "string", "description": "Type of scan: ports, users, permissions, logs, firewall"},
+                            "target": {"type": "string", "description": "Target for scan (optional)"}
+                        },
+                        "required": ["scan_type"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "log_analyze",
+                    "description": "Analyze system logs",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "log_file": {"type": "string", "description": "Path to log file"},
+                            "pattern": {"type": "string", "description": "Pattern to search for"},
+                            "lines": {"type": "integer", "description": "Number of lines to analyze", "default": 100}
+                        },
+                        "required": ["log_file"]
+                    }
+                }
+            }
+        ]
+    
+    def file_read(self, file_path, lines=None):
+        """Read file contents"""
+        try:
+            with open(file_path, 'r') as f:
+                if lines:
+                    content = ''.join(f.readlines()[:lines])
+                else:
+                    content = f.read()
+            
+            return {
+                "success": True,
+                "content": content,
+                "file_path": file_path,
+                "size": len(content)
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def file_write(self, file_path, content, mode="w"):
+        """Write to file"""
+        try:
+            # Create backup if file exists
+            backup_path = None
+            if os.path.exists(file_path):
+                backup_path = f"{file_path}.backup.{int(time.time())}"
+                subprocess.run(['cp', file_path, backup_path], check=True)
+            
+            with open(file_path, mode) as f:
+                f.write(content)
+            
+            return {
+                "success": True,
+                "file_path": file_path,
+                "backup_path": backup_path,
+                "bytes_written": len(content)
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def file_edit(self, file_path, operation, line_number=None, content=None, replacement=None):
+        """Edit file with specific operations"""
+        try:
+            # Create backup
+            backup_path = f"{file_path}.backup.{int(time.time())}"
+            subprocess.run(['cp', file_path, backup_path], check=True)
+            
+            with open(file_path, 'r') as f:
+                lines = f.readlines()
+            
+            if operation == "replace_line":
+                if line_number and 1 <= line_number <= len(lines):
+                    lines[line_number - 1] = content + '\n' if not content.endswith('\n') else content
+                
+            elif operation == "insert_line":
+                if line_number and 1 <= line_number <= len(lines) + 1:
+                    lines.insert(line_number - 1, content + '\n' if not content.endswith('\n') else content)
+                
+            elif operation == "delete_line":
+                if line_number and 1 <= line_number <= len(lines):
+                    del lines[line_number - 1]
+                    
+            elif operation == "replace_pattern":
+                file_content = ''.join(lines)
+                file_content = re.sub(content, replacement, file_content)
+                lines = file_content.splitlines(keepends=True)
+            
+            with open(file_path, 'w') as f:
+                f.writelines(lines)
+            
+            return {
+                "success": True,
+                "operation": operation,
+                "file_path": file_path,
+                "backup_path": backup_path
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def execute_command(self, command, timeout=30, working_dir=None):
+        """Execute shell command safely"""
+        # Security check - block dangerous commands
+        dangerous_patterns = [
+            'rm -rf /', 'dd if=', 'mkfs', 'fdisk', 'format', 
+            'del /f', 'deltree', '> /dev/', 'chmod 777 /',
+            'chown root /', 'sudo su', 'passwd'
+        ]
+        
+        if any(pattern in command.lower() for pattern in dangerous_patterns):
+            return {"success": False, "error": "Dangerous command blocked"}
+        
+        try:
+            kwargs = {
+                'capture_output': True,
+                'text': True,
+                'timeout': timeout
+            }
+            
+            if working_dir:
+                kwargs['cwd'] = working_dir
+            
+            result = subprocess.run(['bash', '-c', command], **kwargs)
+            
+            return {
+                "success": True,
+                "command": command,
+                "output": result.stdout,
+                "error": result.stderr,
+                "return_code": result.returncode,
+                "working_dir": working_dir
+            }
+        except subprocess.TimeoutExpired:
+            return {"success": False, "error": f"Command timeout ({timeout}s)"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def service_control(self, service_name, action):
+        """Control systemd services"""
+        valid_actions = ['start', 'stop', 'restart', 'reload', 'enable', 'disable', 'status']
+        
+        if action not in valid_actions:
+            return {"success": False, "error": f"Invalid action. Valid actions: {valid_actions}"}
+        
+        try:
+            result = subprocess.run(['systemctl', action, service_name], 
+                                  capture_output=True, text=True)
+            
+            return {
+                "success": True,
+                "service": service_name,
+                "action": action,
+                "output": result.stdout,
+                "error": result.stderr,
+                "return_code": result.returncode
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def config_validate(self, service_type, config_path=None):
+        """Validate configuration files"""
+        validation_commands = {
+            'nginx': ['nginx', '-t'],
+            'apache': ['apache2ctl', 'configtest'],
+            'apache2': ['apache2ctl', 'configtest'], 
+            'sshd': ['sshd', '-t'],
+            'ssh': ['sshd', '-t'],
+            'mysql': ['mysqld', '--help', '--verbose', '--dry-run'],
+            'postgresql': ['postgres', '--check-config']
+        }
+        
+        if service_type not in validation_commands:
+            return {"success": False, "error": f"Validation not supported for {service_type}"}
+        
+        try:
+            result = subprocess.run(validation_commands[service_type], 
+                                  capture_output=True, text=True)
+            
+            return {
+                "success": True,
+                "service_type": service_type,
+                "valid": result.returncode == 0,
+                "output": result.stdout,
+                "error": result.stderr
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def security_scan(self, scan_type, target=None):
+        """Perform security scans"""
+        try:
+            if scan_type == "ports":
+                result = subprocess.run(['netstat', '-tuln'], capture_output=True, text=True)
+                open_ports = []
+                for line in result.stdout.split('\n'):
+                    if 'LISTEN' in line:
+                        parts = line.split()
+                        if len(parts) >= 4:
+                            open_ports.append(parts[3])
+                
+                return {
+                    "success": True,
+                    "scan_type": scan_type,
+                    "open_ports": open_ports,
+                    "raw_output": result.stdout
+                }
+            
+            elif scan_type == "users":
+                # Check for suspicious users
+                result = subprocess.run(['cat', '/etc/passwd'], capture_output=True, text=True)
+                users_with_shell = []
+                
+                for line in result.stdout.split('\n'):
+                    if line and not line.startswith('#'):
+                        parts = line.split(':')
+                        if len(parts) >= 7 and parts[6] in ['/bin/bash', '/bin/sh', '/bin/zsh']:
+                            users_with_shell.append({
+                                'username': parts[0],
+                                'uid': parts[2],
+                                'shell': parts[6]
+                            })
+                
+                return {
+                    "success": True,
+                    "scan_type": scan_type,
+                    "users_with_shell": users_with_shell
+                }
+            
+            elif scan_type == "permissions":
+                # Check critical file permissions
+                critical_files = ['/etc/passwd', '/etc/shadow', '/etc/sudoers']
+                permissions = {}
+                
+                for file_path in critical_files:
+                    if os.path.exists(file_path):
+                        stat_result = subprocess.run(['stat', '-c', '%a', file_path], 
+                                                   capture_output=True, text=True)
+                        permissions[file_path] = stat_result.stdout.strip()
+                
+                return {
+                    "success": True,
+                    "scan_type": scan_type,
+                    "file_permissions": permissions
+                }
+            
+            elif scan_type == "firewall":
+                # Check firewall status
+                ufw_result = subprocess.run(['ufw', 'status'], capture_output=True, text=True)
+                iptables_result = subprocess.run(['iptables', '-L'], capture_output=True, text=True)
+                
+                return {
+                    "success": True,
+                    "scan_type": scan_type,
+                    "ufw_status": ufw_result.stdout,
+                    "iptables_rules": iptables_result.stdout
+                }
+            
+            else:
+                return {"success": False, "error": f"Unknown scan type: {scan_type}"}
+                
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def log_analyze(self, log_file, pattern=None, lines=100):
+        """Analyze log files"""
+        try:
+            if not os.path.exists(log_file):
+                return {"success": False, "error": f"Log file not found: {log_file}"}
+            
+            if pattern:
+                result = subprocess.run(['grep', pattern, log_file], capture_output=True, text=True)
+                matches = result.stdout.strip().split('\n') if result.stdout.strip() else []
+                
+                return {
+                    "success": True,
+                    "log_file": log_file,
+                    "pattern": pattern,
+                    "matches": matches[-lines:],  # Last N matches
+                    "total_matches": len(matches)
+                }
+            else:
+                result = subprocess.run(['tail', '-n', str(lines), log_file], capture_output=True, text=True)
+                
+                return {
+                    "success": True,
+                    "log_file": log_file,
+                    "content": result.stdout,
+                    "lines_read": lines
+                }
+                
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        
+class MCPClient:
+    def __init__(self):
+        # openai.api_key = OPENAI_API_KEY
+        # genai.configure(api_key=GEMINI_API_KEY)
+        # Mistral.api_key = MISTRAL_API_KEY
+        self.api_key = MISTRAL_API_KEY
+        self.client = Mistral(api_key=self.api_key)
+        self.model = "mistral-large-latest"
+        
+    def process_complex_task(self, user_input):
+        system_prompt = """
+        You are an advanced Linux system administrator that can handle complex multi-step tasks.
+        Break down complex requests into sequential steps with validation.
+        
+        For complex tasks, return JSON with:
+        - "workflow": array of steps
+        - "description": overall task description
+        - "validation_points": checks to perform between steps
+        
+        Examples:
+        
+        1. "backup data ini lalu cek apakah ada data yang hilang":
+        {
+            "workflow": [
+                {"step": 1, "command": "rsync -av /source/path/ /backup/path/", "description": "Backup data"},
+                {"step": 2, "command": "diff -r /source/path/ /backup/path/", "description": "Compare source and backup"},
+                {"step": 3, "command": "find /backup/path -type f | wc -l", "description": "Count backup files"},
+                {"step": 4, "command": "find /source/path -type f | wc -l", "description": "Count source files"}
+            ],
+            "validation_points": ["Check file count match", "Verify no diff output"],
+            "description": "Backup data and verify integrity"
+        }
+        
+        2. "duplicate file ini sebanyak 10 data lalu pindahkan ke folder ini":
+        {
+            "workflow": [
+                {"step": 1, "command": "ls -la /source/file.txt", "description": "Check source file exists"},
+                {"step": 2, "command": "mkdir -p /target/folder", "description": "Create target folder"},
+                {"step": 3, "command": "for i in {1..10}; do cp /source/file.txt /target/folder/file_$i.txt; done", "description": "Duplicate file 10 times"},
+                {"step": 4, "command": "ls -la /target/folder/ | grep file_", "description": "Verify duplicated files"}
+            ],
+            "validation_points": ["Source file exists", "Target folder created", "10 files created"],
+            "description": "Duplicate file 10 times and move to target folder"
+        }
+        """
+        
+        try:
+            response = self.client.chat.complete(
+                model= self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_input}
+                ],
+                temperature=0.1
+            )
+            
+            return response.choices[0].message.content
+        except Exception as e:
+            return f"Error processing request: {str(e)}"
+
+
+class SafeCommandExecutor:
+    def __init__(self):
+        # Whitelist of allowed commands
+        self.allowed_commands = [
+            'ls', 'cat', 'grep', 'find', 'wc', 'head', 'tail', 
+            'ps', 'top', 'free', 'df', 'du', 'uptime', 'whoami',
+            'pwd', 'which', 'file', 'stat', 'chmod', 'chown',
+            'mkdir', 'rmdir', 'cp', 'mv', 'rsync', 'diff',
+            'tar', 'gzip', 'gunzip', 'zip', 'unzip'
+        ]
+    
+    def execute(self, command_json):
+        """Execute simple command from JSON format"""
+        try:
+            if isinstance(command_json, str):
+                try:
+                    command_data = json.loads(command_json)
+                    command = command_data.get('command', '').strip()
+                except json.JSONDecodeError:
+                    # If not JSON, treat as plain command
+                    command = command_json.strip()
+            else:
+                command = command_json.get('command', '').strip()
+            
+            return self.execute_bash_command(command)
+            
+        except Exception as e:
+            return {"error": str(e)}
+    
+    def execute_bash_command(self, command):
+        """Execute complex bash commands with safety checks"""
+        current_dir = self.context_memory.get("current_directory", os.getcwd())
+        
+        # Blacklist dangerous commands
+        dangerous_patterns = [
+            'rm -rf /', 'dd if=', 'mkfs', 'fdisk', 'parted',
+            'format', 'del /f', 'deltree', '> /dev/', 'chmod 777 /',
+            'chown root /', 'sudo su', 'su -', 'passwd'
+        ]
+        
+        if any(pattern in command.lower() for pattern in dangerous_patterns):
+            return {"error": "Dangerous command detected and blocked"}
+        
+        # Check if base command is allowed (for simple commands)
+        cmd_base = command.split()[0] if command.split() else ""
+        
+        # Allow complex commands with pipes, loops, etc.
+        complex_indicators = ['|', '&&', '||', ';', 'for', 'while', 'if']
+        is_complex = any(indicator in command for indicator in complex_indicators)
+        
+        # if not is_complex and cmd_base not in self.allowed_commands:
+        #     return {"error": f"Command '{cmd_base}' not in allowed list"}
+        
+        try:
+            result = subprocess.run(
+                ['bash', '-c', command],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                cwd=current_dir  # Execute in current directory
+            )
+            
+            return {
+                "output": result.stdout,
+                "error": result.stderr,
+                "return_code": result.returncode,
+                "command": command
+            }
+            
+        except subprocess.TimeoutExpired:
+            return {"error": "Command timeout (30s)"}
+        except Exception as e:
+            return {"error": str(e)}
+
+
+class SmartAgent:
+    def __init__(self):
+        self.mcp_client = MCPClient()
+        self.executor = SafeCommandExecutor()
+        self.conversation_history = []
+        self.current_goal = None
+        self.context_memory = {}
+        
+        # Set OpenAI API key
+        
+    
+    def process_smart_workflow(self, user_query):
+        """Main method to process user query with smart workflow"""
+        self.current_goal = user_query
+        self.conversation_history = [
+            {"role": "user", "content": user_query}
+        ]
+        
+        workflow_result = {
+            "steps": [],
+            "final_status": "in_progress",
+            "goal": user_query,
+            "start_time": time.time()
+        }
+        
+        print(f"🤖 Starting smart workflow for: {user_query}")
+        
+        # Start the conversation loop
+        step_count = 0
+        max_steps = 10  # Prevent infinite loops
+        
+        while step_count < max_steps:
+            print(f"\n--- Step {step_count + 1} ---")
+            
+            # Ask AI what to do next
+            next_action = self.get_next_action()
+            print(f"AI Decision: {next_action}")
+            
+            if next_action.get("action") == "complete":
+                workflow_result["final_status"] = "completed"
+                workflow_result["summary"] = next_action.get("summary")
+                print("✅ Workflow completed!")
+                break
+                
+            elif next_action.get("action") == "execute":
+                # Execute the command
+                command = next_action.get("command")
+                reasoning = next_action.get("reasoning")
+                
+                print(f"Reasoning: {reasoning}")
+                print(f"Executing: {command}")
+                
+                execution_result = self.execute_with_context(command)
+                
+                # Add to workflow results
+                workflow_result["steps"].append({
+                    "step": step_count + 1,
+                    "reasoning": reasoning,
+                    "command": command,
+                    "result": execution_result,
+                    "timestamp": time.time()
+                })
+                
+                # Feed result back to AI
+                self.add_execution_result_to_conversation(command, execution_result)
+                
+                print(f"Result: {execution_result.get('output', 'No output')[:100]}...")
+                
+                step_count += 1
+                
+            else:
+                workflow_result["final_status"] = "failed"
+                workflow_result["error"] = next_action.get("error", "Unknown error")
+                print(f"❌ Workflow failed: {workflow_result['error']}")
+                break
+        
+        workflow_result["end_time"] = time.time()
+        workflow_result["duration"] = workflow_result["end_time"] - workflow_result["start_time"]
+        
+        return workflow_result
+    
+    def stream_process_smart_workflow(self, user_query):
+        """Main method to process user query with smart workflow - streams results"""
+        self.current_goal = user_query
+        self.conversation_history = [{"role": "user", "content": user_query}]
+        
+        workflow_result = {
+            "steps": [],
+            "final_status": "in_progress",
+            "goal": user_query,
+            "start_time": time.time()
+        }
+
+        yield {"type": "status", "content": f"🤖 Starting smart workflow for: {user_query}"}
+
+        step_count = 0
+        max_steps = 10
+        while step_count < max_steps:
+            next_action = self.get_next_action()
+            if next_action.get("action") == "complete":
+                workflow_result["final_status"] = "completed"
+                workflow_result["summary"] = next_action.get("summary")
+                yield {"type": "complete", "content": workflow_result}
+                break
+            elif next_action.get("action") == "execute":
+                command = next_action.get("command")
+                reasoning = next_action.get("reasoning")
+                execution_result = self.execute_with_context(command)
+
+                step_data = {
+                    "step": step_count + 1,
+                    "reasoning": reasoning,
+                    "command": command,
+                    "result": execution_result
+                }
+                workflow_result["steps"].append(step_data)
+                yield {"type": "step", "content": step_data}
+                self.add_execution_result_to_conversation(command, execution_result)
+            else:
+                workflow_result["final_status"] = "failed"
+                workflow_result["error"] = next_action.get("error", "Unknown error")
+                yield {"type": "error", "content": workflow_result["error"]}
+                break
+            
+    def get_next_action(self):
+        """Ask AI what to do next based on conversation history"""
+        system_prompt = f"""
+        You are a smart Linux system administrator AI agent. 
+        Your goal: {self.current_goal}
+        
+        Based on the conversation history, decide the next action:
+        
+        1. If goal is achieved → return {{"action": "complete", "summary": "description"}}
+        2. If need to execute command → return {{"action": "execute", "command": "command", "reasoning": "why"}}
+        3. If failed → return {{"action": "fail", "error": "reason"}}
+        
+        Be smart and adaptive:
+        - Check command results before proceeding
+        - Adjust strategy based on previous outputs
+        - Validate each step before moving to next
+        - Handle errors gracefully
+        - Use absolute paths when possible
+        - Be specific with file and directory names
+        
+        Context memory: {json.dumps(self.context_memory)}
+        
+        IMPORTANT: Return only valid JSON format. No additional text.
+        """
+        
+        messages = [
+            {"role": "system", "content": system_prompt}
+        ] + self.conversation_history
+        
+        try:
+            response = self.mcp_client.client.chat.complete(
+                model=self.mcp_client.model,  # Use GPT-3.5 for cost efficiency
+                messages=messages,
+                temperature=0.1,
+                max_tokens=200
+            )
+            
+            ai_response = response.choices[0].message.content.strip()
+            
+            # Try to extract JSON if response has extra text
+            if not ai_response.startswith('{'):
+                # Look for JSON in the response
+                start = ai_response.find('{')
+                end = ai_response.rfind('}') + 1
+                if start >= 0 and end > start:
+                    ai_response = ai_response[start:end]
+            
+            return json.loads(ai_response)
+            
+        except json.JSONDecodeError as e:
+            print(f"JSON decode error: {e}")
+            print(f"AI Response: {ai_response}")
+            return {"action": "fail", "error": f"Invalid JSON response: {str(e)}"}
+        except Exception as e:
+            return {"action": "fail", "error": str(e)}
+    
+    def execute_with_context(self, command):
+        """Execute command with current context"""
+        if command.startswith("cd"):
+            # Eksekusi 'cd' dan perbarui direktori saat ini
+            result = self.executor.execute_bash_command(command)
+            self.update_context_memory(command, result)
+            return result
+        else:
+            return self.executor.execute_bash_command(command)
+    
+    def add_execution_result_to_conversation(self, command, result):
+        """Add command execution result to conversation history"""
+        
+        # Update context memory with important info
+        self.update_context_memory(command, result)
+        
+        # Add to conversation
+        self.conversation_history.append({
+            "role": "assistant", 
+            "content": f"Executed: {command}"
+        })
+        
+        # Limit output length to prevent token overflow
+        output = result.get('output', '')[:1000]
+        error = result.get('error', '')[:500]
+        
+        self.conversation_history.append({
+            "role": "user", 
+            "content": f"Command result:\nOutput: {output}\nError: {error}\nReturn code: {result.get('return_code', 0)}"
+        })
+        
+        # Keep conversation history manageable
+        if len(self.conversation_history) > 20:
+            # Keep first message (original goal) and last 18 messages
+            self.conversation_history = [self.conversation_history[0]] + self.conversation_history[-18:]
+    
+    def update_context_memory(self, command, result):
+        """Extract and store important information from command results"""
+        
+        # Store file counts
+        if "find" in command and "wc -l" in command:
+            self.context_memory["file_count"] = result.get("output", "").strip()
+        
+        # Store disk usage
+        if command.startswith("df"):
+            self.context_memory["disk_usage"] = result.get("output", "")
+        
+        # Store process info
+        if command.startswith("ps"):
+            self.context_memory["processes"] = result.get("output", "")
+        
+        # Store backup status
+        if "rsync" in command:
+            if result.get("return_code") == 0:
+                self.context_memory["backup_status"] = "success"
+            else:
+                self.context_memory["backup_status"] = "failed"
+                
+        # Store directory listings
+        if command.startswith("ls"):
+            self.context_memory["last_listing"] = result.get("output", "")
+            
+        # Store current working directory
+        if command == "pwd":
+            self.context_memory["current_directory"] = result.get("output", "").strip()
+        
+        if command == "cd":
+            self.conversation_history.append({
+                "role": "assistant",
+                "content": f"Updating directory context after cd command"
+            })
+            output = self.executor.execute_bash_command("pwd")
+            self.context_memory["current_directory"] = output.get("output", "").strip()
+
+
+@csrf_exempt
+def process_smart_chat(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        user_message = data.get('message', '')
+        
+        # Initialize smart agent
+        agent = SmartAgent()
+        
+        # Process with smart workflow
+        workflow_result = agent.process_smart_workflow(user_message)
+        
+        # Format response
+        response = f"🤖 **Smart Agent Result**\n\n"
+        response += f"**Goal:** {workflow_result['goal']}\n"
+        response += f"**Status:** {workflow_result['final_status']}\n\n"
+        
+        if workflow_result['final_status'] == 'completed':
+            response += f"**Summary:** {workflow_result.get('summary', '')}\n\n"
+        
+        response += "**Execution Steps:**\n"
+        for step in workflow_result['steps']:
+            response += f"\n**Step {step['step']}**\n"
+            response += f"*Reasoning:* {step['reasoning']}\n"
+            response += f"*Command:* `{step['command']}`\n"
+            response += f"*Output:*\n```\n{step['result'].get('output', 'No output')}\n```\n"
+            
+            if step['result'].get('error'):
+                response += f"*Error:* {step['result']['error']}\n"
+        
+        # Add WebSocket support for real-time updates
+        return JsonResponse({
+            'response': response,
+            'workflow_result': workflow_result,
+            'user_message': user_message
+        })
+
+
+class AIReasoningAgent:
+    """AI Agent that can reason and use tools for Linux administration"""
+    
+    def __init__(self, MISTRAL_API_KEY):
+        self.client = Mistral(api_key=MISTRAL_API_KEY)
+        self.model = "mistral-large-latest"
+        self.tools = AITools()
+        self.conversation_history = []
+        self.context_memory = {}
+        
+    def process_admin_request(self, user_request):
+        """Process user request with AI reasoning and tool usage"""
+        
+        # System prompt that defines the AI's role and capabilities
+        system_prompt = f"""
+        You are an advanced AI Linux System Administrator with access to powerful tools. You can:
+
+        1. REASON through complex problems step by step
+        2. USE TOOLS to interact with the system (read files, execute commands, etc.)
+        3. LEARN from command outputs and adapt your approach
+        4. HANDLE security, configuration, and maintenance tasks
+
+        Available Tools: {[tool for tool in self.tools.tool_registry.keys()]}
+
+        Your approach should be:
+        1. Understand the user's request
+        2. Plan your approach (what tools you need to use)
+        3. Execute step by step using appropriate tools
+        4. Validate results and make corrections if needed
+        5. Provide clear summary of what was accomplished
+
+        IMPORTANT RULES:
+        - Always backup config files before making changes
+        - Validate configurations before applying them
+        - Check service status after making changes
+        - Be security-conscious (never expose sensitive data)
+        - Explain your reasoning for each action
+
+        Current system context: {json.dumps(self.context_memory)}
+
+        User Request: {user_request}
+
+        Think step by step and use the appropriate tools to complete this task.
+        """
+
+        try:
+            # Start conversation with system prompt
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_request}
+            ]
+            
+            # Initialize workflow tracking
+            workflow = {
+                "request": user_request,
+                "steps": [],
+                "start_time": time.time(),
+                "status": "in_progress"
+            }
+            
+            max_iterations = 10
+            iteration = 0
+            
+            while iteration < max_iterations:
+                # Get AI response with tool calling
+                response = self.client.chat.complete(
+                    model=self.model,
+                    messages=messages,
+                    tools=self.tools.get_available_tools(),
+                    temperature=0.1
+                )
+                
+                choice = response.choices[0]
+                
+                # Add AI response to conversation
+                messages.append({
+                    "role": "assistant",
+                    "content": choice.message.content,
+                    "tool_calls": choice.message.tool_calls if hasattr(choice.message, 'tool_calls') else None
+                })
+                
+                # Check if AI wants to use tools
+                if hasattr(choice.message, 'tool_calls') and choice.message.tool_calls:
+                    tool_results = []
+                    
+                    for tool_call in choice.message.tool_calls:
+                        function_name = tool_call.function.name
+                        function_args = json.loads(tool_call.function.arguments)
+                        
+                        print(f"🔧 Using tool: {function_name} with args: {function_args}")
+                        
+                        # Execute the tool
+                        if function_name in self.tools.tool_registry:
+                            result = self.tools.tool_registry[function_name](**function_args)
+                            tool_results.append({
+                                "tool": function_name,
+                                "args": function_args,
+                                "result": result
+                            })
+                            
+                            # Add tool result to conversation
+                            messages.append({
+                                "role": "tool",
+                                "tool_call_id": tool_call.id,
+                                "content": json.dumps(result)
+                            })
+                            
+                            # Update context memory
+                            self.update_context_memory(function_name, function_args, result)
+                        
+                    # Add step to workflow
+                    workflow["steps"].append({
+                        "iteration": iteration + 1,
+                        "ai_reasoning": choice.message.content,
+                        "tools_used": tool_results,
+                        "timestamp": time.time()
+                    })
+                    
+                else:
+                    # AI has finished the task
+                    workflow["status"] = "completed"
+                    workflow["final_response"] = choice.message.content
+                    break
+                
+                iteration += 1
+            
+            workflow["end_time"] = time.time()
+            workflow["duration"] = workflow["end_time"] - workflow["start_time"]
+            
+            if iteration >= max_iterations:
+                workflow["status"] = "max_iterations_reached"
+            
+            return workflow
+            
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": str(e),
+                "request": user_request
+            }
+    
+    def update_context_memory(self, tool_name, args, result):
+        """Update context memory with important information from tool usage"""
+        if tool_name == "service_control":
+            service_name = args.get("service_name")
+            action = args.get("action")
+            if result.get("success"):
+                self.context_memory[f"service_{service_name}_status"] = action
+        
+        elif tool_name == "file_read":
+            file_path = args.get("file_path")
+            if result.get("success"):
+                self.context_memory[f"file_content_{file_path}"] = {
+                    "size": result.get("size"),
+                    "last_read": time.time()
+                }
+        
+        elif tool_name == "security_scan":
+            scan_type = args.get("scan_type")
+            if result.get("success"):
+                self.context_memory[f"security_scan_{scan_type}"] = {
+                    "last_scan": time.time(),
+                    "result": result
+                }
+    
+    def stream_process_admin_request(self, user_request):
+        """Stream the processing of admin request for real-time updates"""
+        for step in self.process_admin_request(user_request):
+            yield step
+
+class SmartLinuxAdmin:
+    """Main class that integrates everything"""
+    
+    def __init__(self, MISTRAL_API_KEY):
+        self.ai_agent = AIReasoningAgent(MISTRAL_API_KEY)
+        self.tools = AITools()
+    
+    def handle_request(self, user_request):
+        """Handle user request with full AI reasoning"""
+        print(f"🤖 Processing request: {user_request}")
+        
+        workflow = self.ai_agent.process_admin_request(user_request)
+        
+        # Format and return response
+        return self.format_workflow_response(workflow)
+    
+    def format_workflow_response(self, workflow):
+        """Format workflow response for display"""
+        response = f"## AI Linux Admin - Task Results\n\n"
+        response += f"**Request:** {workflow['request']}\n"
+        response += f"**Status:** {workflow['status']}\n"
+        response += f"**Duration:** {workflow.get('duration', 0):.2f} seconds\n\n"
+        
+        if workflow.get('steps'):
+            response += "### Execution Steps:\n\n"
+            for i, step in enumerate(workflow['steps'], 1):
+                response += f"**Step {i}:**\n"
+                response += f"*AI Reasoning:* {step['ai_reasoning']}\n\n"
+                
+                if step.get('tools_used'):
+                    response += "*Tools Used:*\n"
+                    for tool_usage in step['tools_used']:
+                        response += f"- **{tool_usage['tool']}** with {tool_usage['args']}\n"
+                        response += f"  Result: {tool_usage['result']['success']}\n"
+                        if not tool_usage['result']['success']:
+                            response += f"  Error: {tool_usage['result'].get('error', 'Unknown error')}\n"
+                    response += "\n"
+        
+        if workflow.get('final_response'):
+            response += f"### Final Summary:\n{workflow['final_response']}\n"
+        
+        return response
+@csrf_exempt
+def ai_admin_chat(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        user_message = data.get('message', '')
+        
+        # Initialize AI admin
+        admin = SmartLinuxAdmin(MISTRAL_API_KEY)
+        
+        # Process with AI reasoning
+        result = admin.handle_request(user_message)
+        
+        return JsonResponse({
+            'response': result,
+            'user_message': user_message,
+            'timestamp': datetime.now().isoformat()
+        })
+    
+## test2
+class MCPClient2:
+    """MCP (Model Context Protocol) Client for communicating with MCP servers via existing WebSocket consumer"""
+    
+    def __init__(self, websocket_consumer=None):
+        self.websocket_consumer = websocket_consumer
+        self.request_id = 0
+        self.pending_requests = {}  # Store pending MCP requests
+        
+    def setup_consumer(self, websocket_consumer):
+        """Setup WebSocket consumer for MCP communication"""
+        self.websocket_consumer = websocket_consumer
+        
+    async def send_to_mcp_server(self, message: dict):
+        """Send message to MCP server via WebSocket consumer"""
+        if not self.websocket_consumer:
+            raise Exception("WebSocket consumer not configured")
+        
+        # Send via existing WebSocket consumer
+        await self.websocket_consumer.send(text_data=json.dumps({
+            "type": "mcp_request",
+            "data": message
+        }))
+        
+    async def handle_mcp_response(self, response: dict):
+        """Handle MCP response from WebSocket consumer"""
+        request_id = response.get("id")
+        if request_id in self.pending_requests:
+            # Resolve pending request
+            future = self.pending_requests.pop(request_id)
+            future.set_result(response)
+        
+    async def wait_for_response(self, request_id: int, timeout: int = 30):
+        """Wait for MCP response"""
+        future = asyncio.Future()
+        self.pending_requests[request_id] = future
+        
+        try:
+            response = await asyncio.wait_for(future, timeout=timeout)
+            return response
+        except asyncio.TimeoutError:
+            self.pending_requests.pop(request_id, None)
+            raise Exception(f"MCP request {request_id} timed out")
+    
+    async def send_initialize(self):
+        """Send initialize request to MCP server"""
+        request_id = self._next_request_id()
+        init_request = {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {
+                    "sampling": {}
+                },
+                "clientInfo": {
+                    "name": "smart-agent",
+                    "version": "1.0.0"
+                }
+            }
+        }
+        
+        await self.send_to_mcp_server(init_request)
+        response = await self.wait_for_response(request_id)
+        return response
+    
+    async def list_tools(self) -> List[Dict]:
+        """List available tools from MCP server"""
+        request_id = self._next_request_id()
+        request = {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": "tools/list"
+        }
+        
+        await self.send_to_mcp_server(request)
+        response = await self.wait_for_response(request_id)
+        result = response.get("result", {})
+        
+        return result.get("tools", [])
+    
+    async def call_tool(self, tool_name: str, arguments: Dict = None) -> Dict:
+        """Call a tool on the MCP server"""
+        request_id = self._next_request_id()
+        request = {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": "tools/call",
+            "params": {
+                "name": tool_name,
+                "arguments": arguments or {}
+            }
+        }
+        
+        await self.send_to_mcp_server(request)
+        response = await self.wait_for_response(request_id)
+        
+        if "error" in response:
+            raise Exception(f"Tool call failed: {response['error']}")
+            
+        return response.get("result", {})
+    
+    async def send_prompt(self, messages: List[Dict], model: str = "mistral-large-latest") -> str:
+        """Send prompt to AI model through MCP server"""
+        request_id = self._next_request_id()
+        request = {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": "completion/complete",
+            "params": {
+                "ref": {
+                    "type": "ref/prompt",
+                    "name": "system-admin"
+                },
+                "arguments": {
+                    "messages": messages,
+                    "model": model,
+                    "temperature": 0.1,
+                    "max_tokens": 1000
+                }
+            }
+        }
+        
+        await self.send_to_mcp_server(request)
+        response = await self.wait_for_response(request_id)
+        
+        if "error" in response:
+            raise Exception(f"Completion failed: {response['error']}")
+            
+        return response.get("result", {}).get("content", [{}])[0].get("text", "")
+    
+    def _next_request_id(self) -> int:
+        """Generate next request ID"""
+        self.request_id += 1
+        return self.request_id
+
+
+class SafeCommandExecutor2:
+    """Safe command executor with MCP integration"""
+    
+    def __init__(self, mcp_client: MCPClient2):
+        self.mcp_client = mcp_client
+        self.allowed_commands = [
+            'ls', 'cat', 'grep', 'find', 'wc', 'head', 'tail', 
+            'ps', 'top', 'free', 'df', 'du', 'uptime', 'whoami',
+            'pwd', 'which', 'file', 'stat', 'chmod', 'chown',
+            'mkdir', 'rmdir', 'cp', 'mv', 'rsync', 'diff',
+            'tar', 'gzip', 'gunzip', 'zip', 'unzip'
+        ]
+    
+    async def execute_via_mcp(self, command: str) -> Dict:
+        """Execute command through MCP server tools"""
+        try:
+            # Use MCP shell tool if available
+            result = await self.mcp_client.call_tool("shell", {
+                "command": command,
+                "timeout": 30
+            })
+            return result
+        except Exception as e:
+            # Fallback to local execution
+            return self.execute_local(command)
+    
+    def execute_local(self, command: str) -> Dict:
+        """Local command execution as fallback"""
+        dangerous_patterns = [
+            'rm -rf /', 'dd if=', 'mkfs', 'fdisk', 'parted',
+            'format', 'del /f', 'deltree', '> /dev/', 'chmod 777 /',
+            'chown root /', 'sudo su', 'su -', 'passwd'
+        ]
+        
+        if any(pattern in command.lower() for pattern in dangerous_patterns):
+            return {"error": "Dangerous command detected and blocked"}
+        
+        try:
+            result = subprocess.run(
+                ['bash', '-c', command],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                cwd=os.getcwd()
+            )
+            
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"Command: {command}\nOutput: {result.stdout}\nError: {result.stderr}\nReturn code: {result.returncode}"
+                    }
+                ],
+                "isError": result.returncode != 0
+            }
+            
+        except subprocess.TimeoutExpired:
+            return {"error": "Command timeout (30s)"}
+        except Exception as e:
+            return {"error": str(e)}
+
+
+class SmartMCPAgent:
+    """Smart Agent using MCP for AI and tool interactions via WebSocket consumer"""
+    
+    def __init__(self, websocket_consumer=None):
+        self.mcp_client = MCPClient2(websocket_consumer)
+        self.executor = SafeCommandExecutor2(self.mcp_client)
+        self.conversation_history = []
+        self.current_goal = None
+        self.context_memory = {}
+        self.available_tools = []
+        
+    def setup_consumer(self, websocket_consumer):
+        """Setup WebSocket consumer for MCP communication"""
+        self.mcp_client.setup_consumer(websocket_consumer)
+        
+    async def initialize(self):
+        """Initialize MCP session and discover tools"""
+        if not self.mcp_client.websocket_consumer:
+            raise Exception("WebSocket consumer not configured")
+        
+        # Initialize MCP session
+        await self.mcp_client.send_initialize()
+        
+        # Discover available tools
+        self.available_tools = await self.mcp_client.list_tools()
+        print(f"Available MCP tools: {[tool['name'] for tool in self.available_tools]}")
+        
+        return True
+    
+    async def handle_mcp_response(self, response: dict):
+        """Handle MCP response from WebSocket consumer"""
+        await self.mcp_client.handle_mcp_response(response)
+    
+    async def process_smart_workflow(self, user_query: str) -> Dict:
+        """Main method to process user query with MCP-based smart workflow"""
+        self.current_goal = user_query
+        self.conversation_history = [
+            {"role": "user", "content": user_query}
+        ]
+        
+        workflow_result = {
+            "steps": [],
+            "final_status": "in_progress",
+            "goal": user_query,
+            "start_time": time.time(),
+            "mcp_enabled": True
+        }
+        
+        print(f"🤖 Starting MCP smart workflow for: {user_query}")
+        
+        step_count = 0
+        max_steps = 10
+        
+        while step_count < max_steps:
+            print(f"\n--- Step {step_count + 1} ---")
+            
+            try:
+                # Get next action from AI via MCP
+                next_action = await self.get_next_action_via_mcp()
+                print(f"AI Decision: {next_action}")
+                
+                if next_action.get("action") == "complete":
+                    workflow_result["final_status"] = "completed"
+                    workflow_result["summary"] = next_action.get("summary")
+                    print("✅ Workflow completed!")
+                    break
+                    
+                elif next_action.get("action") == "execute":
+                    command = next_action.get("command")
+                    reasoning = next_action.get("reasoning")
+                    
+                    print(f"Reasoning: {reasoning}")
+                    print(f"Executing: {command}")
+                    
+                    # Execute via MCP
+                    execution_result = await self.executor.execute_via_mcp(command)
+                    
+                    workflow_result["steps"].append({
+                        "step": step_count + 1,
+                        "reasoning": reasoning,
+                        "command": command,
+                        "result": execution_result,
+                        "timestamp": time.time(),
+                        "via_mcp": True
+                    })
+                    
+                    # Feed result back to conversation
+                    await self.add_execution_result_to_conversation(command, execution_result)
+                    
+                    step_count += 1
+                    
+                elif next_action.get("action") == "use_tool":
+                    # Use specific MCP tool
+                    tool_name = next_action.get("tool")
+                    tool_args = next_action.get("arguments", {})
+                    reasoning = next_action.get("reasoning")
+                    
+                    print(f"Reasoning: {reasoning}")
+                    print(f"Using MCP tool: {tool_name}")
+                    
+                    tool_result = await self.mcp_client.call_tool(tool_name, tool_args)
+                    
+                    workflow_result["steps"].append({
+                        "step": step_count + 1,
+                        "reasoning": reasoning,
+                        "tool": tool_name,
+                        "arguments": tool_args,
+                        "result": tool_result,
+                        "timestamp": time.time(),
+                        "via_mcp": True
+                    })
+                    
+                    await self.add_tool_result_to_conversation(tool_name, tool_result)
+                    step_count += 1
+                    
+                else:
+                    workflow_result["final_status"] = "failed"
+                    workflow_result["error"] = next_action.get("error", "Unknown error")
+                    print(f"❌ Workflow failed: {workflow_result['error']}")
+                    break
+                    
+            except Exception as e:
+                workflow_result["final_status"] = "failed"
+                workflow_result["error"] = str(e)
+                print(f"❌ MCP workflow error: {e}")
+                break
+        
+        workflow_result["end_time"] = time.time()
+        workflow_result["duration"] = workflow_result["end_time"] - workflow_result["start_time"]
+        
+        return workflow_result
+    
+    async def get_next_action_via_mcp(self) -> Dict:
+        """Get next action from AI via MCP"""
+        system_prompt = f"""
+        You are a smart Linux system administrator AI agent with MCP capabilities.
+        Your goal: {self.current_goal}
+        
+        Available MCP tools: {[tool['name'] for tool in self.available_tools]}
+        
+        Based on the conversation history, decide the next action:
+        
+        1. If goal is achieved → {{"action": "complete", "summary": "description"}}
+        2. If need to execute shell command → {{"action": "execute", "command": "command", "reasoning": "why"}}  
+        3. If need to use specific MCP tool → {{"action": "use_tool", "tool": "tool_name", "arguments": {{}}, "reasoning": "why"}}
+        4. If failed → {{"action": "fail", "error": "reason"}}
+        
+        Be smart and use MCP tools when appropriate:
+        - Use 'filesystem' tool for file operations
+        - Use 'browser' tool for web research  
+        - Use 'database' tool for data queries
+        - Use 'shell' tool for system commands
+        
+        Context memory: {json.dumps(self.context_memory)}
+        
+        IMPORTANT: Return only valid JSON format.
+        """
+        
+        messages = [
+            {"role": "system", "content": system_prompt}
+        ] + self.conversation_history
+        
+        try:
+            ai_response = await self.mcp_client.send_prompt(messages)
+            
+            # Clean and parse JSON response
+            if not ai_response.startswith('{'):
+                start = ai_response.find('{')
+                end = ai_response.rfind('}') + 1
+                if start >= 0 and end > start:
+                    ai_response = ai_response[start:end]
+            
+            return json.loads(ai_response)
+            
+        except json.JSONDecodeError as e:
+            print(f"JSON decode error: {e}")
+            print(f"AI Response: {ai_response}")
+            return {"action": "fail", "error": f"Invalid JSON response: {str(e)}"}
+        except Exception as e:
+            return {"action": "fail", "error": str(e)}
+    
+    async def add_execution_result_to_conversation(self, command: str, result: Dict):
+        """Add command execution result to conversation history"""
+        self.update_context_memory(command, result)
+        
+        self.conversation_history.append({
+            "role": "assistant", 
+            "content": f"Executed command via MCP: {command}"
+        })
+        
+        # Extract result text from MCP response
+        if isinstance(result.get("content"), list):
+            result_text = ""
+            for content in result["content"]:
+                if content.get("type") == "text":
+                    result_text += content.get("text", "")
+        else:
+            result_text = str(result)
+        
+        self.conversation_history.append({
+            "role": "user", 
+            "content": f"MCP Command result:\n{result_text[:1000]}"
+        })
+        
+        # Keep conversation manageable
+        if len(self.conversation_history) > 20:
+            self.conversation_history = [self.conversation_history[0]] + self.conversation_history[-18:]
+    
+    async def add_tool_result_to_conversation(self, tool_name: str, result: Dict):
+        """Add MCP tool result to conversation history"""
+        self.conversation_history.append({
+            "role": "assistant", 
+            "content": f"Used MCP tool: {tool_name}"
+        })
+        
+        result_text = json.dumps(result, indent=2)[:1000]
+        
+        self.conversation_history.append({
+            "role": "user", 
+            "content": f"MCP Tool result:\n{result_text}"
+        })
+    
+    def update_context_memory(self, command: str, result: Dict):
+        """Extract and store important information from results"""
+        if isinstance(result.get("content"), list):
+            for content in result["content"]:
+                if content.get("type") == "text":
+                    text = content.get("text", "")
+                    
+                    # Store various context info
+                    if "find" in command and "wc -l" in command:
+                        self.context_memory["file_count"] = text.strip()
+                    elif command.startswith("df"):
+                        self.context_memory["disk_usage"] = text
+                    elif command.startswith("ps"):
+                        self.context_memory["processes"] = text
+                    elif "rsync" in command:
+                        self.context_memory["backup_status"] = "success" if not result.get("isError") else "failed"
+                    elif command.startswith("ls"):
+                        self.context_memory["last_listing"] = text
+                    elif command == "pwd":
+                        self.context_memory["current_directory"] = text.strip()
+
+
+# Django views with MCP integration via WebSocket
+@csrf_exempt
+def process_mcp_smart_chat_view(request):
+    """Django view for MCP-based smart chat (WebSocket-based)"""
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        user_message = data.get('message', '')
+        
+        # Return WebSocket connection info instead of processing directly
+        return JsonResponse({
+            'message': 'Use WebSocket connection for MCP Smart Agent',
+            'websocket_url': 'ws://localhost:8000/ws/mcp-agent/',
+            'user_message': user_message,
+            'instructions': {
+                'connect': 'Connect to WebSocket URL',
+                'send': {
+                    'type': 'smart_workflow',
+                    'message': user_message
+                }
+            }
+        })
+    
+    return JsonResponse({'error': 'Method not allowed'})
+
+
+# Traditional HTTP endpoint for backward compatibility
+@csrf_exempt
+def process_mcp_smart_chat_http(request):
+    """HTTP endpoint that creates temporary WebSocket connection"""
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        user_message = data.get('message', '')
+        
+        # This would need to be implemented with temporary WebSocket connection
+        # For now, return instructions to use WebSocket
+        return JsonResponse({
+            'response': 'MCP Smart Agent requires WebSocket connection for real-time communication',
+            'user_message': user_message,
+            'websocket_url': 'ws://localhost:8000/ws/mcp-agent/',
+            'mcp_enabled': True,
+            'instructions': 'Please use WebSocket connection for full MCP functionality'
+        })
+    
+    return JsonResponse({'error': 'Method not allowed'})
+

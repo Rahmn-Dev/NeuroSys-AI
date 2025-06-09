@@ -1,44 +1,94 @@
 {% extends 'layout/layout1.html' %}
 {% block style %}
 <style>
-    body { font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background-color: #f0f0f0; }
-    .main-container { display: flex; flex: 1; overflow: hidden; }
-    .left-panel { flex: 2; display: flex; flex-direction: column; padding: 10px; background-color: #fff; border-right: 1px solid #ccc; }
-    .right-panel { flex: 1; padding: 10px; background-color: #e9e9e9; overflow-y: auto; }
-    
-    #bash-output-container {
-        flex-grow: 1; /* Takes available space */
-        background-color: #282c34; /* Dark background for terminal */
-        color: #abb2bf; /* Light text for terminal */
-        padding: 15px;
-        overflow-y: auto; /* Scroll for long output */
-        border-radius: 5px;
-        margin-bottom: 10px; /* Space between terminal and AI response in left panel if layout changes */
-    }
-    #bash-output-container h3 { color: #61afef; margin-top:0; } /* Blueish for heading */
-    #bash-output-container pre { white-space: pre-wrap; word-wrap: break-word; font-family: 'Courier New', Courier, monospace; }
+    .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent black */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000; /* Ensure it appears above other elements */
+}
 
-    #ai-response-container {
-        /* flex-grow: 1; /* Takes available space, use if AI response is in its own growing panel */
-        background-color: #f9f9f9;
-        padding: 15px;
-        overflow-y: auto;
-        border: 1px solid #ddd;
-        border-radius: 5px;
-    }
-    #ai-response-container h3 { margin-top:0; }
+/* Modal box styling */
+.modal-box {
+    background-color: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    width: 300px;
+    text-align: center;
+}
 
+.modal-box p {
+    margin-bottom: 15px;
+    font-size: 16px;
+}
 
-    .chat-input-container { padding: 10px; background-color: #fff; border-top: 1px solid #ccc; }
-    #chat-input { width: calc(100% - 80px); padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
-    #send-button { width: 70px; padding: 10px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
-    #send-button:hover { background-color: #0056b3; }
-    .loader {
-        border: 4px solid #f3f3f3; border-radius: 50%; border-top: 4px solid #3498db;
-        width: 20px; height: 20px; animation: spin 1s linear infinite;
-        display: none; /* Hidden by default */ margin-left: 10px;
-    }
-    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+.modal-box input {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 15px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.modal-box button {
+    padding: 10px 20px;
+    margin: 5px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.modal-box #submit-input {
+    background-color: #007bff;
+    color: white;
+}
+
+.modal-box #cancel-input {
+    background-color: #ccc;
+    color: black;
+}
+.chat-bubble {
+    max-width: 70%;
+    margin: 8px 0;
+    padding: 12px 16px;
+    border-radius: 20px;
+    font-size: 14px;
+    line-height: 1.5;
+    word-wrap: break-word;
+}
+
+.user-bubble {
+    background-color: #007bff;
+    color: white;
+    align-self: flex-end;
+    margin-left: auto;
+    border-top-right-radius: 8px;
+}
+
+.ai-bubble {
+    background-color: #f1f1f1;
+    color: #333;
+    align-self: flex-start;
+    margin-right: auto;
+    border-top-left-radius: 8px;
+}
+
+/* Untuk chat history */
+#chat-history .chat-bubble {
+    max-width: 100%;
+    font-size: 13px;
+}
+
+.workflow-step {
+    border-left: 4px solid #007bff;
+}
 </style>
 
 {% endblock %}
@@ -49,118 +99,351 @@
         <!-- Dashboard Center Content -->
         <div class="rbt-dashboard-content">
             <div class="content-page">
-                <div class="main-container">
-                    <div class="left-panel">
-                        <h3>Bash Command Output</h3>
-                        <div id="bash-output-container">
-                            <pre id="command-display" style="
-                            background: black;
-                          
-                        "></pre>
-                            <hr>
-                            <pre id="stdout-display" style="
-                            background: black;
-                        "></pre>
-                            <pre id="stderr-display" style="color: #e06c75;"></pre> </div>
-                    </div>
-                    <div class="right-panel">
-                        <h3>AI Response & Explanation</h3>
-                        <div id="ai-response-container">
-                            <pre id="ai-explanation"></pre>
-                        </div>
-                    </div>
+                <!-- <div id="terminal"></div> -->
+                <div class="chat-box-list pt--30" id="bashContainer">
                 </div>
-            
-                <div class="chat-input-container">
-                    <input type="text" id="chat-input" placeholder="Ketik perintah Anda (misal: list files in current directory)...">
-                    <button id="send-button">Kirim</button>
-                    <div class="loader" id="loader"></div>
+            </div>
+            <div class="rbt-static-bar">
+                <form class="new-chat-form border-gradient">
+                    <div class="left-icons">
+                       
+                    </div>
+                    <textarea  id="chat-input"  rows="1" placeholder="Send a message..."></textarea>
+                    <div class="right-icons">
+                        <div class="form-icon icon-plus" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-custom-class="custom-tooltip" data-bs-title="Choose File">
+                            <input type="file" class="input-file" name="myfile" multiple>
+                            <i class="feather-plus-circle"></i>
+                        </div>
+                      
+                        <button id="send-button" class="form-icon icon-send"  data-bs-toggle="tooltip" data-bs-placement="top" data-bs-custom-class="custom-tooltip" data-bs-title="Send message">
+                            <lord-icon src="https://cdn.lordicon.com/vduvxizq.json" trigger="hover"target="#send" style="width:20px;height:20px"></lord-icon>
+                        </button>
+                    </div>
+                </form>
+                <p class="b3 small-text"></p>
+            </div>
+        </div>
+        <div class="rbt-right-side-panel popup-dashboardright-section" style="top: 60px;">
+            <div class="right-side-top">
+                <div class="card-header" style="border-top-left-radius: 10px;border-top-right-radius: 10px;background: linear-gradient(90deg, rgb(18, 181, 222) -30%, rgb(48, 123, 195) 30%, rgb(59, 186, 255) 90%);color: white;">Response Chat</div>
+                <div class="card-body" id="chat-history" style="max-height: 300px; overflow-y: auto; background: white;">
+                </div>
+            </div>
+            <div class="right-side-bottom">
+                <div class="card-header" style="display: flex;border-top-left-radius: 10px;border-top-right-radius: 10px;background: linear-gradient(90deg, rgb(18, 181, 222) -30%, rgb(48, 123, 195) 30%, rgb(59, 186, 255) 90%);color: white;justify-content: space-between;">Workflow Step-by-Step <button class="btn " id="status-final"></button></div>
+                <div class="chat-history-section" id="workflow-steps">
                 </div>
             </div>
         </div>
+        
     </div>
 </div>
 {% endblock content  %}
 {% block script %}
-<script>
-    const chatInput = document.getElementById('chat-input');
-    const sendButton = document.getElementById('send-button');
-    const commandDisplay = document.getElementById('command-display');
-    const stdoutDisplay = document.getElementById('stdout-display');
-    const stderrDisplay = document.getElementById('stderr-display');
-    const aiExplanationDisplay = document.getElementById('ai-explanation');
-    const loader = document.getElementById('loader');
+<!-- Prism.js CSS -->
+<link href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism.css"  rel="stylesheet" />
 
-    // Anda perlu URL yang benar ke API Django Anda
-    const apiUrl = '/api/react_chat_interface_lc/'; // Sesuaikan dengan URL di urls.py
+<!-- Prism.js JS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css"> 
+<script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.min.js"></script> 
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.js"></script> 
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-bash.min.js"></script> 
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit"></script> 
+<!-- 
+<script>
+        const chatInput = document.getElementById('chat-input');
+    const sendButton = document.getElementById('send-button');
+    const bashContainer = document.getElementById('bashContainer'); // Tempat output terminal/bash
+    const chatHistory = document.getElementById('chat-history');
+    const workflowSteps = document.getElementById('workflow-steps');
+
+    const apiUrl = '/api/process-smart-chat/';
 
     async function sendMessage() {
         const message = chatInput.value.trim();
         if (!message) return;
 
-        // Tampilkan loader dan disable input
-        loader.style.display = 'inline-block';
         sendButton.disabled = true;
         chatInput.disabled = true;
-
-        // Kosongkan output sebelumnya
-        commandDisplay.textContent = '';
-        stdoutDisplay.textContent = '';
-        stderrDisplay.textContent = '';
-        aiExplanationDisplay.textContent = 'Memproses...';
 
         try {
             const response = await fetch(apiUrl, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    // 'X-CSRFToken': 'DAPATKAN_CSRF_TOKEN_JIKA_PERLU' // Untuk produksi
-                },
-                body: JSON.stringify({ message: message })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message })
             });
 
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({error: `HTTP error! status: ${response.status}`}));
-                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-            }
-
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const data = await response.json();
 
-            // aiExplanationDisplay.textContent = data.ai_explanation || "AI tidak memberikan penjelasan.";
-            aiExplanationDisplay.textContent = data.ai_final_answer || "AI tidak memberikan penjelasan.";
-            
-            if (data.generated_command) {
-                commandDisplay.textContent = `$ ${data.generated_command}`;
-            } else {
-                commandDisplay.textContent = "(Tidak ada perintah yang dieksekusi oleh AI)";
-            }
+            // Tampilkan pesan pengguna dan AI di chat history
+            addToChatHistory(message, data.workflow_result.summary);
 
-            stdoutDisplay.textContent = data.command_output || "";
-            if (data.command_error) {
-                stderrDisplay.textContent = `Error: ${data.command_error}`;
+            // Tampilkan output dari stdout sebagai kode bash
+            const outputText = data.workflow_result?.steps[0]?.result?.output || '(No output)';
+            const errorText = data.workflow_result?.steps[0]?.result?.error || '';
+            const commandbash = data.workflow_result?.steps[0]?.result?.command || '';
+            const final_status = data.workflow_result?.final_status || '';
+            const statusButton = document.getElementById('status-final');
+
+            // Tambahkan class sesuai dengan status
+            if (final_status.toLowerCase() === 'Completed') {
+                statusButton.classList.add('btn-success');
+                statusButton.textContent = 'Completed';
+            } else if (final_status.toLowerCase() === 'failed') {
+                statusButton.classList.add('btn-danger');
+                statusButton.textContent = 'Failed';
             } else {
-                 stderrDisplay.textContent = ""; // Clear previous errors
+                statusButton.classList.add('btn-secondary');
+                statusButton.textContent = final_status || 'Unknown';
             }
+            displayBashOutput(outputText, errorText, commandbash);
+
+            // Render langkah-langkah workflow
+            renderWorkflowSteps(data.workflow_result?.steps || []);
 
         } catch (error) {
-            console.error('Error:', error);
-            aiExplanationDisplay.textContent = `Error: ${error.message}`;
-            stderrDisplay.textContent = `Error frontend: ${error.message}`;
+            displayBashOutput('', `Error: ${error.message}`);
         } finally {
-            // Sembunyikan loader dan enable input
-            loader.style.display = 'none';
             sendButton.disabled = false;
             chatInput.disabled = false;
-            chatInput.value = ''; // Kosongkan input setelah dikirim
+            chatInput.value = '';
             chatInput.focus();
         }
     }
 
-    sendButton.addEventListener('click', sendMessage);
-    chatInput.addEventListener('keypress', function(event) {
-        if (event.key === 'Enter') {
-            sendMessage();
+    function displayBashOutput(stdout, stderr, commandbash) {
+        const pre = document.createElement('pre');
+        const code = document.createElement('code');
+
+        code.className = 'language-bash';
+        code.textContent = `$ ` + commandbash + '\n';
+
+        if (stdout) {
+            code.textContent += stdout + '\n';
         }
+
+        if (stderr) {
+            code.textContent += 'ERROR:\n' + stderr + '\n';
+        }
+
+        pre.appendChild(code);
+        bashContainer.appendChild(pre);
+
+        // Highlight kode dengan Prism.js
+        Prism.highlightElement(code);
+
+        bashContainer.scrollTop = bashContainer.scrollHeight;
+    }
+
+    function addToChatHistory(userMsg, aiMsg) {
+        const userDiv = document.createElement('div');
+        userDiv.className = 'chat-box  bg-flashlight author-speech';
+        userDiv.innerHTML = `<p><span class="rainbow-badge-card">You</span> ${userMsg}</p>`;
+
+        const aiDiv = document.createElement('div');
+        aiDiv.className = 'chat-box  bg-flashlight ai-speech';
+        aiDiv.innerHTML = `<p><span class="rainbow-badge-card">AI</span> ${aiMsg}</p>`;
+
+        chatHistory.appendChild(userDiv);
+        chatHistory.appendChild(aiDiv);
+        chatHistory.scrollTop = chatHistory.scrollHeight;
+    }
+
+    function renderWorkflowSteps(steps) {
+        workflowSteps.innerHTML = '';
+        steps.forEach(step => {
+            const card = document.createElement('div');
+            card.className = 'workflow-step p-3 mb-2 bg-light rounded shadow-sm';
+            card.innerHTML = `
+                <strong>Langkah ${step.step}</strong><br/>
+                <em>Reasoning:</em> ${step.reasoning}<br/>
+                <em>Command:</em> <code>${step.command}</code>
+            `;
+            workflowSteps.appendChild(card);
+        });
+    }
+
+    // Event listeners
+    sendButton.addEventListener('click', sendMessage);
+    chatInput.addEventListener('keypress', e => {
+        if (e.key === 'Enter') sendMessage();
+    });
+</script> -->
+<script>
+//    const term = new Terminal();
+   
+//     term.open(document.getElementById('terminal'));
+   
+   
+//     const ws2 = new WebSocket("ws://" + window.location.host + "/ws/terminal/");
+
+//     // Terima output dari server dan tampilkan
+//     ws2.onmessage = function(event) {
+//         console.log("Received from WS:", event.data); 
+//         term.write(event.data);
+//     };
+//     let currentLine = "";
+
+//     term.onKey((keyEvent) => {
+//         const char = keyEvent.key;
+//         const domEvent = keyEvent.domEvent;
+
+//         // Ctrl+C / Cmd+C
+//         if ((domEvent.ctrlKey || domEvent.metaKey) && domEvent.code === "KeyC") {
+//             ws2.send(JSON.stringify({ type: "input", data: "\x03" }));
+//             term.write("^C");
+//             domEvent.preventDefault();  // Hindari copy default
+//             return;
+//         }
+
+//         // Ctrl+Z
+//         if ((domEvent.ctrlKey || domEvent.metaKey) && domEvent.code === "KeyZ") {
+//             ws2.send(JSON.stringify({ type: "input", data: "\x1A" }));
+//             term.write("^Z");
+//             domEvent.preventDefault();
+//             return;
+//         }
+
+//         // Ctrl+D
+//         if ((domEvent.ctrlKey || domEvent.metaKey) && domEvent.code === "KeyD") {
+//             ws2.send(JSON.stringify({ type: "input", data: "\x04" }));
+//             term.write("^D");
+//             domEvent.preventDefault();
+//             return;
+//         }
+
+//         // Backspace
+//         if (domEvent.code === "Backspace") {
+//             if (currentLine.length > 0) {
+//                 currentLine = currentLine.slice(0, -1);
+//                 term.write("\b \b");  // Hapus satu karakter
+//             }
+//             return;
+//         }
+
+//         // Enter
+//         if (domEvent.code === "Enter") {
+//             ws2.send(JSON.stringify({
+//                 type: "input",
+//                 data: currentLine
+//             }));
+//             currentLine = "";
+//             return;
+//         }
+
+//         // Karakter normal
+//         if (!domEvent.ctrlKey && !domEvent.metaKey && !domEvent.altKey) {
+//             currentLine += char;
+//             term.write(char);
+//         }
+//     });
+
+    const chatInput = document.getElementById('chat-input');
+    const sendButton = document.getElementById('send-button');
+    const bashContainer = document.getElementById('bashContainer');
+    const chatHistory = document.getElementById('chat-history');
+    const workflowSteps = document.getElementById('workflow-steps');
+    const statusButton = document.getElementById('status-final');
+
+    let ws;
+
+    function connectWebSocket() {
+        // Ganti dengan URL WebSocket kamu
+        ws = new WebSocket("ws://" + window.location.host + "/ws/chat/");
+
+        ws.onopen = () => {
+            console.log("WebSocket connected");
+        };
+
+        ws.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+
+            if (data.type === "step") {
+                renderWorkflowStep(data.content);
+                displayBashOutput(
+                    data.content.result.output,
+                    data.content.result.error,
+                    data.content.command
+                );
+            } else if (data.type === "complete") {
+                addChatBubble(data.content.summary, "ai");
+                updateFinalStatus("Completed");
+            } else if (data.type === "error") {
+                addChatBubble( data.content, "ai");
+                updateFinalStatus("Failed", "danger");
+            }
+        };
+
+        ws.onclose = () => {
+            console.log("WebSocket disconnected, reconnecting...");
+            setTimeout(connectWebSocket, 3000); // reconnect otomatis
+        };
+    }
+
+    connectWebSocket(); // Hubungkan saat halaman dimuat
+
+    function sendMessage() {
+        const message = chatInput.value.trim();
+        if (!message || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+        // Tambahkan chat user
+        addChatBubble(message, "user");
+
+        // Kirim ke WebSocket
+        ws.send(JSON.stringify({ message: message }));
+
+        // Reset input
+        chatInput.value = "";
+        chatInput.focus();
+    }
+
+    function addChatBubble(text, sender) {
+        const div = document.createElement("div");
+        div.className = `chat-box bg-flashlight ${sender === "user" ? "author-speech" : "ai-speech"}`;
+        div.innerHTML = `<span class="rainbow-badge-card">${sender === "user" ? "You" : "AI"}</span> <p>${text}</p>`;
+        chatHistory.appendChild(div);
+        chatHistory.scrollTop = chatHistory.scrollHeight;
+    }
+
+    function displayBashOutput(stdout, stderr, command = "") {
+        const pre = document.createElement("pre");
+        const code = document.createElement("code");
+
+        code.className = "language-bash";
+        code.textContent = `$ ${command}\n`;
+
+        if (stdout) code.textContent += stdout + "\n";
+        if (stderr) code.textContent += "ERROR:\n" + stderr + "\n";
+
+        pre.appendChild(code);
+        bashContainer.appendChild(pre);
+
+        Prism.highlightElement(code);
+        bashContainer.scrollTop = bashContainer.scrollHeight;
+    }
+
+    function renderWorkflowStep(step) {
+        const card = document.createElement("div");
+        card.className = "workflow-step p-3 mb-2 bg-light rounded shadow-sm";
+        card.innerHTML = `
+            <strong>Langkah ${step.step}</strong><br/>
+            <em>Reasoning:</em> ${step.reasoning}<br/>
+            <em>Command:</em> <code>${step.command}</code>
+        `;
+        workflowSteps.appendChild(card);
+        workflowSteps.scrollTop = workflowSteps.scrollHeight;
+    }
+
+    function updateFinalStatus(status, type = "success") {
+        statusButton.textContent = status;
+        statusButton.className = "btn btn-sm " + (type === "success" ? "btn-success" : "btn-danger");
+    }
+
+    // Event listeners
+    sendButton.addEventListener("click", sendMessage);
+    chatInput.addEventListener("keypress", e => {
+        if (e.key === "Enter") sendMessage();
     });
 </script>
 {% endblock script %}

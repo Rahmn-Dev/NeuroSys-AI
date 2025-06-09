@@ -10,7 +10,11 @@ import requests
 from asgiref.sync import async_to_sync
 from django.core.cache import cache
 from channels.generic.websocket import AsyncWebsocketConsumer
+from channels.layers import get_channel_layer
 
+import os, django
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ai_config.settings")
+django.setup()
 # Try importing pynvml for VRAM usage
 try:
     from pynvml import nvmlInit, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo, nvmlShutdown
@@ -487,3 +491,339 @@ class ServiceControlConsumer(AsyncWebsocketConsumer):
                 await self.send(json.dumps({'status': 'error', 'message': str(e)}))
             
             await asyncio.sleep(1)
+
+
+# baru ==========================
+
+class MCPSmartAgentConsumer(AsyncWebsocketConsumer):
+    """WebSocket Consumer for MCP Smart Agent communication"""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.smart_agent = None
+        self.mcp_server_websocket = None
+        self.room_group_name = None
+        
+    async def connect(self):
+        """Handle WebSocket connection"""
+        from ai_config.views import SmartMCPAgent
+        # Accept the WebSocket connection
+        await self.accept()
+        
+        # Create room group for this user
+        self.room_group_name = f"mcp_agent_{self.scope['user'].id if self.scope.get('user') else 'anonymous'}"
+        
+        # Add to room group
+        # await self.channel_layer.group_add(
+        #     self.room_group_name,
+        #     self.channel_name
+        # )
+        
+        # Initialize Smart Agent with this consumer
+        self.smart_agent = SmartMCPAgent()
+        self.smart_agent.setup_consumer(self)
+        
+        # Connect to MCP server
+        await self.connect_to_mcp_server()
+        
+        # Send connection success
+        await self.send(text_data=json.dumps({
+            'type': 'connection_status',
+            'status': 'connected',
+            'message': 'MCP Smart Agent connected'
+        }))
+    
+    async def disconnect(self, close_code):
+        """Handle WebSocket disconnection"""
+        # Disconnect from MCP server
+        if self.mcp_server_websocket:
+            await self.mcp_server_websocket.close()
+        
+        # Remove from room group
+        # if self.room_group_name:
+        #     await self.channel_layer.group_discard(
+        #         self.room_group_name,
+        #         self.channel_name
+        #     )
+    
+    async def connect_to_mcp_server(self):
+        """Connect to actual MCP server"""
+        try:
+            import websockets
+            self.mcp_server_websocket = await websockets.connect("ws://localhost:8080/mcp")
+            
+            # Start listening to MCP server responses
+            asyncio.create_task(self.listen_to_mcp_server())
+            
+            # Initialize MCP session
+            await self.smart_agent.initialize()
+            
+        except Exception as e:
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': f'Failed to connect to MCP server: {str(e)}'
+            }))
+    
+    async def listen_to_mcp_server(self):
+        """Listen to responses from MCP server"""
+        try:
+            async for message in self.mcp_server_websocket:
+                mcp_response = json.loads(message)
+                
+                # Handle MCP response in smart agent
+                await self.smart_agent.handle_mcp_response(mcp_response)
+                
+                # Forward MCP response to client if needed
+                await self.send(text_data=json.dumps({
+                    'type': 'mcp_response',
+                    'data': mcp_response
+                }))
+                
+        except Exception as e:
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': f'MCP server connection error: {str(e)}'
+            }))
+    
+    async def receive(self, text_data):
+        """Handle messages from WebSocket client"""
+        try:
+            data = json.loads(text_data)
+            message_type = data.get('type')
+            
+            if message_type == 'smart_workflow':
+                # Process smart workflow request
+                await self.handle_smart_workflow(data)
+                
+            elif message_type == 'mcp_request':
+                # Forward MCP request to server
+                await self.handle_mcp_request(data)
+                
+            elif message_type == 'ping':
+                # Handle ping
+                await self.send(text_data=json.dumps({
+                    'type': 'pong',
+                    'timestamp': data.get('timestamp')
+                }))
+                
+        except json.JSONDecodeError:
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': 'Invalid JSON format'
+            }))
+        except Exception as e:
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': str(e)
+            }))
+    
+    async def handle_smart_workflow(self, data):
+        """Handle smart workflow request"""
+        user_query = data.get('message', '')
+        
+        if not user_query:
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': 'No message provided'
+            }))
+            return
+        
+        # Send workflow started status
+        await self.send(text_data=json.dumps({
+            'type': 'workflow_status',
+            'status': 'started',
+            'goal': user_query
+        }))
+        
+        try:
+            # Process smart workflow
+            workflow_result = await self.smart_agent.process_smart_workflow(user_query)
+            
+            # Send workflow result
+            await self.send(text_data=json.dumps({
+                'type': 'workflow_result',
+                'result': workflow_result,
+                'formatted_response': self.format_workflow_response(workflow_result)
+            }))
+            
+        except Exception as e:
+            await self.send(text_data=json.dumps({
+                'type': 'workflow_error',
+                'error': str(e)
+            }))
+    
+    async def handle_mcp_request(self, data):
+        """Handle direct MCP request"""
+        mcp_data = data.get('data', {})
+        
+        if self.mcp_server_websocket:
+            try:
+                await self.mcp_server_websocket.send(json.dumps(mcp_data))
+            except Exception as e:
+                await self.send(text_data=json.dumps({
+                    'type': 'error',
+                    'message': f'Failed to send MCP request: {str(e)}'
+                }))
+    
+    def format_workflow_response(self, workflow_result):
+        """Format workflow result for display"""
+        response = f"🤖 **MCP Smart Agent Result**\\n\\n"
+        response += f"**Goal:** {workflow_result['goal']}\\n"
+        response += f"**Status:** {workflow_result['final_status']}\\n"
+        response += f"**MCP Enabled:** ✅\\n\\n"
+        
+        if workflow_result['final_status'] == 'completed':
+            response += f"**Summary:** {workflow_result.get('summary', '')}\\n\\n"
+        
+        response += "**Execution Steps:**\\n"
+        for step in workflow_result['steps']:
+            response += f"\\n**Step {step['step']}**\\n"
+            response += f"*Reasoning:* {step['reasoning']}\\n"
+            
+            if 'command' in step:
+                response += f"*Command:* `{step['command']}`\\n"
+            elif 'tool' in step:
+                response += f"*MCP Tool:* `{step['tool']}`\\n"
+                response += f"*Arguments:* {json.dumps(step['arguments'])}\\n"
+            
+            # Format result
+            result = step['result']
+            if isinstance(result.get('content'), list):
+                for content in result['content']:
+                    if content.get('type') == 'text':
+                        response += f"*Output:*\\n```\\n{content['text'][:500]}...\\n```\\n"
+            else:
+                response += f"*Output:*\\n```\\n{str(result)[:500]}...\\n```\\n"
+        
+        return response
+    
+    # Group message handlers
+    async def mcp_broadcast(self, event):
+        """Handle broadcast messages to MCP group"""
+        await self.send(text_data=json.dumps({
+            'type': 'broadcast',
+            'message': event['message']
+        }))
+
+
+# Additional consumer for MCP server proxy
+class MCPServerProxyConsumer(AsyncWebsocketConsumer):
+    """WebSocket Consumer that acts as proxy to MCP server"""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.mcp_server_websocket = None
+        
+    async def connect(self):
+        await self.accept()
+        
+        # Connect to actual MCP server
+        try:
+            import websockets
+            self.mcp_server_websocket = await websockets.connect("ws://localhost:8080/mcp")
+            
+            # Start bidirectional proxy
+            asyncio.create_task(self.proxy_from_mcp_server())
+            
+        except Exception as e:
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': f'Failed to connect to MCP server: {str(e)}'
+            }))
+            await self.close()
+    
+    async def disconnect(self, close_code):
+        if self.mcp_server_websocket:
+            await self.mcp_server_websocket.close()
+    
+    async def receive(self, text_data):
+        """Forward messages to MCP server"""
+        if self.mcp_server_websocket:
+            try:
+                await self.mcp_server_websocket.send(text_data)
+            except Exception as e:
+                await self.send(text_data=json.dumps({
+                    'type': 'error',
+                    'message': f'Failed to forward to MCP server: {str(e)}'
+                }))
+    
+    async def proxy_from_mcp_server(self):
+        """Forward messages from MCP server to client"""
+        try:
+            async for message in self.mcp_server_websocket:
+                await self.send(text_data=message)
+        except Exception as e:
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': f'MCP server proxy error: {str(e)}'
+            }))
+
+
+# Utility functions for MCP integration
+async def broadcast_to_mcp_agents(message, user_id=None):
+    """Broadcast message to all MCP agents or specific user"""
+    channel_layer = get_channel_layer()
+    
+    if user_id:
+        group_name = f"mcp_agent_{user_id}"
+    else:
+        group_name = "mcp_agents_all"
+    
+    await channel_layer.group_send(
+        group_name,
+        {
+            'type': 'mcp_broadcast',
+            'message': message
+        }
+    )
+
+class ChatConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        await self.accept()
+
+    async def disconnect(self, close_code):
+        pass
+
+    async def receive(self, text_data):
+        data = json.loads(text_data)
+        user_message = data.get("message")
+        from .views import SmartAgent
+        # Inisialisasi agent
+        agent = SmartAgent()
+
+        # Streaming hasil langkah demi langkah
+        for result in agent.stream_process_smart_workflow(user_message):
+            await self.send(json.dumps(result))
+
+
+import threading
+class TerminalConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        await self.accept()
+        loop = asyncio.get_event_loop()
+
+        def handle_output(output):
+            asyncio.run_coroutine_threadsafe(
+                self.send(text_data=output),
+                loop
+            )
+
+        from .terminal_utils import start_shell
+        self.shell_writer, self.shell_process = start_shell(handle_output)
+        self.handle_input = lambda data: self.shell_writer(data)
+
+    async def disconnect(self, close_code):
+        print("WebSocket disconnected")
+        try:
+            if hasattr(self, 'shell_process'):
+                self.shell_process.terminate()
+        except Exception as e:
+            print(f"Error during termination: {e}")
+
+    async def receive(self, text_data):
+        try:
+            data = json.loads(text_data)
+            if data.get("type") == "input":
+                self.handle_input(data.get("data", ""))
+        except json.JSONDecodeError:
+            print("Invalid JSON")

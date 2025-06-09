@@ -56,5 +56,9 @@ urlpatterns = [
      path('ai-analyze-service/', views.ai_analyze_service, name='ai_analyze_service'),
      path('ai-analyze-service-v2/', views.ai_analyze_service_v2, name='ai_analyze_service_v2'),
      path('ai-fix-service-v2/', views.ai_fix_service_v2, name='ai_fix_service_v2'),
+    #  test new
+     path('api/process-smart-chat/', views.process_smart_chat, name='process_smart_chat'),
+     path('api/ai-admin-chat/', views.ai_admin_chat, name='ai_admin_chat'),
+    #  path('api/process-smart-chat/', views.process_mcp_smart_chat_http, name='process_smart_chat'),
 ]
 
