@@ -171,3 +171,5 @@ cython_debug/
 .pypirc
 ai_config/dataset/
 ai_config/model/
+ai_config/ai_security/ai-cybersecurity-threat-detection/
+ai_config/ai_security/network-traffic-anomaly-detection/

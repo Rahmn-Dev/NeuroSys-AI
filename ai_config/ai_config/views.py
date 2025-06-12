@@ -2037,7 +2037,7 @@ class MCPClient:
         # Mistral.api_key = MISTRAL_API_KEY
         self.api_key = MISTRAL_API_KEY
         self.client = Mistral(api_key=self.api_key)
-        self.model = "mistral-large-latest"
+        self.model = "open-mistral-nemo"
         
     def process_complex_task(self, user_input):
         system_prompt = """
@@ -2120,10 +2120,9 @@ class SafeCommandExecutor:
         except Exception as e:
             return {"error": str(e)}
     
-    def execute_bash_command(self, command):
+    def execute_bash_command(self, command, context_memory=None):
         """Execute complex bash commands with safety checks"""
-        current_dir = self.context_memory.get("current_directory", os.getcwd())
-        
+        current_dir = context_memory.get("current_directory") if context_memory else os.getcwd()
         # Blacklist dangerous commands
         dangerous_patterns = [
             'rm -rf /', 'dd if=', 'mkfs', 'fdisk', 'parted',
@@ -2180,47 +2179,31 @@ class SmartAgent:
     def process_smart_workflow(self, user_query):
         """Main method to process user query with smart workflow"""
         self.current_goal = user_query
-        self.conversation_history = [
-            {"role": "user", "content": user_query}
-        ]
-        
+        self.conversation_history = [{"role": "user", "content": user_query}]
         workflow_result = {
             "steps": [],
             "final_status": "in_progress",
             "goal": user_query,
             "start_time": time.time()
         }
-        
-        print(f"🤖 Starting smart workflow for: {user_query}")
-        
-        # Start the conversation loop
+        print(f"🧠 Starting smart workflow for: {user_query}")
         step_count = 0
-        max_steps = 10  # Prevent infinite loops
-        
+        max_steps = 10  # Mencegah infinite loop
         while step_count < max_steps:
             print(f"\n--- Step {step_count + 1} ---")
-            
-            # Ask AI what to do next
             next_action = self.get_next_action()
             print(f"AI Decision: {next_action}")
-            
             if next_action.get("action") == "complete":
                 workflow_result["final_status"] = "completed"
                 workflow_result["summary"] = next_action.get("summary")
                 print("✅ Workflow completed!")
                 break
-                
             elif next_action.get("action") == "execute":
-                # Execute the command
                 command = next_action.get("command")
                 reasoning = next_action.get("reasoning")
-                
                 print(f"Reasoning: {reasoning}")
                 print(f"Executing: {command}")
-                
                 execution_result = self.execute_with_context(command)
-                
-                # Add to workflow results
                 workflow_result["steps"].append({
                     "step": step_count + 1,
                     "reasoning": reasoning,
@@ -2228,24 +2211,72 @@ class SmartAgent:
                     "result": execution_result,
                     "timestamp": time.time()
                 })
-                
-                # Feed result back to AI
                 self.add_execution_result_to_conversation(command, execution_result)
-                
                 print(f"Result: {execution_result.get('output', 'No output')[:100]}...")
-                
                 step_count += 1
-                
+            elif next_action.get("action") == "tool_call":
+                tool_name = next_action.get("tool_name")
+                parameters = next_action.get("parameters")
+                reasoning = next_action.get("reasoning")
+                print(f"Reasoning: {reasoning}")
+                print(f"Calling Tool: {tool_name} with parameters: {parameters}")
+                if hasattr(self.ai_tools, tool_name):
+                    tool_func = getattr(self.ai_tools, tool_name)
+                    try:
+                        tool_result = tool_func(**parameters)
+                        workflow_result["steps"].append({
+                            "step": step_count + 1,
+                            "reasoning": reasoning,
+                            "tool_call": tool_name,
+                            "parameters": parameters,
+                            "result": tool_result,
+                            "timestamp": time.time()
+                        })
+                        self.add_tool_result_to_conversation(tool_name, tool_result)
+                        print(f"Tool Result: {tool_result}")
+                    except Exception as e:
+                        print(f"Error calling tool: {str(e)}")
+                        workflow_result["steps"].append({
+                            "step": step_count + 1,
+                            "reasoning": reasoning,
+                            "tool_call": tool_name,
+                            "parameters": parameters,
+                            "result": {"success": False, "error": str(e)},
+                            "timestamp": time.time()
+                        })
+                else:
+                    print(f"Unknown tool: {tool_name}")
+                    workflow_result["steps"].append({
+                        "step": step_count + 1,
+                        "reasoning": reasoning,
+                        "tool_call": tool_name,
+                        "parameters": parameters,
+                        "result": {"success": False, "error": f"Unknown tool: {tool_name}"},
+                        "timestamp": time.time()
+                    })
+                step_count += 1
             else:
                 workflow_result["final_status"] = "failed"
                 workflow_result["error"] = next_action.get("error", "Unknown error")
-                print(f"❌ Workflow failed: {workflow_result['error']}")
+                print(f"⚠️ Workflow failed: {workflow_result['error']}")
                 break
-        
         workflow_result["end_time"] = time.time()
         workflow_result["duration"] = workflow_result["end_time"] - workflow_result["start_time"]
-        
         return workflow_result
+    
+    def add_tool_result_to_conversation(self, tool_name, result):
+        """Add tool call result to conversation history"""
+        self.conversation_history.append({
+            "role": "assistant",
+            "content": f"Called tool: {tool_name}"
+        })
+        output = str(result)[:1000]  # Batasi panjang output
+        self.conversation_history.append({
+            "role": "user",
+            "content": f"Tool result:\n{output}"
+        })
+        # Update context memory jika diperlukan
+        self.update_context_memory(tool_name, result)
     
     def stream_process_smart_workflow(self, user_query):
         """Main method to process user query with smart workflow - streams results"""
@@ -2302,14 +2333,17 @@ class SmartAgent:
         2. If need to execute command → return {{"action": "execute", "command": "command", "reasoning": "why"}}
         3. If failed → return {{"action": "fail", "error": "reason"}}
         
-        Be smart and adaptive:
-        - Check command results before proceeding
-        - Adjust strategy based on previous outputs
-        - Validate each step before moving to next
-        - Handle errors gracefully
-        - Use absolute paths when possible
-        - Be specific with file and directory names
+        Available tools from AITools:
+        - file_read(file_path, lines=None)
+        - file_write(file_path, content, mode="w")
+        - file_edit(file_path, operation, line_number=None, content=None, replacement=None)
+        - execute_command(command, timeout=30, working_dir=None)
+        - service_control(service_name, action)
+        - config_validate(service_type, config_path=None)
+        - security_scan(scan_type, target=None)
+        - log_analyze(log_file, pattern=None, lines=100)
         
+        Be specific with parameters and paths. 
         Context memory: {json.dumps(self.context_memory)}
         
         IMPORTANT: Return only valid JSON format. No additional text.
@@ -2349,13 +2383,13 @@ class SmartAgent:
     def execute_with_context(self, command):
         """Execute command with current context"""
         if command.startswith("cd"):
-            # Eksekusi 'cd' dan perbarui direktori saat ini
-            result = self.executor.execute_bash_command(command)
+            # Execute 'cd' and update current directory
+            result = self.executor.execute_bash_command(command, context_memory=self.context_memory)
             self.update_context_memory(command, result)
             return result
         else:
-            return self.executor.execute_bash_command(command)
-    
+            return self.executor.execute_bash_command(command, context_memory=self.context_memory)
+        
     def add_execution_result_to_conversation(self, command, result):
         """Add command execution result to conversation history"""
         
@@ -2464,7 +2498,7 @@ class AIReasoningAgent:
     
     def __init__(self, MISTRAL_API_KEY):
         self.client = Mistral(api_key=MISTRAL_API_KEY)
-        self.model = "mistral-large-latest"
+        self.model = "open-mistral-nemo"
         self.tools = AITools()
         self.conversation_history = []
         self.context_memory = {}
@@ -2792,7 +2826,7 @@ class MCPClient2:
             
         return response.get("result", {})
     
-    async def send_prompt(self, messages: List[Dict], model: str = "mistral-large-latest") -> str:
+    async def send_prompt(self, messages: List[Dict], model: str = "open-mistral-nemo") -> str:
         """Send prompt to AI model through MCP server"""
         request_id = self._next_request_id()
         request = {
