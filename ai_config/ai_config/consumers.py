@@ -506,7 +506,7 @@ class MCPSmartAgentConsumer(AsyncWebsocketConsumer):
         
     async def connect(self):
         """Handle WebSocket connection"""
-        from ai_config.views import SmartMCPAgent
+        from .views import SmartMCPAgent
         # Accept the WebSocket connection
         await self.accept()
         

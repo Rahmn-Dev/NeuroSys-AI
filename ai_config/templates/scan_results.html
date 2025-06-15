@@ -1,0 +1,183 @@
+{% extends './layout/layout1.html' %}
+
+{% block style %}
+<!-- Bootstrap CSS -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<!-- Font Awesome -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+    .code-block {
+        background-color: #e9ecef;
+        padding: 0.2rem 0.4rem;
+        border-radius: 0.25rem;
+        font-family: monospace;
+    }
+    .issue-card {
+        border-left-width: 5px;
+        border-left-style: solid;
+    }
+    .severity-critical { border-color: #dc3545; }
+    .severity-high { border-color: #fd7e14; }
+    .severity-medium { border-color: #0dcaf0; }
+    .severity-low { border-color: #6c757d; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="rbt-main-content mr--0">
+    <div class="rbt-daynamic-page-content">
+        <div class="rbt-dashboard-content p-4">
+            <div class="container-fluid">
+                <!-- Judul Halaman dan Tombol Aksi -->
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div>
+                        <h2 class="mb-0">Hasil Analisis Sistem</h2>
+                        <p class="text-muted">Hasil scan untuk <strong>{{ system_scan.hostname }}</strong> pada {{ system_scan.scanned_at|date:"d M Y, H:i" }}</p>
+                    </div>
+                    <a href="{% url 'config_detector' %}" class="btn btn-secondary">
+                        <i class="fas fa-arrow-left me-2"></i>Kembali ke Dasbor
+                    </a>
+                </div>
+
+                <!-- Ringkasan Hasil -->
+                <div class="row g-4 mb-4">
+                    <div class="col">
+                        <div class="card text-center h-100 shadow-sm">
+                            <div class="card-body">
+                                <h1 class="display-4 fw-bold">{{ total_issues }}</h1>
+                                <p class="text-muted mb-0">Total Masalah</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="card text-center h-100 shadow-sm">
+                            <div class="card-body">
+                                <h1 class="display-4 fw-bold text-danger">{{ critical_count }}</h1>
+                                <p class="text-muted mb-0">Level Kritikal</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="card text-center h-100 shadow-sm">
+                            <div class="card-body">
+                                <h1 class="display-4 fw-bold text-warning">{{ high_count }}</h1>
+                                <p class="text-muted mb-0">Level Tinggi</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="card text-center h-100 shadow-sm">
+                            <div class="card-body">
+                                <h1 class="display-4 fw-bold text-success">{{ auto_fixable_count }}</h1>
+                                <p class="text-muted mb-0">Dapat Diperbaiki Otomatis</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Detail Isu -->
+                <h3 class="mb-3">Daftar Masalah yang Ditemukan</h3>
+                <div class="d-grid gap-3">
+                    {% for issue in issues %}
+                    <div class="card shadow-sm issue-card severity-{{ issue.severity|lower }}">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    {% with issue.severity|lower as severity %}
+                                    <span class="badge rounded-pill text-bg-{% if severity == 'critical' %}danger{% elif severity == 'high' %}warning{% elif severity == 'medium' %}info{% else %}secondary{% endif %}">{{ issue.severity|upper }}</span>
+                                    {% endwith %}
+                                    <h5 class="card-title mt-2">{{ issue.title }}</h5>
+                                    <p class="card-text text-muted">{{ issue.description }}</p>
+
+                                    {% if issue.config_file %}
+                                    <p class="mb-1"><small><strong>File Konfigurasi:</strong> <code class="code-block">{{ issue.config_file }}</code></small></p>
+                                    {% endif %}
+                                    
+                                    <div class="d-flex flex-wrap gap-3">
+                                        {% if issue.current_value %}
+                                        <p class="mb-0"><small><strong>Nilai Saat Ini:</strong> <code class="code-block text-danger">{{ issue.current_value }}</code></small></p>
+                                        {% endif %}
+                                        {% if issue.recommended_value %}
+                                        <p class="mb-0"><small><strong>Rekomendasi:</strong> <code class="code-block text-success">{{ issue.recommended_value }}</code></small></p>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div id="fix-action-{{ issue.id }}" class="flex-shrink-0 ms-3">
+                                    {% if issue.is_auto_fixable and not issue.is_fixed %}
+                                    <button class="btn btn-sm btn-success" onclick="fixIssue(this, {{ issue.id }})">
+                                        <i class="fas fa-magic me-1"></i> Perbaiki Otomatis
+                                    </button>
+                                    {% elif issue.is_fixed %}
+                                    <span class="badge text-bg-success"><i class="fas fa-check-circle me-1"></i> Diperbaiki</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="card">
+                        <div class="card-body text-center text-success p-5">
+                            <i class="fas fa-check-circle fa-4x mb-3"></i>
+                            <h4>Sistem Anda Aman!</h4>
+                            <p>Tidak ada masalah konfigurasi yang ditemukan pada pemindaian ini.</p>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    /**
+     * Mengirim request untuk memperbaiki isu secara otomatis.
+     * @param {HTMLElement} button - Elemen tombol yang diklik.
+     * @param {number} issueId - ID dari isu yang akan diperbaiki.
+     */
+    async function fixIssue(button, issueId) {
+        if (!confirm('Apakah Anda yakin ingin menerapkan perbaikan ini secara otomatis? Ini dapat mengubah konfigurasi sistem.')) {
+            return;
+        }
+
+        button.disabled = true;
+        button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Memperbaiki...';
+        
+        const csrftoken = '{{ csrf_token }}'; // Django akan merender token di sini
+
+        try {
+            const response = await fetch(`/fix/${issueId}/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrftoken
+                }
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Perbaikan gagal.');
+            }
+
+            if (data.success) {
+                alert('Berhasil: ' + data.message);
+                // Ganti tombol dengan status "Diperbaiki"
+                const actionContainer = document.getElementById(`fix-action-${issueId}`);
+                actionContainer.innerHTML = '<span class="badge text-bg-success"><i class="fas fa-check-circle me-1"></i> Diperbaiki</span>';
+            }
+
+        } catch (error) {
+            console.error('Error fixing issue:', error);
+            alert('Gagal: ' + error.message);
+            button.disabled = false;
+            button.innerHTML = '<i class="fas fa-magic me-1"></i> Perbaiki Otomatis';
+        }
+    }
+</script>
+{% endblock %}

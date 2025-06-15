@@ -49,7 +49,7 @@ INSTALLED_APPS = [
     'chatbot',
     # 'corsheaders',
     'psutil',
-    # 'ai_config',
+    'ai_config',
 
     'django_otp',  # Core OTP support
     'django_otp.plugins.otp_totp',  # Time-based OTP (TOTP)

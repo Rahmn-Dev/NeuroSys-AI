@@ -79,3 +79,46 @@ class AIRecommendation(models.Model):
 
     def __str__(self):
         return f"{self.category} - {self.title}"
+    
+
+
+class SystemScan(models.Model):
+    hostname = models.CharField(max_length=255)
+    ip_address = models.GenericIPAddressField()
+    os_info = models.TextField()
+    scan_type = models.CharField(max_length=50)  # full, quick, security
+    scanned_at = models.DateTimeField(auto_now_add=True)
+    scanned_by = models.ForeignKey(User, on_delete=models.CASCADE)
+    
+class ConfigurationIssue(models.Model):
+    SEVERITY_CHOICES = [
+        ('info', 'Info'),
+        ('low', 'Low'),
+        ('medium', 'Medium'),
+        ('high', 'High'),
+        ('critical', 'Critical'),
+    ]
+    
+    CATEGORY_CHOICES = [
+        ('security', 'Security'),
+        ('performance', 'Performance'),
+        ('network', 'Network'),
+        ('system', 'System'),
+        ('service', 'Service'),
+        ('storage', 'Storage'),
+    ]
+    
+    system_scan = models.ForeignKey(SystemScan, on_delete=models.CASCADE)
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES)
+    severity = models.CharField(max_length=20, choices=SEVERITY_CHOICES)
+    title = models.CharField(max_length=255)
+    description = models.TextField()
+    config_file = models.CharField(max_length=512, null=True, blank=True)
+    config_line = models.TextField(null=True, blank=True)
+    current_value = models.TextField(null=True, blank=True)
+    recommended_value = models.TextField(null=True, blank=True)
+    fix_command = models.TextField(null=True, blank=True)
+    is_auto_fixable = models.BooleanField(default=False)
+    is_fixed = models.BooleanField(default=False)
+    detected_at = models.DateTimeField(auto_now_add=True)
+

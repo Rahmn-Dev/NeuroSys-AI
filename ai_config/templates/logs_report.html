@@ -64,7 +64,7 @@
                                                 </p>
                                                 <hr />
                                                 <strong>AI Recommendation:</strong>
-                                                <div class="markdown-content" data-markdown="{{ rec.recommendation|escapejs }}" style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 10px; border: 1px solid #dee2e6;">
+                                                <div class="markdown-content" data-markdown="{{ rec.recommendation }}" style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 10px; border: 1px solid #dee2e6;">
                                                     <!-- Content akan diisi oleh JavaScript -->
                                                     <div class="loading-markdown">
                                                         <i class="fas fa-spinner fa-spin"></i> Processing recommendation...
@@ -162,7 +162,7 @@ pre {
 {% endblock %}
 
 {% block script %}
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script> 
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script> 
 <script>
     function escapeHtml(text) {
         const div = document.createElement('div');
@@ -185,26 +185,41 @@ pre {
     // Parse markdown to HTML
     return marked.parse(text);
 }
-$("#analyzeBtn").click(function () {
-    var button = $(this);
-    var originalText = button.text();
+document.getElementById("analyzeBtn").addEventListener("click", function () {
+    var button = this;
+    var originalText = button.innerText;
 
-    button.text("Running...").prop("disabled", true);
-    $("#status").text("AI analysis is running...").css("color", "orange");
+    button.innerText = "Running...";
+    button.disabled = true;
+    document.getElementById("status").innerText = "AI analysis is running...";
+    document.getElementById("status").style.color = "orange";
 
-    $.get("/run-analysis/", function(response) {
-        console.log("✅ Analisis selesai:", response.status);
-
-        button.text(originalText).prop("disabled", false);
-        $("#status").text("Analysis completed successfully.").css("color", "green");
-
-        // Reload halaman untuk lihat hasil AI
-        location.reload();
-    }).fail(function(error) {
-        console.error("❌ Error saat menjalankan analisis:", error.responseText);
-        button.text(originalText).prop("disabled", false);
-        $("#status").text("Error occurred during analysis.").css("color", "red");
-    });
+    fetch("/run-analysis/")
+        .then(response => response.json())
+        .then(response => {
+            console.log("✅ Analisis selesai:", response.status);
+            button.innerText = originalText;
+            button.disabled = false;
+            document.getElementById("status").innerText = "Analysis completed successfully.";
+            document.getElementById("status").style.color = "green";
+            location.reload();
+        })
+        .catch(error => {
+            console.error("❌ Error saat menjalankan analisis:", error);
+            button.innerText = originalText;
+            button.disabled = false;
+            document.getElementById("status").innerText = "Error occurred during analysis.";
+            document.getElementById("status").style.color = "red";
+        });
 });
+
+document.addEventListener("DOMContentLoaded", function () {
+        document.querySelectorAll(".markdown-content").forEach(function (element) {
+            const markdownText = element.getAttribute("data-markdown");
+            if (markdownText) {
+                element.innerHTML = parseMarkdownWithCodeBlocks(markdownText);
+            }
+        });
+    });
 </script>
 {% endblock %}

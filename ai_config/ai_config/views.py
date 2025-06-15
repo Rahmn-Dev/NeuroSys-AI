@@ -31,11 +31,13 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Any
 from langchain.agents import initialize_agent
 import time
-
+from chatbot.models import SystemScan, ConfigurationIssue
+from .system_analyzer import LinuxConfigAnalyzer
 import asyncio
 
 # Inisialisasi model AI
-llm = OllamaLLM(model="qwen2.5-coder:latest")
+# llm = OllamaLLM(model="qwen2.5-coder:latest")
+llm = OllamaLLM(model="mistral:latest")
 OLLAMA_URL = getattr(settings, "OLLAMA_URL")
 OLLAMA_MODEL = getattr(settings, "OLLAMA_MODEL")
 OPENAI_API_KEY = getattr(settings, "OPENAI_KEY")
@@ -46,11 +48,119 @@ MISTRAL_API_KEY = getattr(settings, "MISTRAL_API_KEY")
 def chatAI(request):
     return render(request,"generator/textGenerator.html",{'headTitle' : 'Chat AI','toggle' : "true"})
     # testing
+@login_required
 def chatAI2(request):
     # return render(request,"generator/textGenerator.html",{'headTitle' : 'Chat AI','toggle' : "true"})
     # testing
     return render(request,"chat.html",{'headTitle' : 'Chat AI','toggle' : "true"})
+# config detector
+@login_required
+def config_detector(request):
+    recent_scans = SystemScan.objects.filter(scanned_by=request.user).order_by('-scanned_at')[:5]
+    return render(request, 'config_detector.html', {
+        'recent_scans': recent_scans
+    })
 
+@login_required
+def run_scan(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        scan_type = data.get('scan_type', 'full')
+        
+        # Initialize analyzer
+        analyzer = LinuxConfigAnalyzer()
+        results = analyzer.analyze_system(scan_type)
+        
+        # Save scan to database
+        system_scan = SystemScan.objects.create(
+            hostname=results['system_info']['hostname'],
+            ip_address='127.0.0.1',  # Local scan
+            os_info=json.dumps(results['system_info']),
+            scan_type=scan_type,
+            scanned_by=request.user
+        )
+        
+        # Save issues
+        for issue in results['issues']:
+            ConfigurationIssue.objects.create(
+                system_scan=system_scan,
+                category=issue['category'],
+                severity=issue['severity'],
+                title=issue['title'],
+                description=issue['description'],
+                config_file=issue.get('config_file'),
+                current_value=issue.get('current_value'),
+                recommended_value=issue.get('recommended_value'),
+                fix_command=issue.get('fix_command'),
+                is_auto_fixable=issue.get('is_auto_fixable', False)
+            )
+        
+        return JsonResponse({
+            'success': True,
+            'scan_id': system_scan.id,
+            'results': results
+        })
+    
+    return JsonResponse({'error': 'Invalid request method'}, status=405)
+
+@login_required
+def scan_results(request, scan_id):
+    system_scan = SystemScan.objects.get(id=scan_id, scanned_by=request.user)
+    issues = ConfigurationIssue.objects.filter(system_scan=system_scan).order_by('-severity', 'category')
+    
+    system_info = json.loads(system_scan.os_info)
+    
+    context = {
+        'system_scan': system_scan,
+        'system_info': system_info,
+        'issues': issues,
+        'total_issues': issues.count(),
+        'critical_count': issues.filter(severity='critical').count(),
+        'high_count': issues.filter(severity='high').count(),
+        'auto_fixable_count': issues.filter(is_auto_fixable=True).count(),
+    }
+    
+    return render(request, 'scan_results.html', context)
+
+@login_required
+def auto_fix_issue(request, issue_id):
+    if request.method == 'POST':
+        try:
+            issue = ConfigurationIssue.objects.get(id=issue_id)
+            
+            if not issue.is_auto_fixable or not issue.fix_command:
+                return JsonResponse({'error': 'Issue is not auto-fixable'}, status=400)
+            
+            # Execute fix command (BE VERY CAREFUL HERE!)
+            result = subprocess.run(
+                issue.fix_command,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            if result.returncode == 0:
+                issue.is_fixed = True
+                issue.save()
+                return JsonResponse({
+                    'success': True,
+                    'message': 'Issue fixed successfully',
+                    'output': result.stdout
+                })
+            else:
+                return JsonResponse({
+                    'error': 'Fix command failed',
+                    'output': result.stderr
+                }, status=500)
+                
+        except subprocess.TimeoutExpired:
+            return JsonResponse({'error': 'Fix command timeout'}, status=500)
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
+    
+    return JsonResponse({'error': 'Invalid request method'}, status=405)
+# end config detector
 @login_required
 def index(request):
     return render(request, "index.html")
@@ -1622,10 +1732,10 @@ class AITools:
             "security_scan": self.security_scan,
             "network_scan": self.network_scan,
             "log_analyze": self.log_analyze,
-            "package_manage": self.package_manage,
-            "user_manage": self.user_manage,
-            "permission_check": self.permission_check,
-            "process_monitor": self.process_monitor
+            # "package_manage": self.package_manage,
+            # "user_manage": self.user_manage,
+            # "permission_check": self.permission_check,
+            # "process_monitor": self.process_monitor
         }
     
     def get_available_tools(self):
@@ -1643,6 +1753,21 @@ class AITools:
                             "lines": {"type": "integer", "description": "Number of lines to read (optional)"}
                         },
                         "required": ["file_path"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "network_scan",
+                    "description": "Scan network and connectivity",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "scan_type": {"type": "string", "description": "Type: ping, port_scan, interface_check"},
+                            "target": {"type": "string", "description": "Target IP or hostname"}
+                        },
+                        "required": ["scan_type"]
                     }
                 }
             },
@@ -1756,8 +1881,189 @@ class AITools:
                         "required": ["log_file"]
                     }
                 }
-            }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "backup_create",
+                    "description": "Create backup of files or directories",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "source_path": {"type": "string", "description": "Path to backup"},
+                            "backup_dir": {"type": "string", "description": "Backup destination directory", "default": "/var/backups"},
+                            "compression": {"type": "boolean", "description": "Compress backup", "default": True}
+                        },
+                        "required": ["source_path"]
+                    }
+                }
+            },{
+                "type": "function",
+                "function": {
+                    "name": "backup_restore",
+                    "description": "Restore from backup",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "backup_path": {"type": "string", "description": "Path to backup file"},
+                            "restore_path": {"type": "string", "description": "Where to restore"},
+                            "force": {"type": "boolean", "description": "Force overwrite", "default": False}
+                        },
+                        "required": ["backup_path", "restore_path"]
+                    }
+                }
+            },
+
         ]
+    
+    def network_scan(self, scan_type, target=None):
+        """Scan network and connectivity"""
+        try:
+            if scan_type == "ping":
+                if not target:
+                    return {"success": False, "error": "Target required for ping scan"}
+                
+                result = subprocess.run(['ping', '-c', '4', target], 
+                                      capture_output=True, text=True)
+                return {
+                    "success": True,
+                    "scan_type": scan_type,
+                    "target": target,
+                    "reachable": result.returncode == 0,
+                    "output": result.stdout
+                }
+            
+            elif scan_type == "interface_check":
+                result = subprocess.run(['ip', 'addr', 'show'], capture_output=True, text=True)
+                return {
+                    "success": True,
+                    "scan_type": scan_type,
+                    "interfaces": result.stdout
+                }
+            
+            elif scan_type == "port_scan":
+                if not target:
+                    return {"success": False, "error": "Target required for port scan"}
+                
+                # Basic port scan using netcat
+                common_ports = [22, 80, 443, 21, 25, 53, 110, 993, 995]
+                open_ports = []
+                
+                for port in common_ports:
+                    result = subprocess.run(['nc', '-z', '-w', '1', target, str(port)], 
+                                          capture_output=True, text=True)
+                    if result.returncode == 0:
+                        open_ports.append(port)
+                
+                return {
+                    "success": True,
+                    "scan_type": scan_type,
+                    "target": target,
+                    "open_ports": open_ports
+                }
+            
+            else:
+                return {"success": False, "error": f"Unknown scan type: {scan_type}"}
+                
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def backup_create(self, source_path, backup_dir="/var/backups", compression=True):
+        """Create backup of files or directories"""
+        try:
+            if not os.path.exists(source_path):
+                return {"success": False, "error": f"Source path does not exist: {source_path}"}
+            
+            # Create backup directory if it doesn't exist
+            os.makedirs(backup_dir, exist_ok=True)
+            
+            # Generate backup filename with timestamp
+            timestamp = int(time.time())
+            source_name = os.path.basename(source_path.rstrip('/'))
+            
+            if compression:
+                backup_filename = f"{source_name}_backup_{timestamp}.tar.gz"
+                backup_path = os.path.join(backup_dir, backup_filename)
+                
+                # Create compressed backup
+                if os.path.isdir(source_path):
+                    result = subprocess.run(['tar', '-czf', backup_path, '-C', 
+                                           os.path.dirname(source_path), source_name], 
+                                         capture_output=True, text=True)
+                else:
+                    result = subprocess.run(['tar', '-czf', backup_path, source_path], 
+                                         capture_output=True, text=True)
+            else:
+                backup_filename = f"{source_name}_backup_{timestamp}"
+                backup_path = os.path.join(backup_dir, backup_filename)
+                
+                # Create uncompressed backup
+                if os.path.isdir(source_path):
+                    result = subprocess.run(['cp', '-r', source_path, backup_path], 
+                                         capture_output=True, text=True)
+                else:
+                    result = subprocess.run(['cp', source_path, backup_path], 
+                                         capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                backup_size = os.path.getsize(backup_path) if os.path.isfile(backup_path) else 0
+                return {
+                    "success": True,
+                    "source_path": source_path,
+                    "backup_path": backup_path,
+                    "backup_size": backup_size,
+                    "compressed": compression,
+                    "timestamp": timestamp
+                }
+            else:
+                return {"success": False, "error": result.stderr}
+                
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def backup_restore(self, backup_path, restore_path, force=False):
+        """Restore from backup"""
+        try:
+            if not os.path.exists(backup_path):
+                return {"success": False, "error": f"Backup file does not exist: {backup_path}"}
+            
+            # Check if restore path exists and force flag
+            if os.path.exists(restore_path) and not force:
+                return {"success": False, "error": f"Restore path exists. Use force=True to overwrite: {restore_path}"}
+            
+            # Create restore directory if needed
+            restore_dir = os.path.dirname(restore_path)
+            if restore_dir:
+                os.makedirs(restore_dir, exist_ok=True)
+            
+            # Determine if backup is compressed
+            is_compressed = backup_path.endswith('.tar.gz') or backup_path.endswith('.tgz')
+            
+            if is_compressed:
+                # Extract compressed backup
+                result = subprocess.run(['tar', '-xzf', backup_path, '-C', restore_dir], 
+                                      capture_output=True, text=True)
+            else:
+                # Copy uncompressed backup
+                if os.path.isdir(backup_path):
+                    result = subprocess.run(['cp', '-r', backup_path, restore_path], 
+                                         capture_output=True, text=True)
+                else:
+                    result = subprocess.run(['cp', backup_path, restore_path], 
+                                         capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                return {
+                    "success": True,
+                    "backup_path": backup_path,
+                    "restore_path": restore_path,
+                    "compressed": is_compressed
+                }
+            else:
+                return {"success": False, "error": result.stderr}
+                
+        except Exception as e:
+            return {"success": False, "error": str(e)}
     
     def file_read(self, file_path, lines=None):
         """Read file contents"""
@@ -2169,115 +2475,311 @@ class SmartAgent:
     def __init__(self):
         self.mcp_client = MCPClient()
         self.executor = SafeCommandExecutor()
+        self.ai_tools = AITools()
         self.conversation_history = []
         self.current_goal = None
         self.context_memory = {}
         
         # Set OpenAI API key
         
-    
+    # komen smart workflow sementara
+    # def process_smart_workflow(self, user_query):
+    #     """Main method to process user query with smart workflow"""
+    #     self.current_goal = user_query
+    #     self.conversation_history = [{"role": "user", "content": user_query}]
+    #     workflow_result = {
+    #         "steps": [],
+    #         "final_status": "in_progress",
+    #         "goal": user_query,
+    #         "start_time": time.time()
+    #     }
+    #     print(f"🧠 Starting smart workflow for: {user_query}")
+    #     step_count = 0
+    #     max_steps = 10  # Mencegah infinite loop
+    #     while step_count < max_steps:
+    #         print(f"\n--- Step {step_count + 1} ---")
+    #         next_action = self.get_next_action()
+    #         print(f"AI Decision: {next_action}")
+    #         if next_action.get("action") == "complete":
+    #             workflow_result["final_status"] = "completed"
+    #             workflow_result["summary"] = next_action.get("summary")
+    #             print("✅ Workflow completed!")
+    #             break
+    #         elif next_action.get("action") == "execute":
+    #             command = next_action.get("command")
+    #             reasoning = next_action.get("reasoning")
+    #             print(f"Reasoning: {reasoning}")
+    #             print(f"Executing: {command}")
+    #             execution_result = self.execute_with_context(command)
+    #             workflow_result["steps"].append({
+    #                 "step": step_count + 1,
+    #                 "reasoning": reasoning,
+    #                 "command": command,
+    #                 "result": execution_result,
+    #                 "timestamp": time.time()
+    #             })
+    #             self.add_execution_result_to_conversation(command, execution_result)
+    #             print(f"Result: {execution_result.get('output', 'No output')[:100]}...")
+    #             step_count += 1
+    #         elif next_action.get("action") == "tool_call":
+    #             tool_name = next_action.get("tool_name")
+    #             parameters = next_action.get("parameters")
+    #             reasoning = next_action.get("reasoning")
+    #             print(f"Reasoning: {reasoning}")
+    #             print(f"Calling Tool: {tool_name} with parameters: {parameters}")
+    #             if hasattr(self.ai_tools, tool_name):
+    #                 tool_func = getattr(self.ai_tools, tool_name)
+    #                 try:
+    #                     tool_result = tool_func(**parameters)
+    #                     workflow_result["steps"].append({
+    #                         "step": step_count + 1,
+    #                         "reasoning": reasoning,
+    #                         "tool_call": tool_name,
+    #                         "parameters": parameters,
+    #                         "result": tool_result,
+    #                         "timestamp": time.time()
+    #                     })
+    #                     self.add_tool_result_to_conversation(tool_name, tool_result)
+    #                     print(f"Tool Result: {tool_result}")
+    #                 except Exception as e:
+    #                     print(f"Error calling tool: {str(e)}")
+    #                     workflow_result["steps"].append({
+    #                         "step": step_count + 1,
+    #                         "reasoning": reasoning,
+    #                         "tool_call": tool_name,
+    #                         "parameters": parameters,
+    #                         "result": {"success": False, "error": str(e)},
+    #                         "timestamp": time.time()
+    #                     })
+    #             else:
+    #                 print(f"Unknown tool: {tool_name}")
+    #                 workflow_result["steps"].append({
+    #                     "step": step_count + 1,
+    #                     "reasoning": reasoning,
+    #                     "tool_call": tool_name,
+    #                     "parameters": parameters,
+    #                     "result": {"success": False, "error": f"Unknown tool: {tool_name}"},
+    #                     "timestamp": time.time()
+    #                 })
+    #             step_count += 1
+    #         else:
+    #             workflow_result["final_status"] = "failed"
+    #             workflow_result["error"] = next_action.get("error", "Unknown error")
+    #             print(f"⚠️ Workflow failed: {workflow_result['error']}")
+    #             break
+    #     workflow_result["end_time"] = time.time()
+    #     workflow_result["duration"] = workflow_result["end_time"] - workflow_result["start_time"]
+    #     return workflow_result
     def process_smart_workflow(self, user_query):
         """Main method to process user query with smart workflow"""
         self.current_goal = user_query
         self.conversation_history = [{"role": "user", "content": user_query}]
+        
         workflow_result = {
             "steps": [],
             "final_status": "in_progress",
             "goal": user_query,
             "start_time": time.time()
         }
+        
         print(f"🧠 Starting smart workflow for: {user_query}")
         step_count = 0
-        max_steps = 10  # Mencegah infinite loop
+        max_steps = 10
+        
         while step_count < max_steps:
             print(f"\n--- Step {step_count + 1} ---")
             next_action = self.get_next_action()
             print(f"AI Decision: {next_action}")
+            
             if next_action.get("action") == "complete":
                 workflow_result["final_status"] = "completed"
                 workflow_result["summary"] = next_action.get("summary")
                 print("✅ Workflow completed!")
                 break
+                
             elif next_action.get("action") == "execute":
                 command = next_action.get("command")
                 reasoning = next_action.get("reasoning")
                 print(f"Reasoning: {reasoning}")
-                print(f"Executing: {command}")
+                print(f"Executing bash command: {command}")
+                
                 execution_result = self.execute_with_context(command)
+                
                 workflow_result["steps"].append({
                     "step": step_count + 1,
+                    "type": "bash_command",
                     "reasoning": reasoning,
                     "command": command,
                     "result": execution_result,
                     "timestamp": time.time()
                 })
+                
                 self.add_execution_result_to_conversation(command, execution_result)
                 print(f"Result: {execution_result.get('output', 'No output')[:100]}...")
                 step_count += 1
+                
             elif next_action.get("action") == "tool_call":
                 tool_name = next_action.get("tool_name")
-                parameters = next_action.get("parameters")
+                parameters = next_action.get("parameters", {})
                 reasoning = next_action.get("reasoning")
+                
                 print(f"Reasoning: {reasoning}")
-                print(f"Calling Tool: {tool_name} with parameters: {parameters}")
+                print(f"Calling AITool: {tool_name} with parameters: {parameters}")
+                
+                # Call the AITools function
                 if hasattr(self.ai_tools, tool_name):
                     tool_func = getattr(self.ai_tools, tool_name)
                     try:
                         tool_result = tool_func(**parameters)
+                        
                         workflow_result["steps"].append({
                             "step": step_count + 1,
+                            "type": "tool_call",
                             "reasoning": reasoning,
-                            "tool_call": tool_name,
+                            "tool_name": tool_name,
                             "parameters": parameters,
                             "result": tool_result,
                             "timestamp": time.time()
                         })
-                        self.add_tool_result_to_conversation(tool_name, tool_result)
+                        
+                        self.add_tool_result_to_conversation(tool_name, parameters, tool_result)
                         print(f"Tool Result: {tool_result}")
+                        
                     except Exception as e:
+                        error_result = {"success": False, "error": str(e)}
                         print(f"Error calling tool: {str(e)}")
+                        
                         workflow_result["steps"].append({
                             "step": step_count + 1,
+                            "type": "tool_call",
                             "reasoning": reasoning,
-                            "tool_call": tool_name,
+                            "tool_name": tool_name,
                             "parameters": parameters,
-                            "result": {"success": False, "error": str(e)},
+                            "result": error_result,
                             "timestamp": time.time()
                         })
+                        
+                        self.add_tool_result_to_conversation(tool_name, parameters, error_result)
                 else:
+                    error_result = {"success": False, "error": f"Unknown tool: {tool_name}"}
                     print(f"Unknown tool: {tool_name}")
+                    
                     workflow_result["steps"].append({
                         "step": step_count + 1,
+                        "type": "tool_call",
                         "reasoning": reasoning,
-                        "tool_call": tool_name,
+                        "tool_name": tool_name,
                         "parameters": parameters,
-                        "result": {"success": False, "error": f"Unknown tool: {tool_name}"},
+                        "result": error_result,
                         "timestamp": time.time()
                     })
+                    
+                    self.add_tool_result_to_conversation(tool_name, parameters, error_result)
+                
                 step_count += 1
+                
             else:
                 workflow_result["final_status"] = "failed"
                 workflow_result["error"] = next_action.get("error", "Unknown error")
                 print(f"⚠️ Workflow failed: {workflow_result['error']}")
                 break
+        
         workflow_result["end_time"] = time.time()
         workflow_result["duration"] = workflow_result["end_time"] - workflow_result["start_time"]
         return workflow_result
     
-    def add_tool_result_to_conversation(self, tool_name, result):
+    def add_tool_result_to_conversation(self, tool_name, parameters, result):
         """Add tool call result to conversation history"""
         self.conversation_history.append({
             "role": "assistant",
-            "content": f"Called tool: {tool_name}"
+            "content": f"Called AITool: {tool_name}({parameters})"
         })
-        output = str(result)[:1000]  # Batasi panjang output
+        
+        # Limit output length to prevent token overflow
+        output = str(result)[:1000]
         self.conversation_history.append({
             "role": "user",
             "content": f"Tool result:\n{output}"
         })
-        # Update context memory jika diperlukan
-        self.update_context_memory(tool_name, result)
+        
+        # Update context memory if needed
+        self.update_context_memory_from_tool(tool_name, result)
+        
+        # Keep conversation history manageable
+        if len(self.conversation_history) > 20:
+            self.conversation_history = [self.conversation_history[0]] + self.conversation_history[-18:]
+
+    def update_context_memory_from_tool(self, tool_name, result):
+        """Update context memory based on tool results"""
+        if tool_name == "service_control":
+            if result.get("success"):
+                service_name = result.get("service")
+                action = result.get("action")
+                self.context_memory[f"{service_name}_status"] = {
+                    "action": action,
+                    "output": result.get("output", ""),
+                    "timestamp": time.time()
+                }
+        
+        elif tool_name == "file_read":
+            if result.get("success"):
+                file_path = result.get("file_path")
+                self.context_memory[f"file_content_{file_path}"] = {
+                    "size": result.get("size"),
+                    "content_preview": result.get("content", "")[:200],
+                    "timestamp": time.time()
+                }
+        
+        elif tool_name == "security_scan":
+            if result.get("success"):
+                scan_type = result.get("scan_type")
+                self.context_memory[f"security_scan_{scan_type}"] = {
+                    "result": result,
+                    "timestamp": time.time()
+                }
     
+    # def stream_process_smart_workflow(self, user_query):
+    #     """Main method to process user query with smart workflow - streams results"""
+    #     self.current_goal = user_query
+    #     self.conversation_history = [{"role": "user", "content": user_query}]
+        
+    #     workflow_result = {
+    #         "steps": [],
+    #         "final_status": "in_progress",
+    #         "goal": user_query,
+    #         "start_time": time.time()
+    #     }
+
+    #     yield {"type": "status", "content": f"🤖 Starting smart workflow for: {user_query}"}
+
+    #     step_count = 0
+    #     max_steps = 10
+    #     while step_count < max_steps:
+    #         next_action = self.get_next_action()
+    #         if next_action.get("action") == "complete":
+    #             workflow_result["final_status"] = "completed"
+    #             workflow_result["summary"] = next_action.get("summary")
+    #             yield {"type": "complete", "content": workflow_result}
+    #             break
+    #         elif next_action.get("action") == "execute":
+    #             command = next_action.get("command")
+    #             reasoning = next_action.get("reasoning")
+    #             execution_result = self.execute_with_context(command)
+
+    #             step_data = {
+    #                 "step": step_count + 1,
+    #                 "reasoning": reasoning,
+    #                 "command": command,
+    #                 "result": execution_result
+    #             }
+    #             workflow_result["steps"].append(step_data)
+    #             yield {"type": "step", "content": step_data}
+    #             self.add_execution_result_to_conversation(command, execution_result)
+    #         else:
+    #             workflow_result["final_status"] = "failed"
+    #             workflow_result["error"] = next_action.get("error", "Unknown error")
+    #             yield {"type": "error", "content": workflow_result["error"]}
+    #             break
     def stream_process_smart_workflow(self, user_query):
         """Main method to process user query with smart workflow - streams results"""
         self.current_goal = user_query
@@ -2289,37 +2791,135 @@ class SmartAgent:
             "goal": user_query,
             "start_time": time.time()
         }
-
-        yield {"type": "status", "content": f"🤖 Starting smart workflow for: {user_query}"}
-
+        
+        yield {"type": "status", "content": f"🧠 Starting smart workflow for: {user_query}"}
+        
         step_count = 0
         max_steps = 10
+        
         while step_count < max_steps:
+            yield {"type": "step_info", "content": f"--- Step {step_count + 1} ---"}
+            
             next_action = self.get_next_action()
+            yield {"type": "decision", "content": f"AI Decision: {next_action}"}
+            
             if next_action.get("action") == "complete":
                 workflow_result["final_status"] = "completed"
                 workflow_result["summary"] = next_action.get("summary")
+                workflow_result["end_time"] = time.time()
+                workflow_result["duration"] = workflow_result["end_time"] - workflow_result["start_time"]
                 yield {"type": "complete", "content": workflow_result}
                 break
+                
             elif next_action.get("action") == "execute":
                 command = next_action.get("command")
                 reasoning = next_action.get("reasoning")
+                
+                yield {"type": "reasoning", "content": reasoning}
+                yield {"type": "command", "content": f"Executing bash command: {command}"}
+                
                 execution_result = self.execute_with_context(command)
-
+                
                 step_data = {
                     "step": step_count + 1,
+                    "type": "bash_command",
                     "reasoning": reasoning,
                     "command": command,
-                    "result": execution_result
+                    "result": execution_result,
+                    "timestamp": time.time()
                 }
+                
                 workflow_result["steps"].append(step_data)
                 yield {"type": "step", "content": step_data}
+                yield {"type": "result", "content": f"Result: {execution_result.get('output', 'No output')[:100]}..."}
+                
                 self.add_execution_result_to_conversation(command, execution_result)
+                step_count += 1
+                
+            elif next_action.get("action") == "tool_call":
+                tool_name = next_action.get("tool_name")
+                parameters = next_action.get("parameters", {})
+                reasoning = next_action.get("reasoning")
+                
+                yield {"type": "reasoning", "content": reasoning}
+                yield {"type": "tool_call", "content": f"Calling AITool: {tool_name} with parameters: {parameters}"}
+                
+                # Call the AITools function
+                if hasattr(self.ai_tools, tool_name):
+                    tool_func = getattr(self.ai_tools, tool_name)
+                    try:
+                        tool_result = tool_func(**parameters)
+                        
+                        step_data = {
+                            "step": step_count + 1,
+                            "type": "tool_call",
+                            "reasoning": reasoning,
+                            "tool_name": tool_name,
+                            "parameters": parameters,
+                            "result": tool_result,
+                            "timestamp": time.time()
+                        }
+                        
+                        workflow_result["steps"].append(step_data)
+                        yield {"type": "step", "content": step_data}
+                        yield {"type": "tool_result", "content": f"Tool Result: {tool_result}"}
+                        
+                        self.add_tool_result_to_conversation(tool_name, parameters, tool_result)
+                        
+                    except Exception as e:
+                        error_result = {"success": False, "error": str(e)}
+                        
+                        step_data = {
+                            "step": step_count + 1,
+                            "type": "tool_call",
+                            "reasoning": reasoning,
+                            "tool_name": tool_name,
+                            "parameters": parameters,
+                            "result": error_result,
+                            "timestamp": time.time()
+                        }
+                        
+                        workflow_result["steps"].append(step_data)
+                        yield {"type": "step", "content": step_data}
+                        yield {"type": "error", "content": f"Error calling tool: {str(e)}"}
+                        
+                        self.add_tool_result_to_conversation(tool_name, parameters, error_result)
+                else:
+                    error_result = {"success": False, "error": f"Unknown tool: {tool_name}"}
+                    
+                    step_data = {
+                        "step": step_count + 1,
+                        "type": "tool_call",
+                        "reasoning": reasoning,
+                        "tool_name": tool_name,
+                        "parameters": parameters,
+                        "result": error_result,
+                        "timestamp": time.time()
+                    }
+                    
+                    workflow_result["steps"].append(step_data)
+                    yield {"type": "step", "content": step_data}
+                    yield {"type": "error", "content": f"Unknown tool: {tool_name}"}
+                    
+                    self.add_tool_result_to_conversation(tool_name, parameters, error_result)
+                
+                step_count += 1
+                
             else:
                 workflow_result["final_status"] = "failed"
                 workflow_result["error"] = next_action.get("error", "Unknown error")
+                workflow_result["end_time"] = time.time()
+                workflow_result["duration"] = workflow_result["end_time"] - workflow_result["start_time"]
                 yield {"type": "error", "content": workflow_result["error"]}
                 break
+        
+        # Handle max steps reached
+        if step_count >= max_steps:
+            workflow_result["final_status"] = "max_steps_reached"
+            workflow_result["end_time"] = time.time()
+            workflow_result["duration"] = workflow_result["end_time"] - workflow_result["start_time"]
+            yield {"type": "warning", "content": f"Workflow reached maximum steps ({max_steps})"}
+            yield {"type": "complete", "content": workflow_result}
             
     def get_next_action(self):
         """Ask AI what to do next based on conversation history"""
@@ -2333,16 +2933,22 @@ class SmartAgent:
         2. If need to execute command → return {{"action": "execute", "command": "command", "reasoning": "why"}}
         3. If failed → return {{"action": "fail", "error": "reason"}}
         
-        Available tools from AITools:
-        - file_read(file_path, lines=None)
-        - file_write(file_path, content, mode="w")
-        - file_edit(file_path, operation, line_number=None, content=None, replacement=None)
-        - execute_command(command, timeout=30, working_dir=None)
-        - service_control(service_name, action)
-        - config_validate(service_type, config_path=None)
-        - security_scan(scan_type, target=None)
-        - log_analyze(log_file, pattern=None, lines=100)
+         Available AITools functions:
+        - file_read: file_read(file_path, lines=None)
+        - file_write: file_write(file_path, content, mode="w")
+        - file_edit: file_edit(file_path, operation, line_number=None, content=None, replacement=None)
+        - execute_command: execute_command(command, timeout=30, working_dir=None)
+        - service_control: service_control(service_name, action)
+        - config_validate: config_validate(service_type, config_path=None)
+        - security_scan: security_scan(scan_type, target=None)
+        - log_analyze: log_analyze(log_file, pattern=None, lines=100)
         
+        
+         Examples:
+        - To check Apache status: {{"action": "tool_call", "tool_name": "service_control", "parameters": {{"service_name": "apache2", "action": "status"}}, "reasoning": "Check Apache service status"}}
+        - To read a file: {{"action": "tool_call", "tool_name": "file_read", "parameters": {{"file_path": "/etc/apache2/apache2.conf"}}, "reasoning": "Read Apache config file"}}
+        - To run bash command: {{"action": "execute", "command": "ls -la /var/log", "reasoning": "List log files"}}
+
         Be specific with parameters and paths. 
         Context memory: {json.dumps(self.context_memory)}
         
@@ -2390,19 +2996,40 @@ class SmartAgent:
         else:
             return self.executor.execute_bash_command(command, context_memory=self.context_memory)
         
+    # def add_execution_result_to_conversation(self, command, result):
+    #     """Add command execution result to conversation history"""
+        
+    #     # Update context memory with important info
+    #     self.update_context_memory(command, result)
+        
+    #     # Add to conversation
+    #     self.conversation_history.append({
+    #         "role": "assistant", 
+    #         "content": f"Executed: {command}"
+    #     })
+        
+    #     # Limit output length to prevent token overflow
+    #     output = result.get('output', '')[:1000]
+    #     error = result.get('error', '')[:500]
+        
+    #     self.conversation_history.append({
+    #         "role": "user", 
+    #         "content": f"Command result:\nOutput: {output}\nError: {error}\nReturn code: {result.get('return_code', 0)}"
+    #     })
+        
+    #     # Keep conversation history manageable
+    #     if len(self.conversation_history) > 20:
+    #         # Keep first message (original goal) and last 18 messages
+    #         self.conversation_history = [self.conversation_history[0]] + self.conversation_history[-18:]
     def add_execution_result_to_conversation(self, command, result):
         """Add command execution result to conversation history"""
-        
-        # Update context memory with important info
         self.update_context_memory(command, result)
         
-        # Add to conversation
         self.conversation_history.append({
             "role": "assistant", 
-            "content": f"Executed: {command}"
+            "content": f"Executed bash: {command}"
         })
         
-        # Limit output length to prevent token overflow
         output = result.get('output', '')[:1000]
         error = result.get('error', '')[:500]
         
@@ -2411,42 +3038,70 @@ class SmartAgent:
             "content": f"Command result:\nOutput: {output}\nError: {error}\nReturn code: {result.get('return_code', 0)}"
         })
         
-        # Keep conversation history manageable
         if len(self.conversation_history) > 20:
-            # Keep first message (original goal) and last 18 messages
             self.conversation_history = [self.conversation_history[0]] + self.conversation_history[-18:]
     
+    # def update_context_memory(self, command, result):
+    #     """Extract and store important information from command results"""
+        
+    #     # Store file counts
+    #     if "find" in command and "wc -l" in command:
+    #         self.context_memory["file_count"] = result.get("output", "").strip()
+        
+    #     # Store disk usage
+    #     if command.startswith("df"):
+    #         self.context_memory["disk_usage"] = result.get("output", "")
+        
+    #     # Store process info
+    #     if command.startswith("ps"):
+    #         self.context_memory["processes"] = result.get("output", "")
+        
+    #     # Store backup status
+    #     if "rsync" in command:
+    #         if result.get("return_code") == 0:
+    #             self.context_memory["backup_status"] = "success"
+    #         else:
+    #             self.context_memory["backup_status"] = "failed"
+                
+    #     # Store directory listings
+    #     if command.startswith("ls"):
+    #         self.context_memory["last_listing"] = result.get("output", "")
+            
+    #     # Store current working directory
+    #     if command.startswith("pwd"):
+    #         self.context_memory["current_directory"] = result.get("output", "").strip()
+        
+    #     if command.startswith("cd"):
+    #         self.conversation_history.append({
+    #             "role": "assistant",
+    #             "content": f"Updating directory context after cd command"
+    #         })
+    #         output = self.executor.execute_bash_command("pwd")
+    #         self.context_memory["current_directory"] = output.get("output", "").strip()
     def update_context_memory(self, command, result):
         """Extract and store important information from command results"""
-        
-        # Store file counts
         if "find" in command and "wc -l" in command:
             self.context_memory["file_count"] = result.get("output", "").strip()
         
-        # Store disk usage
         if command.startswith("df"):
             self.context_memory["disk_usage"] = result.get("output", "")
         
-        # Store process info
         if command.startswith("ps"):
             self.context_memory["processes"] = result.get("output", "")
         
-        # Store backup status
         if "rsync" in command:
             if result.get("return_code") == 0:
                 self.context_memory["backup_status"] = "success"
             else:
                 self.context_memory["backup_status"] = "failed"
                 
-        # Store directory listings
         if command.startswith("ls"):
             self.context_memory["last_listing"] = result.get("output", "")
             
-        # Store current working directory
-        if command == "pwd":
+        if command.startswith("pwd"):
             self.context_memory["current_directory"] = result.get("output", "").strip()
         
-        if command == "cd":
+        if command.startswith("cd"):
             self.conversation_history.append({
                 "role": "assistant",
                 "content": f"Updating directory context after cd command"
@@ -2455,15 +3110,61 @@ class SmartAgent:
             self.context_memory["current_directory"] = output.get("output", "").strip()
 
 
+# @csrf_exempt
+# def process_smart_chat(request):
+#     if request.method == 'POST':
+#         data = json.loads(request.body)
+#         user_message = data.get('message', '')
+        
+#         # Initialize smart agent
+#         agent = SmartAgent()
+        
+#         # Process with smart workflow
+#         workflow_result = agent.process_smart_workflow(user_message)
+        
+#         # Format response
+#         response = f"🤖 **Smart Agent Result**\n\n"
+#         response += f"**Goal:** {workflow_result['goal']}\n"
+#         response += f"**Status:** {workflow_result['final_status']}\n\n"
+        
+#         if workflow_result['final_status'] == 'completed':
+#             response += f"**Summary:** {workflow_result.get('summary', '')}\n\n"
+        
+#         response += "**Execution Steps:**\n"
+#         for step in workflow_result['steps']:
+#             response += f"\n**Step {step['step']}**\n"
+#             response += f"*Reasoning:* {step['reasoning']}\n"
+#             response += f"*Command:* `{step['command']}`\n"
+#             response += f"*Output:*\n```\n{step['result'].get('output', 'No output')}\n```\n"
+            
+#             if step['result'].get('error'):
+#                 response += f"*Error:* {step['result']['error']}\n"
+        
+#         # Add WebSocket support for real-time updates
+#         return JsonResponse({
+#             'response': response,
+#             'workflow_result': workflow_result,
+#             'user_message': user_message
+#         })
 @csrf_exempt
 def process_smart_chat(request):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Invalid request method'}, status=405)
+    
     if request.method == 'POST':
-        data = json.loads(request.body)
-        user_message = data.get('message', '')
-        
+        # data = json.loads(request.body)
+        # user_message = data.get('message', '')
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON format'}, status=400)
+
+        user_message = data.get('message')
+        if not user_message:
+            return JsonResponse({'error': 'Message is required'}, status=400)
         # Initialize smart agent
         agent = SmartAgent()
-        
+        print(agent)
         # Process with smart workflow
         workflow_result = agent.process_smart_workflow(user_message)
         
@@ -2477,21 +3178,28 @@ def process_smart_chat(request):
         
         response += "**Execution Steps:**\n"
         for step in workflow_result['steps']:
-            response += f"\n**Step {step['step']}**\n"
+            response += f"\n**Step {step['step']}** ({step['type']})\n"
             response += f"*Reasoning:* {step['reasoning']}\n"
-            response += f"*Command:* `{step['command']}`\n"
-            response += f"*Output:*\n```\n{step['result'].get('output', 'No output')}\n```\n"
             
-            if step['result'].get('error'):
-                response += f"*Error:* {step['result']['error']}\n"
+            if step['type'] == 'bash_command':
+                response += f"*Command:* `{step['command']}`\n"
+                response += f"*Output:*\n```\n{step['result'].get('output', 'No output')}\n```\n"
+                if step['result'].get('error'):
+                    response += f"*Error:* {step['result']['error']}\n"
+            
+            elif step['type'] == 'tool_call':
+                response += f"*Tool:* {step['tool_name']}({step['parameters']})\n"
+                result = step['result']
+                if result.get('success'):
+                    response += f"*Success:* {result.get('output', result)}\n"
+                else:
+                    response += f"*Error:* {result.get('error', 'Unknown error')}\n"
         
-        # Add WebSocket support for real-time updates
         return JsonResponse({
             'response': response,
             'workflow_result': workflow_result,
             'user_message': user_message
         })
-
 
 class AIReasoningAgent:
     """AI Agent that can reason and use tools for Linux administration"""

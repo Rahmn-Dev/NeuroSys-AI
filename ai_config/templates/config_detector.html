@@ -1,0 +1,252 @@
+{% extends './layout/layout1.html' %}
+
+{% block style %}
+<!-- Bootstrap CSS -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<!-- Font Awesome -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+    .code-block {
+        background-color: #e9ecef;
+        padding: 0.2rem 0.4rem;
+        border-radius: 0.25rem;
+        font-family: monospace;
+    }
+    .issue-card {
+        border-left-width: 5px;
+        border-left-style: solid;
+    }
+    .severity-critical { border-color: #dc3545; }
+    .severity-high { border-color: #fd7e14; }
+    .severity-medium { border-color: #0dcaf0; }
+    .severity-low { border-color: #6c757d; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="rbt-main-content mr--0">
+    <div class="rbt-daynamic-page-content">
+        <div class="rbt-dashboard-content p-4">
+            <div class="container-fluid">
+
+                <!-- Kontrol Utama dan Riwayat Scan -->
+                <div class="row g-4 mb-4">
+                    <div class="col-lg-5">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-body">
+                                <h5 class="card-title mb-3">Analisis Sistem</h5>
+                                <p class="card-text text-muted">Mulai pemindaian baru atau lihat kembali hasil dari riwayat.</p>
+                                <div class="d-flex flex-wrap gap-2">
+                                    <input type="hidden" id="csrfToken" value="{{ csrf_token }}">
+                                    <button onclick="runNewScan()" class="btn btn-primary">
+                                        <i class="fas fa-search me-1"></i> Mulai Scan Baru
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-7">
+                        <div class="card shadow-sm h-100">
+                             <div class="card-header bg-light">
+                                <h5 class="mb-0"><i class="fas fa-history me-2"></i>Riwayat Pemindaian</h5>
+                            </div>
+                            <div class="card-body p-0">
+                                {% if recent_scans %}
+                                <ul class="list-group list-group-flush" id="recent-scans-list">
+                                    {% for scan in recent_scans %}
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <i class="fas fa-server text-muted me-2"></i>
+                                            <strong>{{ scan.hostname }}</strong>
+                                            <br>
+                                            <small class="text-muted">{{ scan.scanned_at|date:"d M Y, H:i" }}</small>
+                                        </div>
+                                        <!-- Tombol ini sekarang memuat data via JavaScript -->
+                                        <button class="btn btn-sm btn-outline-secondary" onclick="loadScanResults({{ scan.id }})">
+                                            Lihat Hasil <i class="fas fa-eye ms-1"></i>
+                                        </button>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                                {% else %}
+                                <div id="no-scans-placeholder" class="text-center p-4 text-muted">
+                                    <p>Belum ada riwayat pemindaian.</p>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Kontainer untuk menampilkan hasil scan -->
+                <div id="results-container" style="display: none;">
+                    <!-- Ringkasan Hasil -->
+                    <div class="row g-4 mb-4">
+                        <div class="col"><div class="card text-center h-100 shadow-sm"><div class="card-body"><h1 id="total-issues-count" class="display-4 fw-bold">0</h1><p class="text-muted mb-0">Total Masalah</p></div></div></div>
+                        <div class="col"><div class="card text-center h-100 shadow-sm"><div class="card-body"><h1 id="critical-count" class="display-4 fw-bold text-danger">0</h1><p class="text-muted mb-0">Level Kritikal</p></div></div></div>
+                        <div class="col"><div class="card text-center h-100 shadow-sm"><div class="card-body"><h1 id="high-count" class="display-4 fw-bold text-warning">0</h1><p class="text-muted mb-0">Level Tinggi</p></div></div></div>
+                        <div class="col"><div class="card text-center h-100 shadow-sm"><div class="card-body"><h1 id="auto-fixable-count" class="display-4 fw-bold text-success">0</h1><p class="text-muted mb-0">Dapat Diperbaiki</p></div></div></div>
+                    </div>
+
+                    <!-- Detail Isu -->
+                    <h3 class="mb-3">Daftar Masalah yang Ditemukan</h3>
+                    <div id="issues-list" class="d-grid gap-3">
+                        <!-- Hasil isu akan dimasukkan di sini oleh JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Modal -->
+<div class="modal fade" id="loadingModal" tabindex="-1" aria-labelledby="loadingModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-body text-center p-4">
+                <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;"><span class="visually-hidden">Loading...</span></div>
+                <h5 class="modal-title" id="loadingModalLabel">Memindai Sistem...</h5>
+                <p class="text-muted mb-0" id="scan-progress">Mohon tunggu, ini mungkin memerlukan beberapa saat.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+
+    // Fungsi untuk memproses dan menampilkan data di halaman yang sama
+    function processAndDisplayResults(results) {
+        document.getElementById('results-container').style.display = 'block';
+
+        // Update ringkasan
+        const issues = results.issues || [];
+        const issuesBySeverity = results.issues_by_severity || {};
+        document.getElementById('total-issues-count').textContent = results.total_issues || 0;
+        document.getElementById('critical-count').textContent = issuesBySeverity.critical || 0;
+        document.getElementById('high-count').textContent = issuesBySeverity.high || 0;
+        document.getElementById('auto-fixable-count').textContent = results.auto_fixable || 0;
+
+        // Tampilkan daftar isu
+        const issuesListContainer = document.getElementById('issues-list');
+        issuesListContainer.innerHTML = ''; // Kosongkan daftar sebelumnya
+
+        if (issues.length === 0) {
+            issuesListContainer.innerHTML = `<div class="card"><div class="card-body text-center text-success p-5"><i class="fas fa-check-circle fa-4x mb-3"></i><h4>Sistem Anda Aman!</h4><p>Tidak ada masalah yang ditemukan.</p></div></div>`;
+            return;
+        }
+
+        issues.forEach(issue => {
+            const severity = issue.severity.toLowerCase();
+            const severityClass = severity === 'critical' ? 'danger' : (severity === 'high' ? 'warning' : (severity === 'medium' ? 'info' : 'secondary'));
+            
+            const issueCard = document.createElement('div');
+            issueCard.className = `card shadow-sm issue-card severity-${severity}`;
+            issueCard.innerHTML = `
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="badge rounded-pill text-bg-${severityClass}">${issue.severity.toUpperCase()}</span>
+                            <h5 class="card-title mt-2">${issue.title}</h5>
+                            <p class="card-text text-muted">${issue.description}</p>
+                            ${issue.config_file ? `<p class="mb-1"><small><strong>File:</strong> <code class="code-block">${issue.config_file}</code></small></p>` : ''}
+                            <div class="d-flex flex-wrap gap-3">
+                                ${issue.current_value ? `<p class="mb-0"><small><strong>Saat Ini:</strong> <code class="code-block text-danger">${issue.current_value}</code></small></p>` : ''}
+                                ${issue.recommended_value ? `<p class="mb-0"><small><strong>Rekomendasi:</strong> <code class="code-block text-success">${issue.recommended_value}</code></small></p>` : ''}
+                            </div>
+                        </div>
+                        <div id="fix-action-${issue.id}" class="flex-shrink-0 ms-3">
+                            ${(issue.is_auto_fixable && !issue.is_fixed) ? `<button class="btn btn-sm btn-success" onclick="fixIssue(this, ${issue.id})"><i class="fas fa-magic me-1"></i> Perbaiki</button>` : ''}
+                            ${issue.is_fixed ? `<span class="badge text-bg-success"><i class="fas fa-check-circle me-1"></i> Diperbaiki</span>` : ''}
+                        </div>
+                    </div>
+                </div>`;
+            issuesListContainer.appendChild(issueCard);
+        });
+    }
+
+    // Menjalankan scan baru dan menampilkan hasilnya di halaman ini
+    async function runNewScan() {
+        loadingModal.show();
+        const csrftoken = document.getElementById('csrfToken').value;
+
+        try {
+            const response = await fetch("{% url 'run_scan' %}", {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrftoken},
+                body: JSON.stringify({ scan_type: 'full' })
+            });
+            const data = await response.json();
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || "Terjadi kesalahan saat pemindaian.");
+            }
+            
+            processAndDisplayResults(data.results);
+            updateRecentScansList(data.scan_id, data.results.system_info.hostname);
+            loadingModal.hide();
+        } catch (error) {
+            console.error('Error running scan:', error);
+            alert('Gagal memulai scan: ' + error.message);
+        } finally {
+            loadingModal.hide();
+        }
+    }
+    
+    // **PENTING**: Anda perlu membuat endpoint baru di Django yang hanya mengembalikan JSON.
+    // Misal: /api/results/<int:scan_id>/
+    async function loadScanResults(scanId) {
+        alert(`Fungsi ini perlu endpoint JSON. Saat ini akan mencoba mengurai halaman HTML, yang mungkin gagal.\nEndpoint yang dibutuhkan: /api/results/${scanId}/`);
+        // Logika sementara, idealnya ini call ke endpoint JSON
+    }
+
+    // Menambah scan baru ke daftar riwayat secara dinamis
+    function updateRecentScansList(scanId, hostname) {
+        const list = document.getElementById('recent-scans-list');
+        const placeholder = document.getElementById('no-scans-placeholder');
+        if (placeholder) {
+            placeholder.remove();
+        }
+
+        const newItem = document.createElement('li');
+        newItem.className = 'list-group-item d-flex justify-content-between align-items-center';
+        newItem.innerHTML = `
+            <div>
+                <i class="fas fa-server text-muted me-2"></i>
+                <strong>${hostname}</strong><br>
+                <small class="text-muted">Baru saja</small>
+            </div>
+            <button class="btn btn-sm btn-outline-secondary" onclick="loadScanResults(${scanId})">
+                Lihat Hasil <i class="fas fa-eye ms-1"></i>
+            </button>`;
+        list.prepend(newItem);
+    }
+    
+    // Fungsi untuk memperbaiki isu (tidak berubah)
+    async function fixIssue(button, issueId) {
+        if (!confirm('Apakah Anda yakin ingin menerapkan perbaikan ini?')) return;
+        button.disabled = true;
+        button.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Memperbaiki...`;
+        
+        try {
+            const response = await fetch(`/fix/${issueId}/`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'}
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error);
+
+            alert('Berhasil: ' + data.message);
+            document.getElementById(`fix-action-${issueId}`).innerHTML = `<span class="badge text-bg-success"><i class="fas fa-check-circle me-1"></i> Diperbaiki</span>`;
+        } catch (error) {
+            alert('Gagal: ' + error.message);
+            button.disabled = false;
+            button.innerHTML = `<i class="fas fa-magic me-1"></i> Perbaiki`;
+        }
+    }
+</script>
+{% endblock %}
