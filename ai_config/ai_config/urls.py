@@ -62,7 +62,8 @@ urlpatterns = [
     # new config detector
     path('system-analysis/', views.config_detector, name='config_detector'),
     path('scan/', views.run_scan, name='run_scan'),
-    path('results/<int:scan_id>/', views.scan_results, name='scan_results'),
     path('fix/<int:issue_id>/', views.auto_fix_issue, name='auto_fix_issue'),
+    path('api/results/<int:scan_id>/', views.api_scan_results, name='api_scan_results'),
+
 ]
 

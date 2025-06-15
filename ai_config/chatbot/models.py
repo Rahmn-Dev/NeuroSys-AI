@@ -121,4 +121,7 @@ class ConfigurationIssue(models.Model):
     is_auto_fixable = models.BooleanField(default=False)
     is_fixed = models.BooleanField(default=False)
     detected_at = models.DateTimeField(auto_now_add=True)
+    ai_risk = models.TextField(null=True, blank=True)
+    ai_recommendation = models.JSONField(null=True, blank=True) # Menggunakan JSONField untuk menyimpan object
+    ai_impact = models.TextField(null=True, blank=True)
 

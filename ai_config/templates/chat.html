@@ -1,5 +1,9 @@
 {% extends 'layout/layout1.html' %}
 {% block style %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+
 <style>
     .modal-overlay {
     position: fixed;
@@ -86,9 +90,7 @@
     font-size: 13px;
 }
 
-.workflow-step {
-    border-left: 4px solid #007bff;
-}
+
 </style>
 
 {% endblock %}
@@ -339,6 +341,34 @@
 //         }
 //     });
 
+function createWorkflowCard(iconClass, title, content, logType, ) {
+    const card = document.createElement("div");
+    card.className = `workflow-card log-${logType}`;
+
+    const cardContent = `
+        <div class="card-header2">
+            <i class="${iconClass}"></i>
+            <span class="card-header-title">${title}</span>
+        </div>
+        <div class="card-body2">
+            <span class="content-text"></span>
+        </div>
+    `;
+    card.innerHTML = cardContent;
+
+    // Tambahkan kartu ke DOM
+    workflowSteps.appendChild(card);
+
+    // Dapatkan elemen untuk efek mengetik
+    const contentElement = card.querySelector('.content-text');
+    
+    // Terapkan efek mengetik atau tampilkan langsung
+   
+        contentElement.innerHTML = content;
+        workflowSteps.scrollTop = workflowSteps.scrollHeight;
+ 
+}
+
     const chatInput = document.getElementById('chat-input');
     const sendButton = document.getElementById('send-button');
     const bashContainer = document.getElementById('bashContainer');
@@ -359,19 +389,67 @@
         ws.onmessage = function(event) {
             const data = JSON.parse(event.data);
 
-            if (data.type === "step") {
-                renderWorkflowStep(data.content);
-                displayBashOutput(
-                    data.content.result.output,
-                    data.content.result.error,
-                    data.content.command
-                );
-            } else if (data.type === "complete") {
-                addChatBubble(data.content.summary, "ai");
-                updateFinalStatus("Completed");
-            } else if (data.type === "error") {
-                addChatBubble( data.content, "ai");
-                updateFinalStatus("Failed", "danger");
+            switch (data.type) {
+                case "status":
+                    createWorkflowCard('bi bi-activity', 'Status', data.content, 'status');
+                    break;
+
+                case "step_info":
+                    createWorkflowCard('bi bi-shield-shaded', data.content, '', 'step-info', false);
+                    break;
+
+                case "decision":
+                    const decisionText = data.content.replace("AI Decision: ", "");
+                    createWorkflowCard('bi bi-cpu-fill', 'AI Decision', `Executing action based on reasoning: <code>${decisionText}</code>`, 'decision', true);
+                    break;
+
+                case "reasoning":
+                    createWorkflowCard('bi bi-lightbulb-fill', 'Reasoning', `<em>${data.content}</em>`, 'reasoning');
+                    break;
+
+                case "command":
+                    const commandText = data.content.replace("Executing bash command: ", "");
+                    createWorkflowCard('bi bi-terminal-fill', 'Executing Command', `<code>${commandText}</code>`, 'command');
+                    break;
+
+                case "step":
+                    // Render kartu final untuk langkah yang selesai (tidak pakai efek ketik)
+                    const step = data.content;
+                    const resultCard = document.createElement("div");
+                    resultCard.className = "workflow-card workflow-step-final log-complete";
+                    resultCard.innerHTML = `
+                        <div class="card-header">
+                            <i class="bi bi-check-circle-fill"></i>
+                            <span class="card-header-title">Step ${step.step}: Execution Complete</span>
+                        </div>
+                        <div class="card-body">
+                            <strong>Reasoning:</strong> ${step.reasoning}<br>
+                            <strong>Command:</strong> <code>${step.command}</code><br>
+                            <strong>Result:</strong> <pre>${step.result.output || 'No output'}</pre>
+                        </div>
+                    `;
+                    workflowSteps.appendChild(resultCard);
+                    workflowSteps.scrollTop = workflowSteps.scrollHeight;
+
+                    // Update container bash terpisah
+                    displayBashOutput(step.result.output, step.result.error, step.command);
+                    break;
+
+                case "complete":
+                    createWorkflowCard('bi bi-trophy-fill', 'Workflow Completed', data.content.summary, 'complete');
+                    addChatBubble(data.content.summary, "ai");
+                    updateFinalStatus("Completed", "success");
+                    break;
+
+                case "error":
+                    createWorkflowCard('bi bi-exclamation-triangle-fill', 'Workflow Failed', data.content, 'error');
+                    addChatBubble(data.content, "ai");
+                    updateFinalStatus("Failed", "danger");
+                    break;
+
+                default:
+                    console.log("Unhandled message type:", data.type);
+                    createWorkflowCard('bi bi-question-circle', 'Unknown Event', JSON.stringify(data), 'status');
             }
         };
 
@@ -382,7 +460,14 @@
     }
 
     connectWebSocket(); // Hubungkan saat halaman dimuat
-
+    function addWorkflowLog(htmlContent, typeClass = '') {
+        const entry = document.createElement("div");
+        // Menambahkan kelas untuk styling opsional
+        entry.className = `workflow-log p-2 mb-1 bg-light-subtle rounded ${typeClass}`;
+        entry.innerHTML = htmlContent;
+        workflowSteps.appendChild(entry);
+        workflowSteps.scrollTop = workflowSteps.scrollHeight; // Auto-scroll
+    }
     function sendMessage() {
         const message = chatInput.value.trim();
         if (!message || !ws || ws.readyState !== WebSocket.OPEN) return;
@@ -423,11 +508,11 @@
         bashContainer.scrollTop = bashContainer.scrollHeight;
     }
 
-    function renderWorkflowStep(step) {
+    function renderWorkflowStepCard(step) {
         const card = document.createElement("div");
-        card.className = "workflow-step p-3 mb-2 bg-light rounded shadow-sm";
+        card.className = "workflow-step p-3 mb-2 bg-white rounded shadow-sm border-start border-primary border-4";
         card.innerHTML = `
-            <strong>Langkah ${step.step}</strong><br/>
+            <strong>Langkah ${step.step}: Selesai</strong><br/>
             <em>Reasoning:</em> ${step.reasoning}<br/>
             <em>Command:</em> <code>${step.command}</code>
         `;

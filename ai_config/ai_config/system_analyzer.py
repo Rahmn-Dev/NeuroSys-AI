@@ -6,12 +6,21 @@ import distro
 from pathlib import Path
 import json
 from collections import defaultdict
+from django.conf import settings
+MISTRAL_API_KEY = getattr(settings, "MISTRAL_API_KEY")
+from mistralai import Mistral
 
 class LinuxConfigAnalyzer:
-    def __init__(self):
+    def __init__(self, use_ai_enhancement=False):
         self.issues = []
         self.system_info = self.get_system_info()
-        
+                # --- Tambahan untuk AI ---
+        self.api_key = MISTRAL_API_KEY
+        self.client = Mistral(api_key=self.api_key)
+        self.model = "open-mistral-nemo" # Model yang cepat dan efisien
+        self.use_ai_enhancement = use_ai_enhancement
+        # ------------------------
+
         # Define critical config files to check
         self.config_files = {
             '/etc/ssh/sshd_config': 'ssh',
@@ -27,6 +36,7 @@ class LinuxConfigAnalyzer:
             '/etc/mysql/mysql.conf.d/mysqld.cnf': 'mysql',
             '/etc/systemd/system': 'systemd',
         }
+
         
         # Security rules database
         self.security_rules = {
@@ -46,7 +56,89 @@ class LinuxConfigAnalyzer:
                 'fs.suid_dumpable': {'recommended': '0', 'severity': 'high'},
             }
         }
+    def scan_configuration_with_ai(self, file_path, file_category):
+        """
+        Menganalisis seluruh file konfigurasi menggunakan AI untuk menemukan masalah keamanan.
+        """
+        print(f"[{file_category.upper()}] Running AI-driven scan on {file_path}...")
         
+        if not os.path.exists(file_path):
+            return [] # Kembalikan list kosong jika file tidak ada
+
+        try:
+            with open(file_path, 'r') as f:
+                content = f.read()
+                # Batasi konten untuk menghemat token jika terlalu besar
+                if len(content) > 25000: # Batas sekitar 25rb karakter
+                    content = content[:25000]
+
+            # Prompt dirancang untuk meminta AI bertindak sebagai auditor
+            # dan mengembalikan JSON dalam format yang kita inginkan.
+            prompt = f"""
+            Anda adalah auditor keamanan siber Linux senior yang sedang meninjau file konfigurasi dari server {self.system_info.get('os')} {self.system_info.get('version')}.
+
+            Berikut adalah isi dari file `{file_path}`:
+            ---
+            {content}
+            ---
+
+            Tugas Anda:
+            Analisis konten file di atas berdasarkan standar keamanan industri (seperti CIS Benchmarks). Identifikasi potensi miskonfigurasi keamanan. Abaikan baris yang dikomentari (#).
+
+            Untuk SETIAP masalah yang Anda temukan, berikan detail dalam format OBJEK JSON di dalam sebuah LIST JSON. Setiap objek harus memiliki kunci berikut:
+            - "title": Judul singkat dan jelas dari masalah (misalnya: "SSH PermitRootLogin Enabled").
+            - "description": Penjelasan singkat 1 kalimat tentang mengapa ini masalah.
+            - "severity": Tingkat keparahan (pilih salah satu: "low", "medium", "high", "critical").
+            - "current_value": Nilai atau baris konfigurasi yang bermasalah.
+            - "recommended_value": Nilai atau konfigurasi yang direkomendasikan.
+
+            Jika tidak ada masalah keamanan yang ditemukan, kembalikan list JSON kosong: `[]`.
+            Contoh output jika ada masalah: `[ {{"title": "...", "description": "...", ...}}, {{"title": "...", ...}} ]`
+            """
+
+            messages = [{"role": "user", "content": prompt}]
+            
+            chat_response = self.client.chat(
+                model=self.model,
+                messages=messages,
+                response_format={"type": "json_object"}
+            )
+
+            # AI mungkin mengembalikan JSON di dalam kunci 'issues' atau sejenisnya
+            # Kita perlu parsing dengan aman
+            raw_response = json.loads(chat_response.choices[0].message.content)
+            found_issues = []
+            # Coba cari list issues dari berbagai kemungkinan nama kunci
+            possible_keys = ['issues', 'findings', 'problems', 'results']
+            for key in possible_keys:
+                if isinstance(raw_response.get(key), list):
+                    found_issues = raw_response[key]
+                    break
+            
+            # Jika tidak ada kunci yang cocok, mungkin responsnya adalah list itu sendiri
+            if not found_issues and isinstance(raw_response, list):
+                found_issues = raw_response
+
+            # Standarisasi hasil agar cocok dengan format internal kita
+            standardized_issues = []
+            for issue in found_issues:
+                standardized_issues.append({
+                    'category': file_category,
+                    'severity': issue.get('severity', 'medium'),
+                    'title': issue.get('title', 'AI Detected Issue'),
+                    'description': issue.get('description', 'AI analysis identified a potential misconfiguration.'),
+                    'config_file': file_path,
+                    'current_value': str(issue.get('current_value', 'N/A')),
+                    'recommended_value': str(issue.get('recommended_value', 'See AI analysis')),
+                    'is_auto_fixable': False,  # AI scan tidak menghasilkan auto-fix secara default
+                    'source': 'ai' # Tandai bahwa ini dari AI
+                })
+            
+            return standardized_issues
+
+        except Exception as e:
+            print(f"Error during AI-driven scan on {file_path}: {e}")
+            return [] # Kembalikan list kosong jika terjadi error
     def get_system_info(self):
         """Gather basic system information"""
         return {
@@ -74,6 +166,53 @@ class LinuxConfigAnalyzer:
             return "", "Command timeout", 1
         except Exception as e:
             return "", str(e), 1
+        
+    def get_ai_enhanced_analysis(self, issue):
+        """
+        Menggunakan Mistral AI untuk memberikan penjelasan mendalam tentang suatu isu.
+        """
+        if not self.use_ai_enhancement or not self.api_key:
+            return None
+
+        try:
+            # Membuat prompt yang kaya konteks untuk AI
+            prompt = f"""
+            Anda adalah seorang ahli keamanan siber Linux (DevSecOps). Analisis masalah keamanan berikut yang ditemukan pada sebuah server.
+
+            **Detail Masalah:**
+            - **Judul:** {issue.get('title')}
+            - **Deskripsi Awal:** {issue.get('description')}
+            - **File Konfigurasi:** {issue.get('config_file', 'N/A')}
+            - **Nilai Saat Ini:** `{issue.get('current_value', 'N/A')}`
+            - **Nilai yang Direkomendasikan:** `{issue.get('recommended_value', 'N/A')}`
+
+            **Tugas Anda:**
+            1.  **Jelaskan Risikonya:** Jelaskan dengan jelas dalam 1-2 kalimat, apa risiko keamanan jika masalah ini tidak diperbaiki. Jelaskan untuk seorang administrator sistem.
+            2.  **Berikan Rekomendasi Perbaikan:** Berikan langkah-langkah perbaikan yang lebih detail daripada sekadar perintah. Jelaskan mengapa rekomendasi tersebut penting.
+            3.  **Sebutkan Dampak Perbaikan:** Sebutkan potensi dampak setelah perbaikan diterapkan (misalnya: "Perlu restart service", "Tidak ada dampak langsung pada pengguna").
+
+            Berikan jawaban dalam format JSON dengan kunci: "ai_risk", "ai_recommendation", dan "ai_impact".
+            """
+
+            chat_response = self.client.chat.complete(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}, # Meminta output JSON
+                temperature=0.2 # Sedikit kreativitas tapi tetap faktual
+            )
+            
+            ai_analysis = json.loads(chat_response.choices[0].message.content)
+            return ai_analysis
+
+        except Exception as e:
+            # Jika AI gagal, jangan hentikan seluruh proses
+            print(f"Error calling AI for analysis: {e}")
+            return {
+                "ai_risk": "Analisis AI tidak tersedia saat ini.",
+                "ai_recommendation": "Gunakan rekomendasi standar.",
+                "ai_impact": "N/A"
+            }
+
     
     def check_ssh_config(self):
         """Analyze SSH configuration"""
@@ -320,7 +459,41 @@ class LinuxConfigAnalyzer:
         
         if scan_type in ['full', 'system']:
             self.check_log_configuration()
-        
+        if scan_type in ['full', 'ai_deep_scan']:
+            print("\nRunning AI-Driven Deep Scan...")
+            # Tentukan file mana yang ingin di-scan oleh AI
+            files_to_scan_with_ai = {
+                '/etc/ssh/sshd_config': 'ssh',
+                '/etc/sudoers': 'sudo',
+                '/etc/nginx/nginx.conf': 'nginx'
+                # Tambahkan file lain yang kompleks di sini
+            }
+            
+            for file_path, category in files_to_scan_with_ai.items():
+                ai_detected_issues = self.scan_configuration_with_ai(file_path, category)
+                self.issues.extend(ai_detected_issues)
+
+        # 3. HAPUS DUPLIKAT & LAKUKAN PENINGKATAN AI
+        print("\nFinalizing results and enhancing with AI...")
+        final_issues = []
+        seen_titles = set()
+        # Logika untuk menghapus duplikat antara rule-based dan AI scan
+        for issue in self.issues:
+            # Kunci unik untuk setiap isu, misalnya berdasarkan file dan judul
+            unique_key = f"{issue.get('config_file')}:{issue.get('title')}"
+            if unique_key not in seen_titles:
+                # Panggil AI untuk memperkaya penjelasan jika belum ada
+                if 'ai_risk' not in issue and self.use_ai_enhancement and issue.get('severity') in ['high', 'critical']:
+                    print(f"Enhancing '{issue['title']}' with AI analysis...")
+                    ai_enhancement = self.get_ai_enhanced_analysis(issue)
+                    if ai_enhancement:
+                        issue.update(ai_enhancement)
+                
+                final_issues.append(issue)
+                seen_titles.add(unique_key)
+                
+        self.issues = final_issues
+
         return {
             'system_info': self.system_info,
             'total_issues': len(self.issues),

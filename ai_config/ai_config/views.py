@@ -66,9 +66,10 @@ def run_scan(request):
     if request.method == 'POST':
         data = json.loads(request.body)
         scan_type = data.get('scan_type', 'full')
-        
+        use_ai = data.get('use_ai_enhancement', False)
         # Initialize analyzer
-        analyzer = LinuxConfigAnalyzer()
+        print(use_ai)
+        analyzer = LinuxConfigAnalyzer(use_ai_enhancement=use_ai)
         results = analyzer.analyze_system(scan_type)
         
         # Save scan to database
@@ -92,7 +93,10 @@ def run_scan(request):
                 current_value=issue.get('current_value'),
                 recommended_value=issue.get('recommended_value'),
                 fix_command=issue.get('fix_command'),
-                is_auto_fixable=issue.get('is_auto_fixable', False)
+                is_auto_fixable=issue.get('is_auto_fixable', False),
+                ai_risk=issue.get('ai_risk'),
+                ai_recommendation=issue.get('ai_recommendation'),
+                ai_impact=issue.get('ai_impact')
             )
         
         return JsonResponse({
@@ -122,6 +126,61 @@ def scan_results(request, scan_id):
     
     return render(request, 'scan_results.html', context)
 
+@login_required
+def api_scan_results(request, scan_id):
+    """Return scan results as JSON for AJAX requests"""
+    try:
+        system_scan = SystemScan.objects.get(id=scan_id, scanned_by=request.user)
+        issues = ConfigurationIssue.objects.filter(system_scan=system_scan).order_by('-severity', 'category')
+        
+        system_info = json.loads(system_scan.os_info)
+        
+        # Serialize issues to JSON
+        issues_data = []
+        for issue in issues:
+            issues_data.append({
+                'id': issue.id,
+                'category': issue.category,
+                'severity': issue.severity,
+                'title': issue.title,
+                'description': issue.description,
+                'config_file': issue.config_file,
+                'current_value': issue.current_value,
+                'recommended_value': issue.recommended_value,
+                'is_auto_fixable': issue.is_auto_fixable,
+                'is_fixed': issue.is_fixed,
+                'ai_risk': issue.ai_risk,
+                'ai_recommendation': issue.ai_recommendation, 
+                'ai_impact' : issue.ai_impact,
+            })
+        
+        # Calculate statistics
+        issues_by_severity = {
+            'critical': issues.filter(severity='critical').count(),
+            'high': issues.filter(severity='high').count(),
+            'medium': issues.filter(severity='medium').count(),
+            'low': issues.filter(severity='low').count()
+        }
+        
+        return JsonResponse({
+            'success': True,
+            'scan_id': system_scan.id,
+            'results': {
+                
+                'system_info': system_info,
+                'issues': issues_data,
+                'scanned_at': system_scan.scanned_at.strftime("%d %b %Y, %H:%M"),
+                'total_issues': issues.count(),
+                'issues_by_severity': issues_by_severity,
+                'auto_fixable': issues.filter(is_auto_fixable=True, is_fixed=False).count()
+            }
+        })
+        
+    except SystemScan.DoesNotExist:
+        return JsonResponse({'error': 'Scan not found'}, status=404)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+    
 @login_required
 def auto_fix_issue(request, issue_id):
     if request.method == 'POST':

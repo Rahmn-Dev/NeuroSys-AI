@@ -61,6 +61,108 @@
     top: 0;
     right: 0;
 }
+/* pada chat.html */
+#workflow-steps {
+    background-color: #16161a;
+    border: 1px solid var(--card-border-color);
+    
+    padding: 1rem;
+    height: 400px; /* Atur sesuai kebutuhan */
+    overflow-y: auto;
+    transition: all 0.3s ease;
+    box-shadow: 0 0 15px rgba(0,0,0,0.4);
+}
+
+/* --- Keyframe Animation untuk Fade-in dan Typing --- */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* --- Workflow Card Styling --- */
+.workflow-card {
+    background: var(--card-bg-color);
+    border-left: 4px solid var(--ai-primary-color);
+    margin-bottom: 0.75rem;
+    border-radius: 4px;
+    animation: fadeIn 0.5s ease-out forwards;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    transition: box-shadow 0.3s ease;
+}
+
+.workflow-card:hover {
+    box-shadow: 0 0 15px var(--ai-glow-color);
+}
+/* --- Warna Spesifik untuk Setiap Tipe Log --- */
+.log-status { border-left-color: #7a7a7a; }
+.log-status i { color: #7a7a7a; }
+
+.log-step-info { border-left-color: #ffffff; text-align: center; }
+.log-step-info .card-body { font-size: 1.1rem; font-weight: bold; color: #fff; }
+
+.log-decision { border-left-color: #aA00ff; }
+.log-decision i { color: #aA00ff; text-shadow: 0 0 8px #aA00ff; }
+
+.log-command { border-left-color: var(--ai-primary-color); }
+.log-command i { color: var(--ai-primary-color); }
+
+.log-complete { border-left-color: var(--ai-success-color); }
+.log-complete i { color: var(--ai-success-color); text-shadow: 0 0 8px var(--ai-success-color); }
+
+.log-error { border-left-color: var(--ai-error-color); }
+.log-error i { color: var(--ai-error-color); text-shadow: 0 0 8px var(--ai-error-color); }
+
+/* --- Style untuk Kartu Langkah Final --- */
+.workflow-step-final {
+    border-left: 4px solid var(--ai-success-color);
+    background: linear-gradient(145deg, var(--card-bg-color), #2a2a33);
+}
+.card-header2 {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    background-color: rgba(0,0,0,0.2);
+    border-bottom: 1px solid var(--card-border-color);
+}
+
+.card-header2 i {
+    font-size: 1.2rem;
+    margin-right: 0.75rem;
+    text-shadow: 0 0 8px var(--ai-glow-color);
+}
+
+.card-header-title {
+    font-weight: 500;
+    color: #ffffff;
+}
+
+.card-body2 {
+    padding: 0.75rem 1.25rem;
+    font-size: 0.95rem;
+    line-height: 1.6;
+}
+
+/* Custom code block style */
+.card-body2 code, pre {
+    font-family: 'Fira Code', monospace;
+    background-color: var(--code-bg-color);
+    color: #aaeaff; /* Warna teks kode */
+    padding: 0.2em 0.4em;
+    border-radius: 4px;
+    font-size: 0.9em;
+    border: 1px solid var(--card-border-color);
+}
+.card-body2 pre {
+    padding: 1em;
+    white-space: pre-wrap; /* Agar teks panjang tidak merusak layout */
+    word-break: break-all;
+}
 </style>
     {% block style %}
     {%  endblock %}
