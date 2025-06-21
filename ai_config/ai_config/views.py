@@ -12,6 +12,7 @@ import re
 import requests
 import logging
 import json
+from django.core.paginator import Paginator
 from django.views.decorators.csrf import csrf_exempt
 from two_factor.views import LoginView as TwoFactorLoginView
 from two_factor.utils import default_device
@@ -34,7 +35,7 @@ import time
 from chatbot.models import SystemScan, ConfigurationIssue
 from .system_analyzer import LinuxConfigAnalyzer
 import asyncio
-
+from django.utils import timezone
 # Inisialisasi model AI
 # llm = OllamaLLM(model="qwen2.5-coder:latest")
 llm = OllamaLLM(model="mistral:latest")
@@ -594,8 +595,17 @@ def run_analysis(request):
 from chatbot import models
 def logs_report(request):
    recommendations = models.AIRecommendation.objects.all().order_by('-created_at')[:20]
-   suricata_logs = models.SuricataLog.objects.all()[:10]
-   return render(request, "logs_report.html", {'recommendations': recommendations, 'suricata_logs': suricata_logs})
+   suricata_logs = models.SuricataLog.objects.all().order_by('-timestamp')[:10]
+   # Ambil semua ExecutionLog dan paginate
+   ai_chat_log_list = models.ExecutionLog.objects.all().order_by('-created_at')
+   paginator = Paginator(ai_chat_log_list, 20)  # Tampilkan 20 per halaman
+   page_number = request.GET.get('page')
+   ai_chat_logs = paginator.get_page(page_number)
+   return render(request, "logs_report.html", {
+        'recommendations': recommendations,
+        'suricata_logs': suricata_logs,
+        'ai_chat_logs': ai_chat_logs
+    })
 
 def get_failed_services():
     try:
@@ -2403,6 +2413,7 @@ class MCPClient:
         self.api_key = MISTRAL_API_KEY
         self.client = Mistral(api_key=self.api_key)
         self.model = "open-mistral-nemo"
+        # self.model = "mistral-small-latest"
         
     def process_complex_task(self, user_input):
         system_prompt = """
@@ -3979,3 +3990,52 @@ def process_mcp_smart_chat_http(request):
     
     return JsonResponse({'error': 'Method not allowed'})
 
+
+
+from django.db.models import Q
+
+def network_Security(request):
+    """Main logs report view with real-time data"""
+    recommendations = models.AIRecommendation.objects.all().order_by('-created_at')[:20]
+    suricata_logs = models.SuricataLog.objects.all().order_by('-timestamp')[:10]
+    blocked_ips = models.BlockedIP.objects.all().order_by('-blocked_at')[:10]
+    whitelisted_ips = models.WhitelistedIP.objects.all().order_by('-added_at')[:10]
+    
+    # Statistics
+    total_blocked = models.BlockedIP.objects.count()
+    active_blocks = models.BlockedIP.objects.filter(
+        Q(blocked_until__gt=timezone.now()) | Q(is_permanent=True)
+    ).count()
+    
+    # AI chat logs with pagination
+    ai_chat_log_list = models.ExecutionLog.objects.all().order_by('-created_at')
+    paginator = Paginator(ai_chat_log_list, 20)
+    page_number = request.GET.get('page')
+    ai_chat_logs = paginator.get_page(page_number)
+    
+    context = {
+        'recommendations': recommendations,
+        'suricata_logs': suricata_logs,
+        'ai_chat_logs': ai_chat_logs,
+        'blocked_ips': blocked_ips,
+        'whitelisted_ips': whitelisted_ips,
+        'total_blocked': total_blocked,
+        'active_blocks': active_blocks,
+    }
+    
+    return render(request, "network_security.html", context)
+
+def security_stats_api(request):
+    """API endpoint for real-time statistics"""
+    stats = {
+        'total_blocked': models.BlockedIP.objects.count(),
+        'active_blocks': models.BlockedIP.objects.filter(
+            Q(blocked_until__gt=timezone.now()) | Q(is_permanent=True)
+        ).count(),
+        'total_logs': models.SuricataLog.objects.count(),
+        'recent_alerts': models.SuricataLog.objects.filter(
+            timestamp__gte=timezone.now() - timezone.timedelta(hours=24)
+        ).count(),
+    }
+    
+    return JsonResponse(stats)

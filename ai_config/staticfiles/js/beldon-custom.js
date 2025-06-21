@@ -123,25 +123,23 @@ $(window).on("load", function() {
 
 $(function() {
 
+  function updateTime() {
+    const now = new Date();
+    const timeString = now.toLocaleTimeString('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+    document.getElementById('time_count').textContent = timeString;
+  }
+
+  // Update immediately and then every second
+  updateTime();
+  setInterval(updateTime, 1000);
   // --------------------------------------------- //
   // KBW-Countdown Start
   // --------------------------------------------- //
-  function updateTimeNow() {
-    const now = new Date();
-
-    // Format tanggal: 6 April 2025
-    const optionsDate = { day: 'numeric', month: 'long', year: 'numeric' };
-    const formattedDate = now.toLocaleDateString('id-ID', optionsDate);
-
-    // Format waktu: 9:07:02 AM
-    const optionsTime = { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true };
-    const formattedTime = now.toLocaleTimeString('en-US', optionsTime);
-
-    $('#countdown').html(`${formattedDate}<br>${formattedTime}`);
-}
-
-updateTimeNow();
-setInterval(updateTimeNow, 1000);
+  $('#countdown').countdown({until: $.countdown.UTCDate(+10, 2025, 5, 12), format: 'D'});
   // --------------------------------------------- //
   // KBW-Countdown End
   // --------------------------------------------- //

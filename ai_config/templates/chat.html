@@ -1,4 +1,5 @@
 {% extends 'layout/layout1.html' %}
+{% load static %}
 {% block style %}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -103,6 +104,10 @@
             <div class="content-page">
                 <!-- <div id="terminal"></div> -->
                 <div class="chat-box-list pt--30" id="bashContainer">
+                    <div class="placeholder-content">
+                        <img src="/static/images/handai.png" alt="AI Generating Artworks">
+                        <p class="placeholder-text">Ready to receive commands...</p>
+                    </div>
                 </div>
             </div>
             <div class="rbt-static-bar">
@@ -151,195 +156,8 @@
 <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.js"></script> 
 <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-bash.min.js"></script> 
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit"></script> 
-<!-- 
+
 <script>
-        const chatInput = document.getElementById('chat-input');
-    const sendButton = document.getElementById('send-button');
-    const bashContainer = document.getElementById('bashContainer'); // Tempat output terminal/bash
-    const chatHistory = document.getElementById('chat-history');
-    const workflowSteps = document.getElementById('workflow-steps');
-
-    const apiUrl = '/api/process-smart-chat/';
-
-    async function sendMessage() {
-        const message = chatInput.value.trim();
-        if (!message) return;
-
-        sendButton.disabled = true;
-        chatInput.disabled = true;
-
-        try {
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message })
-            });
-
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            const data = await response.json();
-
-            // Tampilkan pesan pengguna dan AI di chat history
-            addToChatHistory(message, data.workflow_result.summary);
-
-            // Tampilkan output dari stdout sebagai kode bash
-            const outputText = data.workflow_result?.steps[0]?.result?.output || '(No output)';
-            const errorText = data.workflow_result?.steps[0]?.result?.error || '';
-            const commandbash = data.workflow_result?.steps[0]?.result?.command || '';
-            const final_status = data.workflow_result?.final_status || '';
-            const statusButton = document.getElementById('status-final');
-
-            // Tambahkan class sesuai dengan status
-            if (final_status.toLowerCase() === 'Completed') {
-                statusButton.classList.add('btn-success');
-                statusButton.textContent = 'Completed';
-            } else if (final_status.toLowerCase() === 'failed') {
-                statusButton.classList.add('btn-danger');
-                statusButton.textContent = 'Failed';
-            } else {
-                statusButton.classList.add('btn-secondary');
-                statusButton.textContent = final_status || 'Unknown';
-            }
-            displayBashOutput(outputText, errorText, commandbash);
-
-            // Render langkah-langkah workflow
-            renderWorkflowSteps(data.workflow_result?.steps || []);
-
-        } catch (error) {
-            displayBashOutput('', `Error: ${error.message}`);
-        } finally {
-            sendButton.disabled = false;
-            chatInput.disabled = false;
-            chatInput.value = '';
-            chatInput.focus();
-        }
-    }
-
-    function displayBashOutput(stdout, stderr, commandbash) {
-        const pre = document.createElement('pre');
-        const code = document.createElement('code');
-
-        code.className = 'language-bash';
-        code.textContent = `$ ` + commandbash + '\n';
-
-        if (stdout) {
-            code.textContent += stdout + '\n';
-        }
-
-        if (stderr) {
-            code.textContent += 'ERROR:\n' + stderr + '\n';
-        }
-
-        pre.appendChild(code);
-        bashContainer.appendChild(pre);
-
-        // Highlight kode dengan Prism.js
-        Prism.highlightElement(code);
-
-        bashContainer.scrollTop = bashContainer.scrollHeight;
-    }
-
-    function addToChatHistory(userMsg, aiMsg) {
-        const userDiv = document.createElement('div');
-        userDiv.className = 'chat-box  bg-flashlight author-speech';
-        userDiv.innerHTML = `<p><span class="rainbow-badge-card">You</span> ${userMsg}</p>`;
-
-        const aiDiv = document.createElement('div');
-        aiDiv.className = 'chat-box  bg-flashlight ai-speech';
-        aiDiv.innerHTML = `<p><span class="rainbow-badge-card">AI</span> ${aiMsg}</p>`;
-
-        chatHistory.appendChild(userDiv);
-        chatHistory.appendChild(aiDiv);
-        chatHistory.scrollTop = chatHistory.scrollHeight;
-    }
-
-    function renderWorkflowSteps(steps) {
-        workflowSteps.innerHTML = '';
-        steps.forEach(step => {
-            const card = document.createElement('div');
-            card.className = 'workflow-step p-3 mb-2 bg-light rounded shadow-sm';
-            card.innerHTML = `
-                <strong>Langkah ${step.step}</strong><br/>
-                <em>Reasoning:</em> ${step.reasoning}<br/>
-                <em>Command:</em> <code>${step.command}</code>
-            `;
-            workflowSteps.appendChild(card);
-        });
-    }
-
-    // Event listeners
-    sendButton.addEventListener('click', sendMessage);
-    chatInput.addEventListener('keypress', e => {
-        if (e.key === 'Enter') sendMessage();
-    });
-</script> -->
-<script>
-//    const term = new Terminal();
-   
-//     term.open(document.getElementById('terminal'));
-   
-   
-//     const ws2 = new WebSocket("ws://" + window.location.host + "/ws/terminal/");
-
-//     // Terima output dari server dan tampilkan
-//     ws2.onmessage = function(event) {
-//         console.log("Received from WS:", event.data); 
-//         term.write(event.data);
-//     };
-//     let currentLine = "";
-
-//     term.onKey((keyEvent) => {
-//         const char = keyEvent.key;
-//         const domEvent = keyEvent.domEvent;
-
-//         // Ctrl+C / Cmd+C
-//         if ((domEvent.ctrlKey || domEvent.metaKey) && domEvent.code === "KeyC") {
-//             ws2.send(JSON.stringify({ type: "input", data: "\x03" }));
-//             term.write("^C");
-//             domEvent.preventDefault();  // Hindari copy default
-//             return;
-//         }
-
-//         // Ctrl+Z
-//         if ((domEvent.ctrlKey || domEvent.metaKey) && domEvent.code === "KeyZ") {
-//             ws2.send(JSON.stringify({ type: "input", data: "\x1A" }));
-//             term.write("^Z");
-//             domEvent.preventDefault();
-//             return;
-//         }
-
-//         // Ctrl+D
-//         if ((domEvent.ctrlKey || domEvent.metaKey) && domEvent.code === "KeyD") {
-//             ws2.send(JSON.stringify({ type: "input", data: "\x04" }));
-//             term.write("^D");
-//             domEvent.preventDefault();
-//             return;
-//         }
-
-//         // Backspace
-//         if (domEvent.code === "Backspace") {
-//             if (currentLine.length > 0) {
-//                 currentLine = currentLine.slice(0, -1);
-//                 term.write("\b \b");  // Hapus satu karakter
-//             }
-//             return;
-//         }
-
-//         // Enter
-//         if (domEvent.code === "Enter") {
-//             ws2.send(JSON.stringify({
-//                 type: "input",
-//                 data: currentLine
-//             }));
-//             currentLine = "";
-//             return;
-//         }
-
-//         // Karakter normal
-//         if (!domEvent.ctrlKey && !domEvent.metaKey && !domEvent.altKey) {
-//             currentLine += char;
-//             term.write(char);
-//         }
-//     });
 
 function createWorkflowCard(iconClass, title, content, logType, ) {
     const card = document.createElement("div");
@@ -378,15 +196,30 @@ function createWorkflowCard(iconClass, title, content, logType, ) {
 
     let ws;
 
-    function connectWebSocket() {
+    async function connectWebSocket() {
         // Ganti dengan URL WebSocket kamu
-        ws = new WebSocket("ws://" + window.location.host + "/ws/chat/");
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+
+            // 2. Gunakan host dari halaman saat ini. Ini cara paling fleksibel.
+            const wsHost = window.location.host;
+
+            // 3. Gabungkan menjadi URL WebSocket yang lengkap
+            const wsURL = `${wsProtocol}://${wsHost}/ws/chat/`;
+
+            // Tambahkan log untuk debugging, sangat membantu!
+            console.log("Mencoba menyambung ke WebSocket di:", wsURL);
+
+            // 4. PERBAIKAN UTAMA: Jangan gunakan 'const' atau 'let' di sini.
+            //    Kita ingin mengubah variabel 'ws' yang sudah ada di luar fungsi.
+            ws = new WebSocket(wsURL);
+      //  ws = new WebSocket("ws://" + window.location.host + "/ws/chat/");
+    
 
         ws.onopen = () => {
             console.log("WebSocket connected");
         };
 
-        ws.onmessage = function(event) {
+        ws.onmessage = async function(event) {
             const data = JSON.parse(event.data);
 
             switch (data.type) {

@@ -142,6 +142,114 @@
                     {% endif %}
                 </div>
             </div>
+            <!-- AI Chat Logs Section -->
+            <!-- AI Chat Execution Logs Section -->
+            <div class="card mt-5" style="border-top-left-radius: 14px; border-top-right-radius: 14px;">
+                <div class="card-header bg-gradient-light d-flex justify-content-between align-items-center"
+                    style="color: white; background: #64cbe9; padding: 20px; border-top-left-radius: 14px; border-top-right-radius: 14px;">
+                    <h5 class="mb-0" style="color: white;">
+                        <i class="fas fa-comment-dots"></i> AI Chat Execution Logs
+                    </h5>
+                    <span class="badge bg-light text-dark">{{ ai_chat_logs.paginator.count }} Total Logs</span>
+                </div>
+                <div class="card-body" style="background-color: #f9f9f9;">
+                    {% if ai_chat_logs %}
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead class="bg-light">
+                                    <tr>
+                                        <th>User Query</th>
+                                        <th>Status</th>
+                                        <th>Duration</th>
+                                        <th>Created At</th>
+                                        <th>Created By</th>
+                                        <th>Summary</th>
+                                        <th>Steps</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for log in ai_chat_logs %}
+                                        <tr>
+                                            <td><small>{{ log.user_query|truncatechars:60 }}</small></td>
+                                            <td>
+                                                <span class="badge 
+                                                    {% if log.final_status == 'completed' %}bg-success
+                                                    {% elif log.final_status == 'failed' or log.final_status == 'error' %}bg-danger
+                                                    {% else %}bg-secondary
+                                                    {% endif %}
+                                                ">{{ log.final_status|default:"-" }}</span>
+                                            </td>
+                                            <td>
+                                                {{ log.duration|floatformat:2 }}s
+                                            </td>
+                                            <td>
+                                                {{ log.created_at|date:"Y-m-d H:i:s" }}
+                                            </td>
+                                            <td>{{ log.created_by|default:"-"}}</td>
+                                            <td><small>{{ log.summary|default:"-"|truncatechars:80 }}</small></td>
+                                            <td>
+                                                <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#stepsCollapse{{ forloop.counter }}" aria-expanded="false">
+                                                    Show Steps
+                                                </button>
+                                                <div class="collapse mt-2" id="stepsCollapse{{ forloop.counter }}">
+                                                    <ul class="list-group list-group-flush small">
+                                                        {% for step in log.steps %}
+                                                            <li class="list-group-item p-1 ps-3">{{ forloop.counter }}. {{ step|truncatechars:100 }}</li>
+                                                        {% endfor %}
+                                                    </ul>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Pagination -->
+                        <nav aria-label="Page navigation example">
+                            <ul class="pagination justify-content-center mt-4">
+                                {% if ai_chat_logs.has_previous %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page=1">&laquo;</a>
+                                    </li>
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page={{ ai_chat_logs.previous_page_number }}">Previous</a>
+                                    </li>
+                                {% else %}
+                                    <li class="page-item disabled">
+                                        <a class="page-link" href="#" tabindex="-1">Previous</a>
+                                    </li>
+                                {% endif %}
+
+                                {% for num in ai_chat_logs.paginator.page_range %}
+                                    {% if ai_chat_logs.number == num %}
+                                        <li class="page-item active"><a class="page-link" href="#">{{ num }}</a></li>
+                                    {% else %}
+                                        <li class="page-item"><a class="page-link" href="?page={{ num }}">{{ num }}</a></li>
+                                    {% endif %}
+                                {% endfor %}
+
+                                {% if ai_chat_logs.has_next %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page={{ ai_chat_logs.next_page_number }}">Next</a>
+                                    </li>
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page={{ ai_chat_logs.paginator.num_pages }}">&raquo;</a>
+                                    </li>
+                                {% else %}
+                                    <li class="page-item disabled">
+                                        <a class="page-link" href="#">Next</a>
+                                    </li>
+                                {% endif %}
+                            </ul>
+                        </nav>
+                    {% else %}
+                        <div class="alert alert-info mt-3 mb-0">
+                            <i class="fas fa-info-circle"></i> No AI chat execution logs found.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
         </div>
     </div>
 </div>

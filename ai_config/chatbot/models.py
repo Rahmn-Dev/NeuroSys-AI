@@ -125,3 +125,42 @@ class ConfigurationIssue(models.Model):
     ai_recommendation = models.JSONField(null=True, blank=True) # Menggunakan JSONField untuk menyimpan object
     ai_impact = models.TextField(null=True, blank=True)
 
+import time
+import jsonfield
+class ExecutionLog(models.Model):
+    user_query = models.TextField()
+    goal = models.TextField()
+    start_time = models.FloatField(default=time.time)
+    end_time = models.FloatField(null=True, blank=True)
+    duration = models.FloatField(null=True, blank=True)
+    final_status = models.CharField(max_length=50)
+    summary = models.TextField(null=True, blank=True)
+    steps = jsonfield.JSONField(default=list)  # Menyimpan array langkah-langkah
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    
+    def __str__(self):
+        return f"{self.user_query[:30]}... - {self.final_status}"
+    
+
+class BlockedIP(models.Model):
+    ip_address = models.GenericIPAddressField(unique=True)
+    reason = models.CharField(max_length=200)
+    blocked_at = models.DateTimeField(auto_now_add=True)
+    blocked_until = models.DateTimeField(null=True, blank=True)
+    is_permanent = models.BooleanField(default=False)
+    suricata_log = models.ForeignKey('SuricataLog', on_delete=models.SET_NULL, null=True, blank=True)
+    
+    def __str__(self):
+        return f"Blocked: {self.ip_address} - {self.reason}"
+    
+    class Meta:
+        ordering = ['-blocked_at']
+
+class WhitelistedIP(models.Model):
+    ip_address = models.GenericIPAddressField(unique=True)
+    description = models.CharField(max_length=200)
+    added_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"Whitelisted: {self.ip_address}"

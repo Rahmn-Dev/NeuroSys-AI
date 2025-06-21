@@ -26,7 +26,7 @@ MISTRAL_API_KEY = config("MISTRAL_API_KEY", default="mistral-key")
 
 # SECURITY WARNING: keep the secret key used in production secret!
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = ['*']
 
@@ -37,6 +37,7 @@ OLLAMA_MODEL = "qwen2.5-coder:latest"
 
 INSTALLED_APPS = [
     # 'daphne',
+     'corsheaders',
     'channels',
     'django.contrib.admin',
     'django.contrib.auth',
@@ -80,6 +81,7 @@ MIDDLEWARE = [
      "whitenoise.middleware.WhiteNoiseMiddleware",
      'django_otp.middleware.OTPMiddleware',
      'chatbot.middleware.EnforceActiveSessionMiddleware',
+     'corsheaders.middleware.CorsMiddleware',
     #  'corsheaders.middleware.CorsMiddleware', 
 ]
 
@@ -167,6 +169,16 @@ ASGI_APPLICATION = "ai_config.asgi.application"
 #         "BACKEND": "channels.layers.InMemoryChannelLayer",
 #     },
 # }
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("127.0.0.1", 6379)],
+        },
+    },
+}
+
 STATICFILES_DIRS = [
     os.path.join(BASE_DIR, "static")  # Hanya mengarah ke folder static yang benar
 ]   

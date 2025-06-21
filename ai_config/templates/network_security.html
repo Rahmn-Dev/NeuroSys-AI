@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Security Logs Report - Real-time</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .alert-danger { animation: fadeIn 0.5s; }
+        .alert-success { animation: fadeIn 0.5s; }
+        .alert-warning { animation: fadeIn 0.5s; }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .blocked-ip-item {
+            padding: 10px;
+            margin: 5px 0;
+            border-left: 4px solid #dc3545;
+            background-color: #f8f9fa;
+        }
+        
+        .new-alert {
+            animation: none;
+            border-left-color: #ff6b6b !important;
+        }
+        
+        
+        @keyframes pulse {
+            0% { background-color: #f8f9fa; }
+            50% { background-color: #ffe6e6; }
+            100% { background-color: #f8f9fa; }
+        }
+        
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+        }
+        
+        .status-connected { background-color: #28a745; }
+        .status-disconnected { background-color: #dc3545; }
+        
+        .stats-card {
+            transition: all 0.3s ease;
+        }
+        
+        .stats-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-dark">
+        <div class="container">
+            <span class="navbar-brand">Security Monitor</span>
+            <div class="navbar-text">
+                <span class="status-indicator" id="connectionStatus"></span>
+                <span id="connectionText">Connecting...</span>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Real-time Alerts -->
+        <div id="alertContainer"></div>
+
+        <!-- Statistics Cards -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card stats-card text-white bg-danger">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h4 id="totalBlocked">{{ total_blocked }}</h4>
+                                <p class="card-text">Total Blocked</p>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-ban fa-2x"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card text-white bg-warning">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h4 id="activeBlocks">{{ active_blocks }}</h4>
+                                <p class="card-text">Active Blocks</p>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-shield-alt fa-2x"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card text-white bg-info">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h4 id="recentAlerts">0</h4>
+                                <p class="card-text">Recent Alerts</p>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-exclamation-triangle fa-2x"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card text-white bg-success">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h4 id="totalLogs">0</h4>
+                                <p class="card-text">Total Logs</p>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-file-alt fa-2x"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Control Panel -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-ban"></i> Manual Block IP</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="manualBlockForm">
+                            <div class="mb-3">
+                                <input type="text" class="form-control" id="blockIpAddress" placeholder="IP Address" required>
+                            </div>
+                            <div class="mb-3">
+                                <input type="text" class="form-control" id="blockReason" placeholder="Reason">
+                            </div>
+                            <div class="mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="permanentBlock">
+                                    <label class="form-check-label" for="permanentBlock">
+                                        Permanent Block
+                                    </label>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-danger">
+                                <i class="fas fa-ban"></i> Block IP
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-check-circle"></i> Add to Whitelist</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="whitelistForm">
+                            <div class="mb-3">
+                                <input type="text" class="form-control" id="whitelistIpAddress" placeholder="IP Address" required>
+                            </div>
+                            <div class="mb-3">
+                                <input type="text" class="form-control" id="whitelistDescription" placeholder="Description">
+                            </div>
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-plus"></i> Add to Whitelist
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <ul class="nav nav-tabs" id="myTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="blocked-tab" data-bs-toggle="tab" data-bs-target="#blocked" type="button">
+                    <i class="fas fa-ban"></i> Blocked IPs
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="suricata-tab" data-bs-toggle="tab" data-bs-target="#suricata" type="button">
+                    <i class="fas fa-shield-alt"></i> Suricata Logs
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="whitelist-tab" data-bs-toggle="tab" data-bs-target="#whitelist" type="button">
+                    <i class="fas fa-check-circle"></i> Whitelisted IPs
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="myTabContent">
+            <!-- Blocked IPs Tab -->
+            <div class="tab-pane fade show active" id="blocked" role="tabpanel">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Recently Blocked IPs</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="blockedIpsList">
+                            {% for blocked_ip in blocked_ips %}
+                            <div class="blocked-ip-item" data-ip="{{ blocked_ip.ip_address }}">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong>{{ blocked_ip.ip_address }}</strong>
+                                        <br>
+                                        <small class="text-muted">{{ blocked_ip.reason }}</small>
+                                        <br>
+                                        <small class="text-muted">{{ blocked_ip.blocked_at|date:"Y-m-d H:i:s" }}</small>
+                                    </div>
+                                    <div>
+                                        {% if blocked_ip.is_permanent %}
+                                            <span class="badge bg-danger">Permanent</span>
+                                        {% else %}
+                                            <span class="badge bg-warning">Temporary</span>
+                                        {% endif %}
+                                        <button class="btn btn-sm btn-outline-success ms-2" onclick="unblockIP('{{ blocked_ip.ip_address }}')">
+                                            <i class="fas fa-unlock"></i> Unblock
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Suricata Logs Tab -->
+            <div class="tab-pane fade" id="suricata" role="tabpanel">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Recent Suricata Alerts</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="suricataLogsList">
+                            {% for log in suricata_logs %}
+                            <div class="alert alert-warning">
+                                <div class="d-flex justify-content-between">
+                                    <div>
+                                        <strong>{{ log.source_ip }}</strong> → {{ log.destination_ip }}
+                                        <br>
+                                        <small>{{ log.message }}</small>
+                                        <br>
+                                        <small class="text-muted">{{ log.timestamp|date:"Y-m-d H:i:s" }} | Priority: {{ log.priority }}</small>
+                                    </div>
+                                    <div>
+                                        {% if log.classification %}
+                                        <span class="badge bg-danger">{{ log.classification }}</span>
+                                        {% endif %}
+                                        <button class="btn btn-sm btn-danger ms-2" onclick="quickBlock('{{ log.source_ip }}', 'Suricata Alert')">
+                                            <i class="fas fa-ban"></i> Block
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Whitelisted IPs Tab -->
+            <div class="tab-pane fade" id="whitelist" role="tabpanel">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Whitelisted IPs</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="whitelistedIpsList">
+                            {% for whitelist in whitelisted_ips %}
+                            <div class="alert alert-success">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong>{{ whitelist.ip_address }}</strong>
+                                        <br>
+                                        <small>{{ whitelist.description }}</small>
+                                        <br>
+                                        <small class="text-muted">Added: {{ whitelist.added_at|date:"Y-m-d H:i:s" }}</small>
+                                    </div>
+                                    <span class="badge bg-success">Protected</span>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/js/bootstrap.bundle.min.js"></script>
+    <script>
+        class SecurityMonitor {
+            constructor() {
+                this.ws = null;
+                this.reconnectAttempts = 0;
+                this.maxReconnectAttempts = 5;
+                this.reconnectInterval = 5000;
+                
+                this.init();
+            }
+            
+            init() {
+                this.connectWebSocket();
+                this.setupEventListeners();
+                this.startStatsUpdater();
+            }
+            
+            connectWebSocket() {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${protocol}//${window.location.host}/ws/security/`;
+                
+                try {
+                    this.ws = new WebSocket(wsUrl);
+                    
+                    this.ws.onopen = (event) => {
+                        console.log('WebSocket connected');
+                        this.updateConnectionStatus(true);
+                        this.reconnectAttempts = 0;
+                    };
+                    
+                    this.ws.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+                        this.handleWebSocketMessage(data);
+                        this.handleSecurityStats(event);
+            
+                    };
+                    
+                    this.ws.onclose = (event) => {
+                        console.log('WebSocket disconnected');
+                        this.updateConnectionStatus(false);
+                        this.attemptReconnect();
+                    };
+                    
+                    this.ws.onerror = (error) => {
+                        console.error('WebSocket error:', error);
+                        this.updateConnectionStatus(false);
+                    };
+                    
+                } catch (error) {
+                    console.error('Failed to connect WebSocket:', error);
+                    this.updateConnectionStatus(false);
+                    this.attemptReconnect();
+                }
+            }
+            
+            handleWebSocketMessage(data) {
+                switch (data.type) {
+                    case 'initial_data':
+                        this.handleInitialData(data.data);
+                        break;
+                    case 'ip_blocked':
+                        this.handleIPBlocked(data.data);
+                        break;
+                    case 'new_log':
+                        this.handleNewLog(data.data);
+                        break;
+                    case 'whitelist_skip':
+                        this.handleWhitelistSkip(data.data);
+                        break;
+                    default:
+                        console.log('Unknown message type:', data.type);
+                }
+            }
+            
+            handleInitialData(data) {
+                console.log('Initial data received:', data);
+                // Update blocked IPs list if needed
+                // Update recent logs if needed
+            }
+            
+            handleIPBlocked(data) {
+                this.showAlert('danger', `🚫 IP ${data.ip} has been blocked!`);
+                this.addBlockedIPToList(data); 
+                this.updateStats();
+                this.playNotificationSound();
+            }
+            
+            handleNewLog(data) {
+                this.showAlert('warning', `⚠️ New security alert from ${data.ip}`);
+                this.addSuricataLogToList(data);
+            }
+            
+            handleWhitelistSkip(data) {
+                this.showAlert('info', `ℹ️ Whitelisted IP ${data.ip} detected but not blocked`);
+            }
+            
+            addBlockedIPToList(data) {
+                const blockedList = document.getElementById('blockedIpsList');
+                const newItem = document.createElement('div');
+                newItem.className = 'blocked-ip-item new-alert';
+                newItem.setAttribute('data-ip', data.ip);
+                
+                newItem.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>${data.ip}</strong>
+                            <br>
+                            <small class="text-muted">${data.reason}</small>
+                            <br>
+                            <small class="text-muted">${new Date(data.timestamp).toLocaleString()}</small>
+                        </div>
+                        <div>
+                            <span class="badge ${data.permanent ? 'bg-danger' : 'bg-warning'}">
+                                ${data.permanent ? 'Permanent' : 'Temporary'}
+                            </span>
+                            <button class="btn btn-sm btn-outline-success ms-2" onclick="unblockIP('${data.ip}')">
+                                <i class="fas fa-unlock"></i> Unblock
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                blockedList.insertBefore(newItem, blockedList.firstChild);
+                
+                // Remove animation class after animation completes
+                setTimeout(() => {
+                    newItem.classList.remove('new-alert');
+                }, 1000);
+            }
+            
+            addSuricataLogToList(data) {
+                const logsList = document.getElementById('suricataLogsList');
+                const newItem = document.createElement('div');
+                newItem.className = 'alert alert-warning new-alert';
+                
+                newItem.innerHTML = `
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <strong>${data.ip}</strong>
+                            <br>
+                            <small>${data.message}</small>
+                            <br>
+                            <small class="text-muted">${new Date(data.timestamp).toLocaleString()} | Priority: ${data.priority}</small>
+                        </div>
+                        <div>
+                            ${data.classification ? `<span class="badge bg-danger">${data.classification}</span>` : ''}
+                            <button class="btn btn-sm btn-danger ms-2" onclick="quickBlock('${data.ip}', 'Real-time Alert')">
+                                <i class="fas fa-ban"></i> Block
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                logsList.insertBefore(newItem, logsList.firstChild);
+                
+                setTimeout(() => {
+                    newItem.classList.remove('new-alert');
+                }, 1000);
+            }
+            
+            showAlert(type, message) {
+                const alertContainer = document.getElementById('alertContainer');
+                const alert = document.createElement('div');
+                alert.className = `alert alert-${type} alert-dismissible fade show`;
+                alert.innerHTML = `
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                
+                alertContainer.appendChild(alert);
+                
+                // Auto remove after 5 seconds
+                setTimeout(() => {
+                    if (alert.parentNode) {
+                        alert.remove();
+                    }
+                }, 5000);
+            }
+            
+            updateConnectionStatus(connected) {
+                const indicator = document.getElementById('connectionStatus');
+                const text = document.getElementById('connectionText');
+                
+                if (connected) {
+                    indicator.className = 'status-indicator status-connected';
+                    text.textContent = 'Connected';
+                } else {
+                    indicator.className = 'status-indicator status-disconnected';
+                    text.textContent = 'Disconnected';
+                }
+            }
+            
+            attemptReconnect() {
+                if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                    this.reconnectAttempts++;
+                    console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+                    
+                    setTimeout(() => {
+                        this.connectWebSocket();
+                    }, this.reconnectInterval);
+                } else {
+                    console.log('Max reconnection attempts reached');
+                    document.getElementById('connectionText').textContent = 'Connection Failed';
+                }
+            }
+            
+            sendMessage(message) {
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify(message));
+                } else {
+                    this.showAlert('danger', 'WebSocket not connected. Please refresh the page.');
+                }
+            }
+            
+            setupEventListeners() {
+                // Manual Block Form
+                document.getElementById('manualBlockForm').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    const ip = document.getElementById('blockIpAddress').value;
+                    const reason = document.getElementById('blockReason').value || 'Manual block';
+                    const permanent = document.getElementById('permanentBlock').checked;
+                    
+                    this.sendMessage({
+                        action: 'manual_block',
+                        ip_address: ip,
+                        reason: reason,
+                        permanent: permanent
+                    });
+                    
+                    // Clear form
+                    e.target.reset();
+                });
+                
+                // Whitelist Form
+                document.getElementById('whitelistForm').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    const ip = document.getElementById('whitelistIpAddress').value;
+                    const description = document.getElementById('whitelistDescription').value || 'Added manually';
+                    
+                    this.sendMessage({
+                        action: 'add_whitelist',
+                        ip_address: ip,
+                        description: description
+                    });
+                    
+                    // Clear form
+                    e.target.reset();
+                });
+            }
+            
+            // updateStats() {
+            //     // Update statistics via API call
+            //     fetch('/api/security-stats/')
+            //         .then(response => response.json())
+            //         .then(data => {
+            //             document.getElementById('totalBlocked').textContent = data.total_blocked;
+            //             document.getElementById('activeBlocks').textContent = data.active_blocks;
+            //             document.getElementById('recentAlerts').textContent = data.recent_alerts;
+            //             document.getElementById('totalLogs').textContent = data.total_logs;
+            //         })
+            //         .catch(error => console.error('Error updating stats:', error));
+            // }
+            
+            // startStatsUpdater() {
+            //     // Update stats every 30 seconds
+            //     setInterval(() => {
+            //         this.updateStats();
+            //     }, 30000);
+                
+            //     // Initial stats update
+            //     this.updateStats();
+            // }
+            handleSecurityStats(data) {
+                const stats = data.data;
+                document.getElementById('totalBlocked').textContent = stats.total_blocked;
+                document.getElementById('activeBlocks').textContent = stats.active_blocks;
+                document.getElementById('totalLogs').textContent = stats.total_logs;
+                document.getElementById('recentAlerts').textContent = stats.recent_alerts;
+            }
+
+           
+            
+            playNotificationSound() {
+                // Create a simple beep sound
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.value = 800;
+                oscillator.type = 'sine';
+                
+                gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.5);
+            }
+        }
+        
+        // Global functions
+        function unblockIP(ip) {
+            if (confirm(`Are you sure you want to unblock ${ip}?`)) {
+                securityMonitor.sendMessage({
+                    action: 'unblock_ip',
+                    ip_address: ip
+                });
+            }
+        }
+        
+        function quickBlock(ip, reason) {
+            if (confirm(`Block IP ${ip}?`)) {
+                securityMonitor.sendMessage({
+                    action: 'manual_block',
+                    ip_address: ip,
+                    reason: reason || 'Quick block',
+                    permanent: false
+                });
+            }
+        }
+        
+        // Initialize when page loads
+        let securityMonitor;
+        document.addEventListener('DOMContentLoaded', function() {
+            securityMonitor = new SecurityMonitor();
+        });
+    </script>
+</body>
+</html>

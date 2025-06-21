@@ -1,0 +1,10 @@
+2025-06-16T10:10:00.262816+07:00 paul-Legion-5-Pro-16ITH6H systemd[1]: sysstat-collect.service: Deactivated successfully.
+2025-06-16T10:10:00.262909+07:00 paul-Legion-5-Pro-16ITH6H systemd[1]: Finished sysstat-collect.service - system activity accounting tool.
+2025-06-16T10:10:06.576452+07:00 paul-Legion-5-Pro-16ITH6H snmpd[2306]: systemstats_linux: unexpected header length in /proc/net/snmp. 237 != 224
+2025-06-16T10:11:06.578159+07:00 paul-Legion-5-Pro-16ITH6H snmpd[2306]: systemstats_linux: unexpected header length in /proc/net/snmp. 237 != 224
+2025-06-16T10:11:15.661589+07:00 paul-Legion-5-Pro-16ITH6H wpa_supplicant[1229]: wlp0s20f3: CTRL-EVENT-SIGNAL-CHANGE above=0 signal=-72 noise=9999 txrate=130000
+2025-06-16T10:11:18.221675+07:00 paul-Legion-5-Pro-16ITH6H wpa_supplicant[1229]: wlp0s20f3: CTRL-EVENT-SIGNAL-CHANGE above=1 signal=-67 noise=9999 txrate=130000
+2025-06-16T10:11:36.964456+07:00 paul-Legion-5-Pro-16ITH6H wpa_supplicant[1229]: wlp0s20f3: CTRL-EVENT-SIGNAL-CHANGE above=0 signal=-70 noise=9999 txrate=130000
+2025-06-16T10:12:00.084014+07:00 paul-Legion-5-Pro-16ITH6H wpa_supplicant[1229]: wlp0s20f3: CTRL-EVENT-SIGNAL-CHANGE above=1 signal=-65 noise=9999 txrate=130000
+2025-06-16T10:12:02.255143+07:00 paul-Legion-5-Pro-16ITH6H wpa_supplicant[1229]: wlp0s20f3: CTRL-EVENT-SIGNAL-CHANGE above=0 signal=-74 noise=9999 txrate=130000
+2025-06-16T10:12:06.579913+07:00 paul-Legion-5-Pro-16ITH6H snmpd[2306]: systemstats_linux: unexpected header length in /proc/net/snmp. 237 != 224

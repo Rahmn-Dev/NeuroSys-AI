@@ -9,4 +9,5 @@ websocket_urlpatterns = [
     path('ws/mcp-proxy/', consumers.MCPServerProxyConsumer.as_asgi()),
     path('ws/chat/', consumers.ChatConsumer.as_asgi()),
     path('ws/terminal/', consumers.TerminalConsumer.as_asgi()),
+    path('ws/security/', consumers.SecurityConsumer.as_asgi()),
 ]

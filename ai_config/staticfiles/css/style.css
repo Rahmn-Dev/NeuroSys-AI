@@ -19897,7 +19897,7 @@ body.active-light-mode .rbt-utilize-area .rbt-default-sidebar-list li.has-submen
             Dashboard
 ***************************************/
 :root {
-  --sidebar-width: 270px;
+  --sidebar-width: 470px;
 }
 
 .rbt-left-panel {
@@ -22054,5 +22054,6 @@ body.active-light-mode .rbt-utilize-area .rbt-default-sidebar-list li.has-submen
   pointer-events: none;
   opacity: 0.5;
 }
+
 
 /*# sourceMappingURL=style.css.map */

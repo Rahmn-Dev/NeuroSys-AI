@@ -11,6 +11,8 @@ from asgiref.sync import async_to_sync
 from django.core.cache import cache
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.layers import get_channel_layer
+from asgiref.sync import sync_to_async
+from django.utils import timezone
 
 import os, django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ai_config.settings")
@@ -22,6 +24,15 @@ try:
 except ImportError:
     NVML_AVAILABLE = False
 
+import json
+from datetime import datetime
+
+class CustomJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
+    
 class SystemMonitorConsumer(AsyncWebsocketConsumer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -785,16 +796,50 @@ class ChatConsumer(AsyncWebsocketConsumer):
         pass
 
     async def receive(self, text_data):
+        from chatbot.models import ExecutionLog
         data = json.loads(text_data)
         user_message = data.get("message")
         from .views import SmartAgent
         # Inisialisasi agent
         agent = SmartAgent()
+        
+        # Ambil user dari scope
+        user = self.scope["user"]
+
+        # Jika user tidak login, tolak atau gunakan default user (opsional)
+        if not user.is_authenticated:
+            await self.send(json.dumps({
+                "type": "error",
+                "content": {"message": "Authentication required."}
+            }))
+            return
+
+        # Simpan awal log eksekusi
+        execution_log = await sync_to_async(ExecutionLog.objects.create)(
+            user_query=user_message,
+            goal=user_message,
+            start_time=time.time(),
+            final_status="in_progress",
+            created_by=user
+        )
+
+        steps = []
 
         # Streaming hasil langkah demi langkah
         for result in agent.stream_process_smart_workflow(user_message):
+            if result.get("type") == "step":
+                step_data = result.get("content", {})
+                steps.append(step_data)
             await self.send(json.dumps(result))
-
+        await sync_to_async(self._finalize_execution_log)(execution_log, steps, "completed")
+    def _finalize_execution_log(self, execution_log, steps, status, error=None):
+        execution_log.final_status = status
+        execution_log.end_time = time.time()
+        execution_log.duration = execution_log.end_time - execution_log.start_time
+        execution_log.steps = steps
+        if error:
+            execution_log.error = error
+        execution_log.save()
 
 import threading
 class TerminalConsumer(AsyncWebsocketConsumer):
@@ -827,3 +872,209 @@ class TerminalConsumer(AsyncWebsocketConsumer):
                 self.handle_input(data.get("data", ""))
         except json.JSONDecodeError:
             print("Invalid JSON")
+
+from channels.db import database_sync_to_async
+
+
+class SecurityConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        # Join security alerts group
+        await self.channel_layer.group_add(
+            "security_alerts",
+            self.channel_name
+        )
+        await self.accept()
+        
+        # Send initial data
+        await self.send_initial_data()
+    
+    async def disconnect(self, close_code):
+        # Leave security alerts group
+        await self.channel_layer.group_discard(
+            "security_alerts",
+            self.channel_name
+        )
+    
+    async def receive(self, text_data):
+        """Handle incoming WebSocket messages"""
+        try:
+            text_data_json = json.loads(text_data)
+            action = text_data_json.get('action')
+            
+            if action == 'manual_block':
+                await self.handle_manual_block(text_data_json)
+            elif action == 'unblock_ip':
+                await self.handle_unblock_ip(text_data_json)
+            elif action == 'add_whitelist':
+                await self.handle_add_whitelist(text_data_json)
+                
+        except json.JSONDecodeError:
+            await self.send(text_data=json.dumps({
+                'error': 'Invalid JSON'
+            }))
+    
+    async def handle_manual_block(self, data):
+        """Handle manual IP blocking via WebSocket"""
+        ip_address = data.get('ip_address')
+        reason = data.get('reason', 'Manual block via WebSocket')
+        permanent = data.get('permanent', False)
+        
+        if ip_address:
+            result = await self.manual_block_ip(ip_address, reason, permanent)
+            await self.send(text_data=json.dumps({
+                'action': 'manual_block_response',
+                'success': result['success'],
+                'message': result['message']
+            }))
+    
+    async def handle_unblock_ip(self, data):
+        """Handle IP unblocking via WebSocket"""
+        ip_address = data.get('ip_address')
+        
+        if ip_address:
+            result = await self.unblock_ip(ip_address)
+            await self.send(text_data=json.dumps({
+                'action': 'unblock_response',
+                'success': result['success'],
+                'message': result['message']
+            }))
+    
+    async def handle_add_whitelist(self, data):
+        """Handle adding IP to whitelist via WebSocket"""
+        ip_address = data.get('ip_address')
+        description = data.get('description', 'Added via WebSocket')
+        
+        if ip_address:
+            result = await self.add_to_whitelist(ip_address, description)
+            await self.send(text_data=json.dumps({
+                'action': 'whitelist_response',
+                'success': result['success'],
+                'message': result['message']
+            }))
+    
+    @database_sync_to_async
+    def manual_block_ip(self, ip_address, reason, permanent):
+        """Database operation for manual blocking"""
+        from .security_service import SecurityService
+        from chatbot.models import BlockedIP, WhitelistedIP
+        
+        try:
+            if SecurityService.is_whitelisted(ip_address):
+                return {'success': False, 'message': f'IP {ip_address} is whitelisted'}
+            
+            if SecurityService.is_already_blocked(ip_address):
+                return {'success': False, 'message': f'IP {ip_address} is already blocked'}
+            
+            if SecurityService.block_ip_iptables(ip_address, permanent):
+                blocked_until = None if permanent else timezone.now() + timezone.timedelta(hours=24)
+                
+                BlockedIP.objects.create(
+                    ip_address=ip_address,
+                    reason=reason,
+                    is_permanent=permanent,
+                    blocked_until=blocked_until
+                )
+                
+                return {'success': True, 'message': f'IP {ip_address} blocked successfully'}
+            else:
+                return {'success': False, 'message': f'Failed to block IP {ip_address}'}
+                
+        except Exception as e:
+            return {'success': False, 'message': f'Error: {str(e)}'}
+    
+    @database_sync_to_async
+    def unblock_ip(self, ip_address):
+        """Database operation for unblocking"""
+        from .security_service import SecurityService
+        from chatbot.models import BlockedIP
+        
+        try:
+            blocked_ip = BlockedIP.objects.get(ip_address=ip_address)
+            if SecurityService.unblock_ip_iptables(ip_address):
+                blocked_ip.delete()
+                return {'success': True, 'message': f'IP {ip_address} unblocked successfully'}
+            else:
+                return {'success': False, 'message': f'Failed to unblock IP {ip_address}'}
+        except BlockedIP.DoesNotExist:
+            return {'success': False, 'message': f'IP {ip_address} not found in blocked list'}
+        except Exception as e:
+            return {'success': False, 'message': f'Error: {str(e)}'}
+    
+    @database_sync_to_async
+    def add_to_whitelist(self, ip_address, description):
+        """Database operation for whitelisting"""
+        from chatbot.models import WhitelistedIP
+        
+        try:
+            whitelist_ip, created = WhitelistedIP.objects.get_or_create(
+                ip_address=ip_address,
+                defaults={'description': description}
+            )
+            
+            if created:
+                return {'success': True, 'message': f'IP {ip_address} added to whitelist'}
+            else:
+                return {'success': False, 'message': f'IP {ip_address} already in whitelist'}
+        except Exception as e:
+            return {'success': False, 'message': f'Error: {str(e)}'}
+    
+    @database_sync_to_async
+    def get_initial_data(self):
+        """Get initial data for WebSocket connection"""
+        from chatbot.models import BlockedIP, SuricataLog
+        
+        blocked_ips = list(BlockedIP.objects.values(
+            'ip_address', 'reason', 'blocked_at', 'is_permanent'
+        ).order_by('-blocked_at')[:10])
+        
+        recent_logs = list(SuricataLog.objects
+            .values('timestamp', 'message', 'source_ip', 'classification', 'priority')
+            .order_by('-timestamp')[:5]
+        )
+
+        # Convert datetime to string
+        for log in recent_logs:
+            if isinstance(log['timestamp'], datetime):
+                log['timestamp'] = log['timestamp'].isoformat()
+        return {
+            'blocked_ips': blocked_ips,
+            'recent_logs': recent_logs
+        }
+    
+    async def send_initial_data(self):
+        """Send initial data when client connects"""
+        data = await self.get_initial_data()
+        await self.send(text_data=json.dumps({
+            'type': 'initial_data',
+            'data': data
+        },  cls=CustomJSONEncoder))
+    
+    # Handle messages from group
+    async def security_alert(self, event):
+        """Handle security alert messages from group"""
+        await self.send(text_data=json.dumps({
+            'type': event['message_type'],
+            'data': event['data']
+        }, cls=CustomJSONEncoder))
+    
+    async def send_security_stats(self):
+        """Ambil statistik terbaru dan kirim via WebSocket"""
+        stats = await self.get_security_stats()
+        await self.send(text_data=json.dumps({
+            'type': 'security_stats',
+            'data': stats
+        }))
+
+    @database_sync_to_async
+    def get_security_stats(self):
+        from chatbot.models import BlockedIP, SuricataLog
+        return {
+            'total_blocked': BlockedIP.objects.count(),
+            'active_blocks': BlockedIP.objects.filter(
+                Q(blocked_until__gt=timezone.now()) | Q(is_permanent=True)
+            ).count(),
+            'total_logs': SuricataLog.objects.count(),
+            'recent_alerts': SuricataLog.objects.filter(
+                timestamp__gte=timezone.now() - timezone.timedelta(hours=24)
+            ).count(),
+        }

@@ -76,7 +76,7 @@
                 const priority = parseSuricataLog(data.message);
 
                 // Filter hanya notifikasi dengan prioritas 2
-                if (priority === 2) {
+                // if (priority === 2) {
                     // Tambahkan notifikasi baru ke daftar
                     this.notifications.unshift(data);
                     this.unreadCount++;
@@ -95,7 +95,7 @@
                         showConfirmButton: false,
                         timer: 3000,
                     });
-                }
+                // }
             };
 
             socket.onclose = () => {

@@ -163,6 +163,38 @@
     white-space: pre-wrap; /* Agar teks panjang tidak merusak layout */
     word-break: break-all;
 }
+.placeholder-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    opacity: 1; /* Awalnya terlihat jelas */
+    transition: opacity 0.4s ease-out; /* Efek fade-out selama 0.4 detik */
+}
+
+/* Atur agar gambar tidak terlalu besar */
+.placeholder-content img {
+    max-width: 400px;
+    margin-bottom: 1rem;
+    opacity: 0.7; /* Sedikit transparan agar lebih estetik */
+}
+
+.placeholder-content p {
+    font-family: 'Fira Code', monospace;
+    color: var(--ai-primary-color);
+    font-size: 1.5rem;
+    text-shadow: 0 0 5px var(--ai-glow-color);
+}
+
+/* Kelas ini akan kita gunakan di JS untuk menyembunyikan placeholder */
+.placeholder-content.hidden {
+    opacity: 0;
+}
+.pagination .page-item.active .page-link {
+    background-color: #5F50FA;
+    border-color: #5F50FA;
+}
 </style>
     {% block style %}
     {%  endblock %}

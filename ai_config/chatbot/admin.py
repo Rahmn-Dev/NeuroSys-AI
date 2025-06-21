@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import ChatSession, ChatMessage, Profile, SuricataLog, AIRecommendation
+from .models import ChatSession, ChatMessage, Profile, SuricataLog, AIRecommendation, ExecutionLog,  BlockedIP, WhitelistedIP
 
 
 @admin.register(ChatSession)
@@ -39,3 +39,22 @@ class SuricataLogAdmin(admin.ModelAdmin):
     def message_preview(self, obj):
         return obj.message[:50] + ('...' if len(obj.message) > 50 else '')
     message_preview.short_description = 'Log Preview'
+
+
+@admin.register(ExecutionLog)
+class ExecutionLogAdmin(admin.ModelAdmin):
+    list_display = ('user_query', 'final_status', 'created_at')
+    search_fields = ('user_query',)
+    readonly_fields = ('steps',)
+
+@admin.register(BlockedIP)
+class BlockedIPAdmin(admin.ModelAdmin):
+    list_display = ('ip_address', 'reason', 'blocked_at', 'blocked_until', 'is_permanent', 'suricata_log')
+    list_filter = ('is_permanent', 'blocked_at')
+    search_fields = ('ip_address', 'reason')
+
+
+@admin.register(WhitelistedIP)
+class WhitelistedIPAdmin(admin.ModelAdmin):
+    list_display = ('ip_address', 'description', 'added_at')
+    search_fields = ('ip_address', 'description')
