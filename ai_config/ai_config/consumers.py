@@ -877,8 +877,8 @@ from channels.db import database_sync_to_async
 
 
 class SecurityConsumer(AsyncWebsocketConsumer):
+       
     async def connect(self):
-        # Join security alerts group
         await self.channel_layer.group_add(
             "security_alerts",
             self.channel_name
@@ -887,7 +887,21 @@ class SecurityConsumer(AsyncWebsocketConsumer):
         
         # Send initial data
         await self.send_initial_data()
-    
+        
+        # Kirim stats saat pertama kali connect
+        await self.send_security_stats()
+
+        # Mulai pengiriman periodik
+        asyncio.create_task(self.send_periodic_stats())
+
+    async def send_periodic_stats(self):
+        while True:
+            try:
+                await self.send_security_stats()
+                await asyncio.sleep(1)  # Kirim setiap 30 detik
+            except Exception as e:
+                print("Error sending periodic stats:", str(e))
+                break
     async def disconnect(self, close_code):
         # Leave security alerts group
         await self.channel_layer.group_discard(
@@ -1067,6 +1081,7 @@ class SecurityConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def get_security_stats(self):
+        from django.db.models import Q
         from chatbot.models import BlockedIP, SuricataLog
         return {
             'total_blocked': BlockedIP.objects.count(),

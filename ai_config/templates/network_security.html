@@ -1,312 +1,311 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Security Logs Report - Real-time</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <style>
-        .alert-danger { animation: fadeIn 0.5s; }
-        .alert-success { animation: fadeIn 0.5s; }
-        .alert-warning { animation: fadeIn 0.5s; }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        .blocked-ip-item {
-            padding: 10px;
-            margin: 5px 0;
-            border-left: 4px solid #dc3545;
-            background-color: #f8f9fa;
-        }
-        
-        .new-alert {
-            animation: none;
-            border-left-color: #ff6b6b !important;
-        }
-        
-        
-        @keyframes pulse {
-            0% { background-color: #f8f9fa; }
-            50% { background-color: #ffe6e6; }
-            100% { background-color: #f8f9fa; }
-        }
-        
-        .status-indicator {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            display: inline-block;
-            margin-right: 5px;
-        }
-        
-        .status-connected { background-color: #28a745; }
-        .status-disconnected { background-color: #dc3545; }
-        
-        .stats-card {
-            transition: all 0.3s ease;
-        }
-        
-        .stats-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-        }
-    </style>
-</head>
-<body>
-    <nav class="navbar navbar-dark bg-dark">
-        <div class="container">
-            <span class="navbar-brand">Security Monitor</span>
-            <div class="navbar-text">
-                <span class="status-indicator" id="connectionStatus"></span>
-                <span id="connectionText">Connecting...</span>
-            </div>
-        </div>
-    </nav>
+{% extends './layout/layout1.html' %}
+{% block style %}
 
-    <div class="container mt-4">
-        <!-- Real-time Alerts -->
-        <div id="alertContainer"></div>
+<style>
+    /* Import Google Font */
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
 
-        <!-- Statistics Cards -->
-        <div class="row mb-4">
-            <div class="col-md-3">
-                <div class="card stats-card text-white bg-danger">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between">
-                            <div>
-                                <h4 id="totalBlocked">{{ total_blocked }}</h4>
-                                <p class="card-text">Total Blocked</p>
-                            </div>
-                            <div class="align-self-center">
-                                <i class="fas fa-ban fa-2x"></i>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card stats-card text-white bg-warning">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between">
-                            <div>
-                                <h4 id="activeBlocks">{{ active_blocks }}</h4>
-                                <p class="card-text">Active Blocks</p>
-                            </div>
-                            <div class="align-self-center">
-                                <i class="fas fa-shield-alt fa-2x"></i>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card stats-card text-white bg-info">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between">
-                            <div>
-                                <h4 id="recentAlerts">0</h4>
-                                <p class="card-text">Recent Alerts</p>
-                            </div>
-                            <div class="align-self-center">
-                                <i class="fas fa-exclamation-triangle fa-2x"></i>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card stats-card text-white bg-success">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between">
-                            <div>
-                                <h4 id="totalLogs">0</h4>
-                                <p class="card-text">Total Logs</p>
-                            </div>
-                            <div class="align-self-center">
-                                <i class="fas fa-file-alt fa-2x"></i>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+    .alert { animation: fadeIn 0.5s; }
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(-10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .status-indicator {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 8px;
+        border: 2px solid white;
+        box-shadow: 0 0 5px rgba(0,0,0,0.2);
+    }
+    
+    .status-connected { background-color: #48bb78; } /* Green */
+    .status-disconnected { background-color: #f56565; } /* Red */
+    
+    .stats-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
+    }
+    
+    .btn:hover {
+        opacity: 0.9;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    }
 
-        <!-- Control Panel -->
-        <div class="row mb-4">
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-header">
-                        <h5><i class="fas fa-ban"></i> Manual Block IP</h5>
-                    </div>
-                    <div class="card-body">
-                        <form id="manualBlockForm">
-                            <div class="mb-3">
-                                <input type="text" class="form-control" id="blockIpAddress" placeholder="IP Address" required>
-                            </div>
-                            <div class="mb-3">
-                                <input type="text" class="form-control" id="blockReason" placeholder="Reason">
-                            </div>
-                            <div class="mb-3">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="permanentBlock">
-                                    <label class="form-check-label" for="permanentBlock">
-                                        Permanent Block
-                                    </label>
-                                </div>
-                            </div>
-                            <button type="submit" class="btn btn-danger">
-                                <i class="fas fa-ban"></i> Block IP
-                            </button>
-                        </form>
+    .nav-tabs .nav-link {
+        border-bottom: 2px solid transparent !important;
+        margin-bottom: -2px;
+        transition: all 0.2s ease-in-out;
+    }
+
+    .nav-tabs .nav-link.active, .nav-tabs .nav-item.show .nav-link {
+        color: #2b6cb0 !important;
+        background-color: transparent !important;
+        border-color: transparent transparent #2b6cb0 transparent !important;
+        font-weight: 600 !important;
+    }
+
+    .nav-tabs .nav-link:hover {
+        border-color: transparent transparent #a0aec0 transparent !important;
+        color: #2d3748 !important;
+    }
+
+</style>
+
+
+{% endblock %}
+{% block content %}
+<div class="rbt-main-content mr--0" style="background-color: #f8f9fa; font-family: 'Poppins', sans-serif;">
+    <div class="rbt-daynamic-page-content">
+        
+        <div class="rbt-dashboard-content" style="padding: 30px;">
+            
+            <div class="row mb-5" style="display: flex; align-items: center; justify-content: space-between;">
+                <div class="col-md-6">
+                    <h3 style="color: #1a202c; font-weight: 600;">Network & Security</h3>
+                    <p style="color: #718096;">Real-time monitoring and threat management dashboard.</p>
+                </div>
+                <div class="col-md-6 text-end">
+                    <div class="navbar-text" style="display: flex; align-items: center; justify-content: flex-end;">
+                        <span class="status-indicator" id="connectionStatus" style="transition: background-color 0.3s ease;"></span>
+                        <span id="connectionText" style="color: #4a5568; font-weight: 500;">Connecting...</span>
                     </div>
                 </div>
             </div>
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-header">
-                        <h5><i class="fas fa-check-circle"></i> Add to Whitelist</h5>
-                    </div>
-                    <div class="card-body">
-                        <form id="whitelistForm">
-                            <div class="mb-3">
-                                <input type="text" class="form-control" id="whitelistIpAddress" placeholder="IP Address" required>
-                            </div>
-                            <div class="mb-3">
-                                <input type="text" class="form-control" id="whitelistDescription" placeholder="Description">
-                            </div>
-                            <button type="submit" class="btn btn-success">
-                                <i class="fas fa-plus"></i> Add to Whitelist
-                            </button>
-                        </form>
-                    </div>
-                </div>
-            </div>
-        </div>
+          
+            <div class="container-fluid mt-4 px-0">
+                <div id="alertContainer"></div>
 
-        <!-- Tabs -->
-        <ul class="nav nav-tabs" id="myTab" role="tablist">
-            <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="blocked-tab" data-bs-toggle="tab" data-bs-target="#blocked" type="button">
-                    <i class="fas fa-ban"></i> Blocked IPs
-                </button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="suricata-tab" data-bs-toggle="tab" data-bs-target="#suricata" type="button">
-                    <i class="fas fa-shield-alt"></i> Suricata Logs
-                </button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="whitelist-tab" data-bs-toggle="tab" data-bs-target="#whitelist" type="button">
-                    <i class="fas fa-check-circle"></i> Whitelisted IPs
-                </button>
-            </li>
-        </ul>
-
-        <div class="tab-content" id="myTabContent">
-            <!-- Blocked IPs Tab -->
-            <div class="tab-pane fade show active" id="blocked" role="tabpanel">
-                <div class="card">
-                    <div class="card-header">
-                        <h5>Recently Blocked IPs</h5>
-                    </div>
-                    <div class="card-body">
-                        <div id="blockedIpsList">
-                            {% for blocked_ip in blocked_ips %}
-                            <div class="blocked-ip-item" data-ip="{{ blocked_ip.ip_address }}">
+                <div class="row mb-4">
+                    <div class="col-md-3 mb-4">
+                        <div class="card stats-card" style="background-color: #ffffff; border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); transition: all 0.3s ease;">
+                            <div class="card-body" style="padding: 25px;">
                                 <div class="d-flex justify-content-between align-items-center">
                                     <div>
-                                        <strong>{{ blocked_ip.ip_address }}</strong>
-                                        <br>
-                                        <small class="text-muted">{{ blocked_ip.reason }}</small>
-                                        <br>
-                                        <small class="text-muted">{{ blocked_ip.blocked_at|date:"Y-m-d H:i:s" }}</small>
+                                        <h4 id="totalBlocked" style="color: #e53e3e; font-weight: 700; margin-bottom: 5px;">{{ total_blocked }}</h4>
+                                        <p class="card-text" style="color: #718096; margin: 0;">Total Blocked</p>
                                     </div>
-                                    <div>
-                                        {% if blocked_ip.is_permanent %}
-                                            <span class="badge bg-danger">Permanent</span>
-                                        {% else %}
-                                            <span class="badge bg-warning">Temporary</span>
-                                        {% endif %}
-                                        <button class="btn btn-sm btn-outline-success ms-2" onclick="unblockIP('{{ blocked_ip.ip_address }}')">
-                                            <i class="fas fa-unlock"></i> Unblock
-                                        </button>
+                                    <div class="align-self-center" style="color: #e53e3e; opacity: 0.7;">
+                                        <i class="fas fa-ban fa-2x"></i>
                                     </div>
                                 </div>
                             </div>
-                            {% endfor %}
                         </div>
                     </div>
-                </div>
-            </div>
-
-            <!-- Suricata Logs Tab -->
-            <div class="tab-pane fade" id="suricata" role="tabpanel">
-                <div class="card">
-                    <div class="card-header">
-                        <h5>Recent Suricata Alerts</h5>
-                    </div>
-                    <div class="card-body">
-                        <div id="suricataLogsList">
-                            {% for log in suricata_logs %}
-                            <div class="alert alert-warning">
-                                <div class="d-flex justify-content-between">
-                                    <div>
-                                        <strong>{{ log.source_ip }}</strong> → {{ log.destination_ip }}
-                                        <br>
-                                        <small>{{ log.message }}</small>
-                                        <br>
-                                        <small class="text-muted">{{ log.timestamp|date:"Y-m-d H:i:s" }} | Priority: {{ log.priority }}</small>
-                                    </div>
-                                    <div>
-                                        {% if log.classification %}
-                                        <span class="badge bg-danger">{{ log.classification }}</span>
-                                        {% endif %}
-                                        <button class="btn btn-sm btn-danger ms-2" onclick="quickBlock('{{ log.source_ip }}', 'Suricata Alert')">
-                                            <i class="fas fa-ban"></i> Block
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                            {% endfor %}
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Whitelisted IPs Tab -->
-            <div class="tab-pane fade" id="whitelist" role="tabpanel">
-                <div class="card">
-                    <div class="card-header">
-                        <h5>Whitelisted IPs</h5>
-                    </div>
-                    <div class="card-body">
-                        <div id="whitelistedIpsList">
-                            {% for whitelist in whitelisted_ips %}
-                            <div class="alert alert-success">
+                    <div class="col-md-3 mb-4">
+                        <div class="card stats-card" style="background-color: #ffffff; border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); transition: all 0.3s ease;">
+                            <div class="card-body" style="padding: 25px;">
                                 <div class="d-flex justify-content-between align-items-center">
                                     <div>
-                                        <strong>{{ whitelist.ip_address }}</strong>
-                                        <br>
-                                        <small>{{ whitelist.description }}</small>
-                                        <br>
-                                        <small class="text-muted">Added: {{ whitelist.added_at|date:"Y-m-d H:i:s" }}</small>
+                                        <h4 id="activeBlocks" style="color: #dd6b20; font-weight: 700; margin-bottom: 5px;">{{ active_blocks }}</h4>
+                                        <p class="card-text" style="color: #718096; margin: 0;">Active Blocks</p>
                                     </div>
-                                    <span class="badge bg-success">Protected</span>
+                                    <div class="align-self-center" style="color: #dd6b20; opacity: 0.7;">
+                                        <i class="fas fa-shield-alt fa-2x"></i>
+                                    </div>
                                 </div>
                             </div>
-                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="col-md-3 mb-4">
+                        <div class="card stats-card" style="background-color: #ffffff; border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); transition: all 0.3s ease;">
+                            <div class="card-body" style="padding: 25px;">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h4 id="recentAlerts" style="color: #3182ce; font-weight: 700; margin-bottom: 5px;">0</h4>
+                                        <p class="card-text" style="color: #718096; margin: 0;">Recent Alerts</p>
+                                    </div>
+                                    <div class="align-self-center" style="color: #3182ce; opacity: 0.7;">
+                                        <i class="fas fa-exclamation-triangle fa-2x"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 mb-4">
+                        <div class="card stats-card" style="background-color: #ffffff; border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); transition: all 0.3s ease;">
+                            <div class="card-body" style="padding: 25px;">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h4 id="totalLogs" style="color: #38a169; font-weight: 700; margin-bottom: 5px;">0</h4>
+                                        <p class="card-text" style="color: #718096; margin: 0;">Total Logs</p>
+                                    </div>
+                                    <div class="align-self-center" style="color: #38a169; opacity: 0.7;">
+                                        <i class="fas fa-file-alt fa-2x"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mb-5">
+                    <div class="col-md-6 mb-4">
+                        <div class="card" style="border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);">
+                            <div class="card-header" style="background-color: #fff; border-bottom: 1px solid #e2e8f0; border-radius: 12px 12px 0 0;">
+                                <h5 style="color: #2d3748; font-weight: 600; margin: 0;"><i class="fas fa-ban me-2" style="color: #c53030;"></i>Manual Block IP</h5>
+                            </div>
+                            <div class="card-body" style="padding: 25px;">
+                                <form id="manualBlockForm">
+                                    <div class="mb-3">
+                                        <input type="text" class="form-control" id="blockIpAddress" placeholder="IP Address" required style="border-radius: 8px; border: 1px solid #cbd5e0; padding: 10px;">
+                                    </div>
+                                    <div class="mb-3">
+                                        <input type="text" class="form-control" id="blockReason" placeholder="Reason" style="border-radius: 8px; border: 1px solid #cbd5e0; padding: 10px;">
+                                    </div>
+                                    <div class="mb-3">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="permanentBlock" style="border-radius: 4px;">
+                                            <label class="form-check-label" for="permanentBlock" style="color: #4a5568;">
+                                                Permanent Block
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <button type="submit" class="btn" style="background-color: #e53e3e; color: white; border-radius: 8px; padding: 10px 20px; font-weight: 500; border: none; transition: background-color 0.3s ease;">
+                                        <i class="fas fa-ban me-1"></i> Block IP
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-4">
+                        <div class="card" style="border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);">
+                            <div class="card-header" style="background-color: #fff; border-bottom: 1px solid #e2e8f0; border-radius: 12px 12px 0 0;">
+                                <h5 style="color: #2d3748; font-weight: 600; margin: 0;"><i class="fas fa-check-circle me-2" style="color: #38a169;"></i>Add to Whitelist</h5>
+                            </div>
+                            <div class="card-body" style="padding: 25px;">
+                                <form id="whitelistForm">
+                                    <div class="mb-3">
+                                        <input type="text" class="form-control" id="whitelistIpAddress" placeholder="IP Address" required style="border-radius: 8px; border: 1px solid #cbd5e0; padding: 10px;">
+                                    </div>
+                                    <div class="mb-3">
+                                        <input type="text" class="form-control" id="whitelistDescription" placeholder="Description" style="border-radius: 8px; border: 1px solid #cbd5e0; padding: 10px;">
+                                    </div>
+                                    <button type="submit" class="btn" style="background-color: #38a169; color: white; border-radius: 8px; padding: 10px 20px; font-weight: 500; border: none; transition: background-color 0.3s ease;">
+                                        <i class="fas fa-plus me-1"></i> Add to Whitelist
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <ul class="nav nav-tabs" id="myTab" role="tablist" style="border-bottom: 2px solid #e2e8f0;">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="blocked-tab" data-bs-toggle="tab" data-bs-target="#blocked" type="button" style="border: none; color: #4a5568; font-weight: 500;">
+                            <i class="fas fa-ban me-1"></i> Blocked IPs
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="suricata-tab" data-bs-toggle="tab" data-bs-target="#suricata" type="button" style="border: none; color: #4a5568; font-weight: 500;">
+                            <i class="fas fa-shield-alt me-1"></i> Suricata Logs
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="whitelist-tab" data-bs-toggle="tab" data-bs-target="#whitelist" type="button" style="border: none; color: #4a5568; font-weight: 500;">
+                            <i class="fas fa-check-circle me-1"></i> Whitelisted IPs
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content" id="myTabContent" style="padding-top: 20px;">
+                    <div class="tab-pane fade show active" id="blocked" role="tabpanel">
+                        <div class="card" style="border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);">
+                            <div class="card-header" style="background-color: #fff; border-bottom: 1px solid #e2e8f0; border-radius: 12px 12px 0 0;">
+                                <h5 style="color: #2d3748; font-weight: 600; margin: 0;">Recently Blocked IPs</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="blockedIpsList">
+                                    {% for blocked_ip in blocked_ips %}
+                                    <div class="blocked-ip-item" data-ip="{{ blocked_ip.ip_address }}" style="padding: 15px; margin: 10px 0; border-left: 4px solid #e53e3e; background-color: #fff5f5; border-radius: 0 8px 8px 0;">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <strong style="color: #2d3748;">{{ blocked_ip.ip_address }}</strong><br>
+                                                <small class="text-muted" style="color: #718096 !important;">{{ blocked_ip.reason }}</small><br>
+                                                <small class="text-muted" style="color: #a0aec0 !important;">{{ blocked_ip.blocked_at|date:"Y-m-d H:i:s" }}</small>
+                                            </div>
+                                            <div>
+                                                {% if blocked_ip.is_permanent %}
+                                                    <span class="badge" style="background-color: #c53030; color: white; padding: 5px 10px; border-radius: 12px;">Permanent</span>
+                                                {% else %}
+                                                    <span class="badge" style="background-color: #dd6b20; color: white; padding: 5px 10px; border-radius: 12px;">Temporary</span>
+                                                {% endif %}
+                                                <button class="btn btn-sm ms-2" onclick="unblockIP('{{ blocked_ip.ip_address }}')" style="border: 1px solid #38a169; color: #38a169; border-radius: 8px; font-weight: 500;">
+                                                    <i class="fas fa-unlock"></i> Unblock
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="suricata" role="tabpanel">
+                        <div class="card" style="border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);">
+                            <div class="card-header" style="background-color: #fff; border-bottom: 1px solid #e2e8f0; border-radius: 12px 12px 0 0;">
+                                <h5 style="color: #2d3748; font-weight: 600; margin: 0;">Recent Suricata Alerts</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="suricataLogsList">
+                                    {% for log in suricata_logs %}
+                                    <div class="alert" style="background-color: #fffaf0; border-left: 4px solid #dd6b20; border-radius: 0 8px 8px 0;">
+                                        <div class="d-flex justify-content-between">
+                                            <div>
+                                                <strong style="color: #2d3748;">{{ log.source_ip }}</strong> → {{ log.destination_ip }}<br>
+                                                <small style="color: #718096;">{{ log.message }}</small><br>
+                                                <small class="text-muted" style="color: #a0aec0 !important;">{{ log.timestamp|date:"Y-m-d H:i:s" }} | Priority: {{ log.priority }}</small>
+                                            </div>
+                                            <div>
+                                                {% if log.classification %}
+                                                <span class="badge" style="background-color: #c53030; color: white; padding: 5px 10px; border-radius: 12px;">{{ log.classification }}</span>
+                                                {% endif %}
+                                                <button class="btn btn-sm ms-2" onclick="quickBlock('{{ log.source_ip }}', 'Suricata Alert')" style="background-color: #c53030; color: white; border: none; border-radius: 8px; font-weight: 500;">
+                                                    <i class="fas fa-ban"></i> Block
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="whitelist" role="tabpanel">
+                        <div class="card" style="border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);">
+                            <div class="card-header" style="background-color: #fff; border-bottom: 1px solid #e2e8f0; border-radius: 12px 12px 0 0;">
+                                <h5 style="color: #2d3748; font-weight: 600; margin: 0;">Whitelisted IPs</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="whitelistedIpsList">
+                                    {% for whitelist in whitelisted_ips %}
+                                    <div class="alert" style="background-color: #f0fff4; border-left: 4px solid #38a169; border-radius: 0 8px 8px 0;">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <strong style="color: #2d3748;">{{ whitelist.ip_address }}</strong><br>
+                                                <small style="color: #718096;">{{ whitelist.description }}</small><br>
+                                                <small class="text-muted" style="color: #a0aec0 !important;">Added: {{ whitelist.added_at|date:"Y-m-d H:i:s" }}</small>
+                                            </div>
+                                            <span class="badge" style="background-color: #38a169; color: white; padding: 5px 10px; border-radius: 12px;">Protected</span>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/js/bootstrap.bundle.min.js"></script>
+</div>
+{% endblock content %}
+{% block script %}
     <script>
         class SecurityMonitor {
             constructor() {
@@ -340,8 +339,7 @@
                     this.ws.onmessage = (event) => {
                         const data = JSON.parse(event.data);
                         this.handleWebSocketMessage(data);
-                        this.handleSecurityStats(event);
-            
+                      
                     };
                     
                     this.ws.onclose = (event) => {
@@ -375,6 +373,9 @@
                         break;
                     case 'whitelist_skip':
                         this.handleWhitelistSkip(data.data);
+                        break;
+                    case 'security_stats': // ← tambahkan ini
+                        this.handleSecurityStats(data.data);
                         break;
                     default:
                         console.log('Unknown message type:', data.type);
@@ -557,30 +558,30 @@
                 });
             }
             
-            // updateStats() {
-            //     // Update statistics via API call
-            //     fetch('/api/security-stats/')
-            //         .then(response => response.json())
-            //         .then(data => {
-            //             document.getElementById('totalBlocked').textContent = data.total_blocked;
-            //             document.getElementById('activeBlocks').textContent = data.active_blocks;
-            //             document.getElementById('recentAlerts').textContent = data.recent_alerts;
-            //             document.getElementById('totalLogs').textContent = data.total_logs;
-            //         })
-            //         .catch(error => console.error('Error updating stats:', error));
-            // }
+            updateStats() {
+                // Update statistics via API call
+                fetch('/api/security-stats/')
+                    .then(response => response.json())
+                    .then(data => {
+                        document.getElementById('totalBlocked').textContent = data.total_blocked;
+                        document.getElementById('activeBlocks').textContent = data.active_blocks;
+                        document.getElementById('recentAlerts').textContent = data.recent_alerts;
+                        document.getElementById('totalLogs').textContent = data.total_logs;
+                    })
+                    .catch(error => console.error('Error updating stats:', error));
+            }
             
-            // startStatsUpdater() {
-            //     // Update stats every 30 seconds
-            //     setInterval(() => {
-            //         this.updateStats();
-            //     }, 30000);
+            startStatsUpdater() {
+                // Update stats every 30 seconds
+                setInterval(() => {
+                    this.updateStats();
+                }, 30000);
                 
-            //     // Initial stats update
-            //     this.updateStats();
-            // }
+                // Initial stats update
+                this.updateStats();
+            }
             handleSecurityStats(data) {
-                const stats = data.data;
+                const stats = data;
                 document.getElementById('totalBlocked').textContent = stats.total_blocked;
                 document.getElementById('activeBlocks').textContent = stats.active_blocks;
                 document.getElementById('totalLogs').textContent = stats.total_logs;
@@ -636,5 +637,4 @@
             securityMonitor = new SecurityMonitor();
         });
     </script>
-</body>
-</html>
+{% endblock %}
