@@ -164,3 +164,16 @@ class WhitelistedIP(models.Model):
     
     def __str__(self):
         return f"Whitelisted: {self.ip_address}"
+    
+
+
+class AIIntrusionLog(models.Model):
+    timestamp = models.DateTimeField(auto_now_add=True)
+    src_ip = models.GenericIPAddressField(null=True, blank=True)
+    result = models.CharField(max_length=50)
+    raw_features = models.JSONField()
+    confidence = models.FloatField(null=True, blank=True)  # kalau kamu tambahkan
+    notes = models.TextField(blank=True, null=True)
+
+    def __str__(self):
+        return f"[{self.timestamp}] {self.result}"

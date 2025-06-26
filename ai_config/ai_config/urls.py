@@ -66,5 +66,7 @@ urlpatterns = [
     path('api/results/<int:scan_id>/', views.api_scan_results, name='api_scan_results'),
     path('api/security-stats/', views.security_stats_api, name='security_stats_api'),
     path('network-security/', views.network_Security, name='network_Security'),
+
+    path("detect", views.detect_view, name="detect"),
 ]
 

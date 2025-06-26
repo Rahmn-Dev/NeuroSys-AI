@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Any
 from langchain.agents import initialize_agent
 import time
-from chatbot.models import SystemScan, ConfigurationIssue
+from chatbot.models import SystemScan, ConfigurationIssue, AIIntrusionLog
 from .system_analyzer import LinuxConfigAnalyzer
 import asyncio
 from django.utils import timezone
@@ -2808,48 +2808,6 @@ class SmartAgent:
                     "timestamp": time.time()
                 }
     
-    # def stream_process_smart_workflow(self, user_query):
-    #     """Main method to process user query with smart workflow - streams results"""
-    #     self.current_goal = user_query
-    #     self.conversation_history = [{"role": "user", "content": user_query}]
-        
-    #     workflow_result = {
-    #         "steps": [],
-    #         "final_status": "in_progress",
-    #         "goal": user_query,
-    #         "start_time": time.time()
-    #     }
-
-    #     yield {"type": "status", "content": f"🤖 Starting smart workflow for: {user_query}"}
-
-    #     step_count = 0
-    #     max_steps = 10
-    #     while step_count < max_steps:
-    #         next_action = self.get_next_action()
-    #         if next_action.get("action") == "complete":
-    #             workflow_result["final_status"] = "completed"
-    #             workflow_result["summary"] = next_action.get("summary")
-    #             yield {"type": "complete", "content": workflow_result}
-    #             break
-    #         elif next_action.get("action") == "execute":
-    #             command = next_action.get("command")
-    #             reasoning = next_action.get("reasoning")
-    #             execution_result = self.execute_with_context(command)
-
-    #             step_data = {
-    #                 "step": step_count + 1,
-    #                 "reasoning": reasoning,
-    #                 "command": command,
-    #                 "result": execution_result
-    #             }
-    #             workflow_result["steps"].append(step_data)
-    #             yield {"type": "step", "content": step_data}
-    #             self.add_execution_result_to_conversation(command, execution_result)
-    #         else:
-    #             workflow_result["final_status"] = "failed"
-    #             workflow_result["error"] = next_action.get("error", "Unknown error")
-    #             yield {"type": "error", "content": workflow_result["error"]}
-    #             break
     def stream_process_smart_workflow(self, user_query):
         """Main method to process user query with smart workflow - streams results"""
         self.current_goal = user_query
@@ -2865,7 +2823,7 @@ class SmartAgent:
         yield {"type": "status", "content": f"🧠 Starting smart workflow for: {user_query}"}
         
         step_count = 0
-        max_steps = 10
+        max_steps = 50
         
         while step_count < max_steps:
             yield {"type": "step_info", "content": f"--- Step {step_count + 1} ---"}
@@ -3158,7 +3116,11 @@ class SmartAgent:
         
         if command.startswith("ps"):
             self.context_memory["processes"] = result.get("output", "")
-        
+        elif "grep" in command and "auth" in command:
+            self.context_memory["ssh_logins"] = result.get("output", "")
+        elif "systemctl status" in command:
+            service_name = command.split()[-1]
+            self.context_memory[f"{service_name}_status"] = result.get("output", "")
         if "rsync" in command:
             if result.get("return_code") == 0:
                 self.context_memory["backup_status"] = "success"
@@ -3992,7 +3954,7 @@ def process_mcp_smart_chat_http(request):
 
 
 
-from django.db.models import Q
+from django.db.models import Q, Count
 
 def network_Security(request):
     """Main logs report view with real-time data"""
@@ -4001,6 +3963,7 @@ def network_Security(request):
     blocked_ips = models.BlockedIP.objects.all().order_by('-blocked_at')[:10]
     whitelisted_ips = models.WhitelistedIP.objects.all().order_by('-added_at')[:10]
     
+    ai_intrusion_logs = models.AIIntrusionLog.objects.all().order_by('-timestamp')[:20]
     # Statistics
     total_blocked = models.BlockedIP.objects.count()
     active_blocks = models.BlockedIP.objects.filter(
@@ -4021,6 +3984,7 @@ def network_Security(request):
         'whitelisted_ips': whitelisted_ips,
         'total_blocked': total_blocked,
         'active_blocks': active_blocks,
+        'ai_intrusion_logs': ai_intrusion_logs,
     }
     
     return render(request, "network_security.html", context)
@@ -4036,6 +4000,94 @@ def security_stats_api(request):
         'recent_alerts': models.SuricataLog.objects.filter(
             timestamp__gte=timezone.now() - timezone.timedelta(hours=24)
         ).count(),
+         'details': {
+            'source_ips': list(
+                models.SuricataLog.objects.values('source_ip')
+                .annotate(count=Count('id'))
+                .order_by('-count')
+            ),
+            'destination_ips': list(
+                models.SuricataLog.objects.values('destination_ip')
+                .annotate(count=Count('id'))
+                .order_by('-count')
+            ),
+            'source_ports': list(
+                models.SuricataLog.objects.values('source_port')
+                .annotate(count=Count('id'))
+                .order_by('-count')
+            ),
+            'destination_ports': list(
+                models.SuricataLog.objects.values('destination_port')
+                .annotate(count=Count('id'))
+                .order_by('-count')
+            ),
+            'protocols': list(
+                models.SuricataLog.objects.values('protocol')
+                .annotate(count=Count('id'))
+                .order_by('-count')
+            ),
+            'classifications': list(
+                models.SuricataLog.objects.values('classification')
+                .annotate(count=Count('id'))
+                .order_by('-count')
+            ),
+            'severities': list(
+                models.SuricataLog.objects.values('severity')
+                .annotate(count=Count('id'))
+                .order_by('-count')
+            ),
+            'priorities': list(
+                models.SuricataLog.objects.values('priority')
+                .annotate(count=Count('id'))
+                .order_by('-count')
+            ),
+        }
+        
     }
     
     return JsonResponse(stats)
+
+from dataset.IntrusionDetection.detector import predict_intrusion
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
+@csrf_exempt
+
+@csrf_exempt
+def detect_view(request):
+    if request.method == 'POST':
+        try:
+            body = json.loads(request.body)
+            features = body.get("features")
+            if not features:
+                return JsonResponse({"error": "Missing features"}, status=400)
+
+            result = predict_intrusion(features)
+
+            # Simpan ke DB hanya jika bukan BENIGN
+            if result.upper() != "BENIGN":
+                intrusion = AIIntrusionLog.objects.create(
+                    result=result,
+                    raw_features=features,
+                )
+
+                # Kirim ke WebSocket
+                channel_layer = get_channel_layer()
+                async_to_sync(channel_layer.group_send)(
+                    "intrusion_logs",
+                    {
+                        "type": "send_intrusion_log",
+                        "data": {
+                            "id": intrusion.id,
+                            "result": intrusion.result,
+                            "timestamp": intrusion.created_at.isoformat(),
+                            "features": features,
+                        }
+                    }
+                )
+
+            return JsonResponse({"result": result})
+
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+
+    return JsonResponse({"error": "Invalid method"}, status=405)

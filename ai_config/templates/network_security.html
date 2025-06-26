@@ -1,5 +1,7 @@
 {% extends './layout/layout1.html' %}
-{% block style %}
+
+
+{% block content %}
 
 <style>
     /* Import Google Font */
@@ -47,7 +49,7 @@
         border-color: transparent transparent #2b6cb0 transparent !important;
         font-weight: 600 !important;
     }
-
+    
     .nav-tabs .nav-link:hover {
         border-color: transparent transparent #a0aec0 transparent !important;
         color: #2d3748 !important;
@@ -55,9 +57,6 @@
 
 </style>
 
-
-{% endblock %}
-{% block content %}
 <div class="rbt-main-content mr--0" style="background-color: #f8f9fa; font-family: 'Poppins', sans-serif;">
     <div class="rbt-daynamic-page-content">
         
@@ -141,7 +140,74 @@
                         </div>
                     </div>
                 </div>
-
+                <div class="row mb-5">
+                    <div class="col-lg-12 mb-4">
+                        <div class="card" style="border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);">
+                            <div class="card-header" style="background-color: #fff; border-bottom: 1px solid #e2e8f0; border-radius: 12px 12px 0 0;">
+                                <h5 style="color: #2d3748; font-weight: 600; margin: 0;"><i class="fas fa-shield-alt me-2" style="color: #3182ce;"></i>Suricata Alert Trend</h5>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="suricataChart" height="200"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mb-5">
+                    <div class="col-lg-12 mb-4">
+                        <div class="card" style="border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);">
+                            <div class="card-header" style="background-color: #fff; border-bottom: 1px solid #e2e8f0; border-radius: 12px 12px 0 0;">
+                                <h5 style="color: #2d3748; font-weight: 600; margin: 0;"><i class="fas fa-robot me-2" style="color: #805ad5;"></i>AI Detection Trend</h5>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="aiChart" height="200"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mb-5">
+                    <div class="col-lg-5 mb-4">
+                        <div class="card" style="border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);">
+                            <div class="card-header" style="background-color: #fff; border-bottom: 1px solid #e2e8f0; border-radius: 12px 12px 0 0;">
+                                <h5 style="color: #2d3748; font-weight: 600; margin: 0;"><i class="fas fa-pie-chart me-2" style="color: #e53e3e;"></i>Top Attack Types
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="topAttacksChart" height="250"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-7 mb-4">
+                        <div class="card" style="border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);">
+                            <div class="card-header" style="background-color: #fff; border-bottom: 1px solid #e2e8f0; border-radius: 12px 12px 0 0;">
+                                <h5 style="color: #2d3748; font-weight: 600; margin: 0;"><i class="fas fa-list-ol me-2" style="color: #dd6b20;"></i>Top Attacker IPs                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="topIpsChart" height="250"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mb-5">
+                    <div class="col-lg-7 mb-4">
+                        <div class="card" style="border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);">
+                            <div class="card-header" style="background-color: #fff; border-bottom: 1px solid #e2e8f0; border-radius: 12px 12px 0 0;">
+                                <h5 style="color: #2d3748; font-weight: 600; margin: 0;"><i class="fas fa-door-open me-2" style="color: #e53e3e;"></i>Top Destination Ports</h5>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="topPortsChart" height="250"></canvas> </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-5 mb-4">
+                        <div class="card" style="border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);">
+                            <div class="card-header" style="background-color: #fff; border-bottom: 1px solid #e2e8f0; border-radius: 12px 12px 0 0;">
+                                <h5 style="color: #2d3748; font-weight: 600; margin: 0;"><i class="fas fa-network-wired me-2" style="color: #38a169;"></i>Protocol Distribution</h5>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="topProtocolsChart" height="250"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <div class="row mb-5">
                     <div class="col-md-6 mb-4">
                         <div class="card" style="border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);">
@@ -193,7 +259,8 @@
                     </div>
                 </div>
 
-                <ul class="nav nav-tabs" id="myTab" role="tablist" style="border-bottom: 2px solid #e2e8f0;">
+                <ul class="nav nav-tabs" id="myTab" role="tablist" style="border-bottom: 2px solid #e2e8f0;     background: white;
+                border-radius: 15px;     padding-left: 15px;">
                     <li class="nav-item" role="presentation">
                         <button class="nav-link active" id="blocked-tab" data-bs-toggle="tab" data-bs-target="#blocked" type="button" style="border: none; color: #4a5568; font-weight: 500;">
                             <i class="fas fa-ban me-1"></i> Blocked IPs
@@ -202,6 +269,11 @@
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="suricata-tab" data-bs-toggle="tab" data-bs-target="#suricata" type="button" style="border: none; color: #4a5568; font-weight: 500;">
                             <i class="fas fa-shield-alt me-1"></i> Suricata Logs
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="ai_intrusion-tab" data-bs-toggle="tab" data-bs-target="#ai_intrusion" type="button" style="border: none; color: #4a5568; font-weight: 500;">
+                            <i class="fas fa-robot me-1"></i> AI Intrusion Logs
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
@@ -246,6 +318,7 @@
                     </div>
 
                     <div class="tab-pane fade" id="suricata" role="tabpanel">
+                        
                         <div class="card" style="border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);">
                             <div class="card-header" style="background-color: #fff; border-bottom: 1px solid #e2e8f0; border-radius: 12px 12px 0 0;">
                                 <h5 style="color: #2d3748; font-weight: 600; margin: 0;">Recent Suricata Alerts</h5>
@@ -265,6 +338,34 @@
                                                 <span class="badge" style="background-color: #c53030; color: white; padding: 5px 10px; border-radius: 12px;">{{ log.classification }}</span>
                                                 {% endif %}
                                                 <button class="btn btn-sm ms-2" onclick="quickBlock('{{ log.source_ip }}', 'Suricata Alert')" style="background-color: #c53030; color: white; border: none; border-radius: 8px; font-weight: 500;">
+                                                    <i class="fas fa-ban"></i> Block
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="ai_intrusion" role="tabpanel">
+
+                        <div class="card" style="border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);">
+                            <div class="card-header" style="background-color: #fff; border-bottom: 1px solid #e2e8f0; border-radius: 12px 12px 0 0;">
+                                <h5 style="color: #2d3748; font-weight: 600; margin: 0;">Recent AI Intrusion Alerts</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="aiIntrusionLogsList">
+                                    {% for log in ai_intrusion_logs %}
+                                    <div class="alert" style="background-color: #fff5f5; border-left: 4px solid #e53e3e; border-radius: 0 8px 8px 0;">
+                                        <div class="d-flex justify-content-between">
+                                            <div>
+                                                <strong style="color: #2d3748;">{{ log.src_ip|default:"Unknown" }}</strong> → {{ log.destination_ip|default:"Unknown" }}<br>
+                                                <small style="color: #718096;">Detected: {{ log.result }}</small><br>
+                                                <small class="text-muted" style="color: #a0aec0 !important;">{{ log.timestamp|date:"Y-m-d H:i:s" }}</small>
+                                            </div>
+                                            <div>
+                                                <button class="btn btn-sm ms-2" onclick="quickBlock('{{ log.source_ip }}', 'AI Alert')" style="background-color: #c53030; color: white; border: none; border-radius: 8px; font-weight: 500;">
                                                     <i class="fas fa-ban"></i> Block
                                                 </button>
                                             </div>
@@ -306,87 +407,469 @@
 </div>
 {% endblock content %}
 {% block script %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+
     <script>
         class SecurityMonitor {
             constructor() {
+                // WebSocket untuk interaksi utama (block, whitelist, dll)
                 this.ws = null;
                 this.reconnectAttempts = 0;
-                this.maxReconnectAttempts = 5;
+                
+                // WebSocket KHUSUS untuk chart Suricata
+                this.suricataWs = null;
+                this.suricataReconnectAttempts = 0;
+
+                this.aiLogsWs = null;
+                this.aiLogsReconnectAttempts = 0;
+
+                this.maxReconnectAttempts = 10; // Increased max attempts
                 this.reconnectInterval = 5000;
+                
+                this.topAttacksChart = null; // <-- Chart baru
+                this.topIpsChart = null;  
+                this.topPortsChart = null;
+                this.topProtocolsChart = null; 
+
+                // Properti terkait Chart
+                this.suricataChart = null;
+                this.aiChart = null;
+                this.topPortsChart = null; 
+                this.chartUpdateInterval = null;
+                this.pendingAlerts = 0; // Menghitung alert dari suricataWs
+                this.maxDataPoints = 30;
+                this.aiChartUpdateInterval = null;
+                this.pendingAiDetections = { malicious: 0, benign: 0 };
                 
                 this.init();
             }
             
             init() {
-                this.connectWebSocket();
+                this.initChart();
+                this.initAiChart();
+                // Mulai KEDUA koneksi WebSocket
+                this.connectWebSocket(); 
+                this.connectSuricataWebSocket();
+                this.connectAiLogsWebSocket();
                 this.setupEventListeners();
                 this.startStatsUpdater();
+                this.startChartUpdater();
+                this.startAiChartUpdater();
+                this.initTopPortsChart();
+                this.initTopAttacksChart();
+                this.initTopIpsChart();
+                this.initTopProtocolsChart();
+                
             }
-            
+
+            // --- KONEKSI WEBSOCKET #1: Untuk Interaksi Dashboard ---
             connectWebSocket() {
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
                 const wsUrl = `${protocol}//${window.location.host}/ws/security/`;
                 
-                try {
-                    this.ws = new WebSocket(wsUrl);
-                    
-                    this.ws.onopen = (event) => {
-                        console.log('WebSocket connected');
-                        this.updateConnectionStatus(true);
-                        this.reconnectAttempts = 0;
-                    };
-                    
-                    this.ws.onmessage = (event) => {
-                        const data = JSON.parse(event.data);
-                        this.handleWebSocketMessage(data);
-                      
-                    };
-                    
-                    this.ws.onclose = (event) => {
-                        console.log('WebSocket disconnected');
-                        this.updateConnectionStatus(false);
-                        this.attemptReconnect();
-                    };
-                    
-                    this.ws.onerror = (error) => {
-                        console.error('WebSocket error:', error);
-                        this.updateConnectionStatus(false);
-                    };
-                    
-                } catch (error) {
-                    console.error('Failed to connect WebSocket:', error);
+                this.ws = new WebSocket(wsUrl);
+                console.log('Connecting to main security WebSocket...');
+
+                this.ws.onopen = () => {
+                    console.log('Main security WebSocket connected');
+                    this.updateConnectionStatus(true);
+                    this.reconnectAttempts = 0;
+                };
+                
+                this.ws.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    this.handleWebSocketMessage(data);
+                };
+                
+                this.ws.onclose = () => {
+                    console.log('Main security WebSocket disconnected');
                     this.updateConnectionStatus(false);
-                    this.attemptReconnect();
+                    this.attemptReconnect(this.connectWebSocket.bind(this), 'main');
+                };
+                
+                this.ws.onerror = (error) => {
+                    console.error('Main security WebSocket error:', error);
+                    this.updateConnectionStatus(false);
+                };
+            }
+            connectAiLogsWebSocket() {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const aiWsUrl = `${protocol}//${window.location.host}/ws/ai_intrusion_logs/`;
+                this.aiLogsWs = new WebSocket(aiWsUrl);
+                console.log('Connecting to AI Intrusion Logs WebSocket...');
+
+                this.aiLogsWs.onopen = () => {
+                    console.log('AI Intrusion Logs WebSocket connected.');
+                    this.aiLogsReconnectAttempts = 0;
+                };
+
+                this.aiLogsWs.onmessage = (event) => {
+                    const message = JSON.parse(event.data);
+                    if (message.type === 'send_intrusion_log' && message.data) {
+                        this.addAiIntrusionLogToList(message.data);
+                    }
+                };
+
+                this.aiLogsWs.onclose = () => {
+                    console.warn('AI Intrusion Logs WebSocket disconnected. Attempting to reconnect...');
+                    this.attemptReconnect(this.connectAiLogsWebSocket.bind(this), 'ai_logs');
+                };
+
+                this.aiLogsWs.onerror = (error) => {
+                    console.error('AI Intrusion Logs WebSocket error:', error);
+                };
+            }
+            // --- KONEKSI WEBSOCKET #2: Khusus untuk Data Chart Suricata ---
+            connectSuricataWebSocket() {
+                // Alamat WebSocket KHUSUS untuk data chart
+                const suricataWsUrl = 'ws://192.168.101.20:8000/ws/suricata_monitor/';
+                this.suricataWs = new WebSocket(suricataWsUrl);
+                console.log('Connecting to Suricata chart WebSocket...');
+
+                this.suricataWs.onopen = () => {
+                    console.log('Suricata chart WebSocket connected successfully.');
+                    this.suricataReconnectAttempts = 0;
+                };
+
+                // Handler ini HANYA untuk menaikkan counter chart
+                this.suricataWs.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.timestamp && data.message) {
+                            this.pendingAlerts++; // NAIKKAN COUNTER DARI SUMBER YANG BENAR
+                        }
+                    } catch (e) {
+                        console.error("Invalid JSON from Suricata monitor:", e);
+                    }
+                };
+
+                this.suricataWs.onclose = () => {
+                    console.warn('Suricata chart WebSocket disconnected. Attempting to reconnect...');
+                    this.attemptReconnect(this.connectSuricataWebSocket.bind(this), 'suricata');
+                };
+
+                this.suricataWs.onerror = (error) => {
+                    console.error('Suricata chart WebSocket error:', error);
+                };
+            }
+            initTopProtocolsChart() {
+                const ctx = document.getElementById('topProtocolsChart').getContext('2d');
+                this.topProtocolsChart = new Chart(ctx, {
+                    type: 'polarArea',
+                    data: {
+                        labels: [], // e.g., ['TCP', 'UDP', 'ICMP']
+                        datasets: [{
+                            label: 'Jumlah Log',
+                            data: [],
+                            backgroundColor: [
+                                'rgba(49, 130, 206, 0.7)', // Blue
+                                'rgba(56, 161, 105, 0.7)', // Green
+                                'rgba(221, 107, 32, 0.7)', // Orange
+                                'rgba(128, 90, 213, 0.7)'  // Purple
+                            ],
+                            borderWidth: 1,
+                            borderColor: '#fff'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            r: {
+                                ticks: { backdropColor: 'transparent' },
+                                grid: { circular: true }
+                            }
+                        },
+                        plugins: {
+                            legend: { position: 'right', labels: { font: { family: "'Poppins', sans-serif" }} }
+                        }
+                    }
+                });
+            }
+            initTopPortsChart() {
+                const ctx = document.getElementById('topPortsChart').getContext('2d');
+                this.topPortsChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'Jumlah Serangan',
+                            data: [],
+                            backgroundColor: 'rgba(229, 62, 62, 0.6)',
+                            borderColor: '#e53e3e',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'x', // Membuat bar chart menjadi horizontal
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: { ticks: { font: { family: "'Poppins', sans-serif" }}},
+                            y: { ticks: { font: { family: "'Poppins', sans-serif" }}}
+                        },
+                        plugins: {
+                           legend: { display: false }
+                        }
+                    }
+                });
+            }
+            attemptReconnect(connectorFunction, type) {
+                let attempts, maxAttempts;
+
+                if (type === 'main') {
+                    this.reconnectAttempts++;
+                    attempts = this.reconnectAttempts;
+                } else {
+                    this.suricataReconnectAttempts++;
+                    attempts = this.suricataReconnectAttempts;
+                }
+                
+                maxAttempts = this.maxReconnectAttempts;
+
+                if (attempts < maxAttempts) {
+                    console.log(`Attempting to reconnect ${type} WebSocket... (${attempts}/${maxAttempts})`);
+                    setTimeout(connectorFunction, this.reconnectInterval);
+                } else {
+                    console.error(`Max reconnection attempts reached for ${type} WebSocket.`);
+                    if(type === 'main') {
+                         document.getElementById('connectionText').textContent = 'Connection Failed';
+                    }
                 }
             }
+
+
+            initChart() {
+                const ctx = document.getElementById('suricataChart').getContext('2d');
+                this.suricataChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        datasets: [{
+                            label: 'Suricata Alerts', data: [], borderColor: '#3182ce',
+                            backgroundColor: 'rgba(49, 130, 206, 0.2)', fill: true, tension: 0.4,
+                            borderWidth: 2, pointBackgroundColor: '#3182ce', pointRadius: 0, pointHoverRadius: 6
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                type: 'time', time: { unit: 'second', displayFormats: { second: 'HH:mm:ss' }, tooltipFormat: 'HH:mm:ss' },
+                                grid: { display: false },
+                                ticks: { font: { family: "'Poppins', sans-serif" }, maxRotation: 0, autoSkip: true, maxTicksLimit: 10 }
+                            },
+                            y: {
+                                beginAtZero: true, grid: { color: '#e2e8f0' },
+                                ticks: { font: { family: "'Poppins', sans-serif" }, precision: 0 }
+                            }
+                        },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                mode: 'index', intersect: false, backgroundColor: '#2d3748',
+                                titleFont: { size: 14, family: "'Poppins', sans-serif" },
+                                bodyFont: { size: 12, family: "'Poppins', sans-serif" },
+                                padding: 10, cornerRadius: 4,
+                            }
+                        },
+                        animation: false
+                    }
+                });
+            }
+            initAiChart() {
+                const ctx = document.getElementById('aiChart').getContext('2d');
+                this.aiChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        datasets: [
+                            {
+                                label: 'Malicious',
+                                data: [],
+                                borderColor: '#dd6b20', // Orange
+                                backgroundColor: 'rgba(221, 107, 32, 0.2)',
+                                fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0
+                            },
+                            {
+                                label: 'Benign',
+                                data: [],
+                                borderColor: '#38a169', // Green
+                                backgroundColor: 'rgba(56, 161, 105, 0.2)',
+                                fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                type: 'time', time: { unit: 'second', displayFormats: { second: 'HH:mm:ss' }, tooltipFormat: 'HH:mm:ss' },
+                                grid: { display: false },
+                                ticks: { font: { family: "'Poppins', sans-serif" }, maxRotation: 0, autoSkip: true, maxTicksLimit: 10 }
+                            },
+                            y: {
+                                beginAtZero: true, grid: { color: '#e2e8f0' },
+                                ticks: { font: { family: "'Poppins', sans-serif" }, precision: 0 }
+                            }
+                        },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                mode: 'index', intersect: false, backgroundColor: '#2d3748',
+                                titleFont: { size: 14, family: "'Poppins', sans-serif" },
+                                bodyFont: { size: 12, family: "'Poppins', sans-serif" },
+                                padding: 10, cornerRadius: 4,
+                            }
+                        },
+                        animation: false
+                    }
+                });
+            }
+
+            addAiIntrusionLogToList(data) {
+                const logsList = document.getElementById('ai');
+                if (!logsList) return;
+
+                const newItem = document.createElement('div');
+                newItem.className = 'alert new-alert'; // Animasi fade-in
+
+                // Tentukan warna berdasarkan hasil prediksi AI
+                const isMalicious = data.result.toLowerCase() !== 'benign';
+                const borderColor = isMalicious ? '#dd6b20' : '#38a169'; // Oranye untuk serangan, Hijau untuk aman
+                const bgColor = isMalicious ? '#fffaf0' : '#f0fff4';
+                
+                // Format fitur menjadi list yang rapi
+                let featuresHtml = '<ul class="list-unstyled mt-2 mb-0" style="font-size: 0.85em; opacity: 0.8;">';
+                for (const [key, value] of Object.entries(data.features)) {
+                    // Membulatkan nilai float jika ada
+                    const displayValue = typeof value === 'number' ? value.toFixed(4) : value;
+                    featuresHtml += `<li><code style="color: #555;"><strong>${key}:</strong> ${displayValue}</code></li>`;
+                }
+                featuresHtml += '</ul>';
+
+                newItem.style = `border-left: 4px solid ${borderColor}; background-color: ${bgColor}; border-radius: 0 8px 8px 0; margin-bottom: 10px;`;
+
+                newItem.innerHTML = `
+                    <div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <strong style="color: ${borderColor}; font-size: 1.1em;">${data.result}</strong>
+                            <small class="text-muted">${new Date(data.timestamp).toLocaleString('id-ID')}</small>
+                        </div>
+                        <div class="mt-2">
+                            <p class="mb-1" style="color: #4a5568;"><strong>Features Analysed:</strong></p>
+                            ${featuresHtml}
+                        </div>
+                    </div>
+                `;
+
+                logsList.insertBefore(newItem, logsList.firstChild);
+
+                // Hapus log tertua jika daftar terlalu panjang
+                while (logsList.children.length > 50) {
+                    logsList.removeChild(logsList.lastChild);
+                }
+
+                // Hapus class animasi setelah selesai
+                setTimeout(() => { newItem.classList.remove('new-alert'); }, 1000);
+            }
+            initTopAttacksChart() {
+                const ctx = document.getElementById('topAttacksChart').getContext('2d');
+                this.topAttacksChart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'Jumlah Serangan',
+                            data: [],
+                            backgroundColor: ['#e53e3e', '#dd6b20', '#d69e2e', '#3182ce', '#805ad5', '#38a169'],
+                            borderColor: '#fff',
+                            borderWidth: 2,
+                            hoverOffset: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'right', labels: { font: { family: "'Poppins', sans-serif" }} }
+                        }
+                    }
+                });
+            }
+
+            initTopIpsChart() {
+                const ctx = document.getElementById('topIpsChart').getContext('2d');
+                this.topIpsChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'Jumlah Serangan',
+                            data: [],
+                            backgroundColor: 'rgba(221, 107, 32, 0.6)',
+                            borderColor: '#dd6b20',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y', // <-- Membuat bar chart menjadi horizontal
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: { ticks: { font: { family: "'Poppins', sans-serif" }}},
+                            y: { ticks: { font: { family: "'Poppins', sans-serif" }}}
+                        },
+                        plugins: {
+                           legend: { display: false } // Tidak perlu legend untuk 1 dataset
+                        }
+                    }
+                });
+            }
+            startAiChartUpdater() {
+                if (this.aiChartUpdateInterval) clearInterval(this.aiChartUpdateInterval);
+                this.aiChartUpdateInterval = setInterval(() => {
+                    if (!this.aiChart) return; // Guard clause untuk mencegah error
+                    const maliciousData = this.aiChart.data.datasets[0].data;
+                    const benignData = this.aiChart.data.datasets[1].data;
+                    const now = Date.now();
+                    maliciousData.push({ x: now, y: this.pendingAiDetections.malicious });
+                    benignData.push({ x: now, y: this.pendingAiDetections.benign });
+                    this.pendingAiDetections = { malicious: 0, benign: 0 };
+                    while (maliciousData.length > this.maxDataPoints) maliciousData.shift();
+                    while (benignData.length > this.maxDataPoints) benignData.shift();
+                    this.aiChart.update('none');
+                }, 2000);
+            }
+            startChartUpdater() {
+                if (this.chartUpdateInterval) clearInterval(this.chartUpdateInterval);
+
+                this.chartUpdateInterval = setInterval(() => {
+                    const dataset = this.suricataChart.data.datasets[0];
+                    dataset.data.push({ x: Date.now(), y: this.pendingAlerts });
+                    this.pendingAlerts = 0; // Reset counter
+
+                    while (dataset.data.length > this.maxDataPoints) {
+                        dataset.data.shift();
+                    }
+                    
+                    this.suricataChart.options.elements.point.radius = (ctx) => ctx.dataset.data[ctx.dataIndex].y > 0 ? 3 : 0;
+                    this.suricataChart.update('none');
+                }, 2000);
+            }
             
+            // Handler untuk WebSocket utama
             handleWebSocketMessage(data) {
                 switch (data.type) {
-                    case 'initial_data':
-                        this.handleInitialData(data.data);
-                        break;
-                    case 'ip_blocked':
-                        this.handleIPBlocked(data.data);
-                        break;
-                    case 'new_log':
-                        this.handleNewLog(data.data);
-                        break;
-                    case 'whitelist_skip':
-                        this.handleWhitelistSkip(data.data);
-                        break;
-                    case 'security_stats': // ← tambahkan ini
-                        this.handleSecurityStats(data.data);
-                        break;
-                    default:
-                        console.log('Unknown message type:', data.type);
+                    case 'initial_data': this.handleInitialData(data.data); break;
+                    case 'ip_blocked': this.handleIPBlocked(data.data); break;
+                    case 'new_log': this.handleNewLog(data.data); break; // Tidak lagi update chart
+                    case 'whitelist_skip': this.handleWhitelistSkip(data.data); break;
+                    case 'security_stats': this.handleSecurityStats(data.data); break;
+                    default: console.log('Unknown message type:', data.type);
                 }
             }
             
-            handleInitialData(data) {
-                console.log('Initial data received:', data);
-                // Update blocked IPs list if needed
-                // Update recent logs if needed
-            }
+            handleInitialData(data) { console.log('Initial data received:', data); }
             
             handleIPBlocked(data) {
                 this.showAlert('danger', `🚫 IP ${data.ip} has been blocked!`);
@@ -395,122 +878,64 @@
                 this.playNotificationSound();
             }
             
+            // Fungsi ini sekarang hanya menampilkan log di daftar, TIDAK update chart
             handleNewLog(data) {
                 this.showAlert('warning', `⚠️ New security alert from ${data.ip}`);
                 this.addSuricataLogToList(data);
+                // Baris this.pendingAlerts++ telah dihapus dari sini
+            }
+            handleAiLogsMessage(event) {
+                const message = JSON.parse(event.data);
+                if (message.type === 'send_intrusion_log' && message.data) {
+                    if (message.data.result.toLowerCase() !== 'benign') {
+                        this.pendingAiDetections.malicious++;
+                    } else {
+                        this.pendingAiDetections.benign++;
+                    }
+                    this.addAiIntrusionLogToList(message.data);
+                }
             }
             
-            handleWhitelistSkip(data) {
-                this.showAlert('info', `ℹ️ Whitelisted IP ${data.ip} detected but not blocked`);
-            }
+            handleWhitelistSkip(data) { this.showAlert('info', `ℹ️ Whitelisted IP ${data.ip} detected but not blocked`); }
             
             addBlockedIPToList(data) {
                 const blockedList = document.getElementById('blockedIpsList');
                 const newItem = document.createElement('div');
                 newItem.className = 'blocked-ip-item new-alert';
                 newItem.setAttribute('data-ip', data.ip);
-                
-                newItem.innerHTML = `
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <strong>${data.ip}</strong>
-                            <br>
-                            <small class="text-muted">${data.reason}</small>
-                            <br>
-                            <small class="text-muted">${new Date(data.timestamp).toLocaleString()}</small>
-                        </div>
-                        <div>
-                            <span class="badge ${data.permanent ? 'bg-danger' : 'bg-warning'}">
-                                ${data.permanent ? 'Permanent' : 'Temporary'}
-                            </span>
-                            <button class="btn btn-sm btn-outline-success ms-2" onclick="unblockIP('${data.ip}')">
-                                <i class="fas fa-unlock"></i> Unblock
-                            </button>
-                        </div>
-                    </div>
-                `;
-                
+                newItem.innerHTML = `<div class="d-flex justify-content-between align-items-center" style="padding: 15px; margin: 10px 0; border-left: 4px solid #e53e3e; background-color: #fff5f5; border-radius: 0 8px 8px 0;"><div><strong style="color: #2d3748;">${data.ip}</strong><br><small class="text-muted" style="color: #718096 !important;">${data.reason}</small><br><small class="text-muted" style="color: #a0aec0 !important;">${new Date(data.timestamp).toLocaleString()}</small></div><div><span class="badge" style="background-color: ${data.permanent ? '#c53030' : '#dd6b20'}; color: white; padding: 5px 10px; border-radius: 12px;">${data.permanent ? 'Permanent' : 'Temporary'}</span><button class="btn btn-sm ms-2" onclick="unblockIP('${data.ip}')" style="border: 1px solid #38a169; color: #38a169; border-radius: 8px; font-weight: 500;"><i class="fas fa-unlock"></i> Unblock</button></div></div>`;
                 blockedList.insertBefore(newItem, blockedList.firstChild);
-                
-                // Remove animation class after animation completes
-                setTimeout(() => {
-                    newItem.classList.remove('new-alert');
-                }, 1000);
+                setTimeout(() => { newItem.classList.remove('new-alert'); }, 1000);
             }
             
             addSuricataLogToList(data) {
                 const logsList = document.getElementById('suricataLogsList');
                 const newItem = document.createElement('div');
-                newItem.className = 'alert alert-warning new-alert';
-                
-                newItem.innerHTML = `
-                    <div class="d-flex justify-content-between">
-                        <div>
-                            <strong>${data.ip}</strong>
-                            <br>
-                            <small>${data.message}</small>
-                            <br>
-                            <small class="text-muted">${new Date(data.timestamp).toLocaleString()} | Priority: ${data.priority}</small>
-                        </div>
-                        <div>
-                            ${data.classification ? `<span class="badge bg-danger">${data.classification}</span>` : ''}
-                            <button class="btn btn-sm btn-danger ms-2" onclick="quickBlock('${data.ip}', 'Real-time Alert')">
-                                <i class="fas fa-ban"></i> Block
-                            </button>
-                        </div>
-                    </div>
-                `;
-                
+                newItem.className = 'alert new-alert';
+                newItem.style = "background-color: #fffaf0; border-left: 4px solid #dd6b20; border-radius: 0 8px 8px 0;";
+                newItem.innerHTML = `<div class="d-flex justify-content-between"><div><strong style="color: #2d3748;">${data.ip}</strong><br><small style="color: #718096;">${data.message}</small><br><small class="text-muted" style="color: #a0aec0 !important;">${new Date(data.timestamp).toLocaleString()} | Priority: ${data.priority}</small></div><div>${data.classification ? `<span class="badge" style="background-color: #c53030; color: white; padding: 5px 10px; border-radius: 12px;">${data.classification}</span>` : ''}<button class="btn btn-sm ms-2" onclick="quickBlock('${data.ip}', 'Real-time Alert')" style="background-color: #c53030; color: white; border: none; border-radius: 8px; font-weight: 500;"><i class="fas fa-ban"></i> Block</button></div></div>`;
                 logsList.insertBefore(newItem, logsList.firstChild);
-                
-                setTimeout(() => {
-                    newItem.classList.remove('new-alert');
-                }, 1000);
+                setTimeout(() => { newItem.classList.remove('new-alert'); }, 1000);
             }
             
             showAlert(type, message) {
                 const alertContainer = document.getElementById('alertContainer');
                 const alert = document.createElement('div');
                 alert.className = `alert alert-${type} alert-dismissible fade show`;
-                alert.innerHTML = `
-                    ${message}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                `;
-                
+                alert.innerHTML = `${message}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
                 alertContainer.appendChild(alert);
-                
-                // Auto remove after 5 seconds
-                setTimeout(() => {
-                    if (alert.parentNode) {
-                        alert.remove();
-                    }
-                }, 5000);
+                setTimeout(() => { if (alert.parentNode) { alert.remove(); } }, 5000);
             }
             
             updateConnectionStatus(connected) {
                 const indicator = document.getElementById('connectionStatus');
                 const text = document.getElementById('connectionText');
-                
                 if (connected) {
                     indicator.className = 'status-indicator status-connected';
                     text.textContent = 'Connected';
                 } else {
                     indicator.className = 'status-indicator status-disconnected';
                     text.textContent = 'Disconnected';
-                }
-            }
-            
-            attemptReconnect() {
-                if (this.reconnectAttempts < this.maxReconnectAttempts) {
-                    this.reconnectAttempts++;
-                    console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-                    
-                    setTimeout(() => {
-                        this.connectWebSocket();
-                    }, this.reconnectInterval);
-                } else {
-                    console.log('Max reconnection attempts reached');
-                    document.getElementById('connectionText').textContent = 'Connection Failed';
                 }
             }
             
@@ -523,117 +948,98 @@
             }
             
             setupEventListeners() {
-                // Manual Block Form
                 document.getElementById('manualBlockForm').addEventListener('submit', (e) => {
                     e.preventDefault();
-                    const ip = document.getElementById('blockIpAddress').value;
-                    const reason = document.getElementById('blockReason').value || 'Manual block';
-                    const permanent = document.getElementById('permanentBlock').checked;
-                    
-                    this.sendMessage({
-                        action: 'manual_block',
-                        ip_address: ip,
-                        reason: reason,
-                        permanent: permanent
-                    });
-                    
-                    // Clear form
+                    this.sendMessage({ action: 'manual_block', ip_address: e.target.elements.blockIpAddress.value, reason: e.target.elements.blockReason.value || 'Manual block', permanent: e.target.elements.permanentBlock.checked });
                     e.target.reset();
                 });
                 
-                // Whitelist Form
                 document.getElementById('whitelistForm').addEventListener('submit', (e) => {
                     e.preventDefault();
-                    const ip = document.getElementById('whitelistIpAddress').value;
-                    const description = document.getElementById('whitelistDescription').value || 'Added manually';
-                    
-                    this.sendMessage({
-                        action: 'add_whitelist',
-                        ip_address: ip,
-                        description: description
-                    });
-                    
-                    // Clear form
+                    this.sendMessage({ action: 'add_whitelist', ip_address: e.target.elements.whitelistIpAddress.value, description: e.target.elements.whitelistDescription.value || 'Added manually' });
                     e.target.reset();
                 });
             }
             
             updateStats() {
-                // Update statistics via API call
-                fetch('/api/security-stats/')
-                    .then(response => response.json())
-                    .then(data => {
-                        document.getElementById('totalBlocked').textContent = data.total_blocked;
-                        document.getElementById('activeBlocks').textContent = data.active_blocks;
-                        document.getElementById('recentAlerts').textContent = data.recent_alerts;
-                        document.getElementById('totalLogs').textContent = data.total_logs;
-                    })
-                    .catch(error => console.error('Error updating stats:', error));
+                fetch('/api/security-stats/').then(response => response.json()).then(data => {
+                    document.getElementById('totalBlocked').textContent = data.total_blocked;
+                    document.getElementById('activeBlocks').textContent = data.active_blocks;
+                    document.getElementById('recentAlerts').textContent = data.recent_alerts;
+                    document.getElementById('totalLogs').textContent = data.total_logs;
+                }).catch(error => console.error('Error updating stats:', error));
             }
             
             startStatsUpdater() {
-                // Update stats every 30 seconds
-                setInterval(() => {
-                    this.updateStats();
-                }, 30000);
-                
-                // Initial stats update
+                setInterval(() => this.updateStats(), 30000);
                 this.updateStats();
             }
-            handleSecurityStats(data) {
-                const stats = data;
-                document.getElementById('totalBlocked').textContent = stats.total_blocked;
-                document.getElementById('activeBlocks').textContent = stats.active_blocks;
-                document.getElementById('totalLogs').textContent = stats.total_logs;
-                document.getElementById('recentAlerts').textContent = stats.recent_alerts;
-            }
 
-           
-            
+            handleSecurityStats(data) {
+                document.getElementById('totalBlocked').textContent = data.total_blocked;
+                document.getElementById('activeBlocks').textContent = data.active_blocks;
+                document.getElementById('totalLogs').textContent = data.total_logs;
+                document.getElementById('recentAlerts').textContent = data.recent_alerts;
+                if (data.details) {
+                    // Update Chart "Top Tipe Serangan"
+                    if (data.details.classifications && this.topAttacksChart) {
+                        const attackLabels = data.details.classifications.map(item => item.classification);
+                        const attackData = data.details.classifications.map(item => item.count);
+                        
+                        this.topAttacksChart.data.labels = attackLabels;
+                        this.topAttacksChart.data.datasets[0].data = attackData;
+                        this.topAttacksChart.update();
+                    }
+
+                    // Update Chart "Top IP Penyerang"
+                    if (data.details.source_ips && this.topIpsChart) {
+                        const ipLabels = data.details.source_ips.map(item => item.source_ip);
+                        const ipData = data.details.source_ips.map(item => item.count);
+
+                        this.topIpsChart.data.labels = ipLabels;
+                        this.topIpsChart.data.datasets[0].data = ipData;
+                        this.topIpsChart.update();
+                    }
+                    if (data.details.destination_ports && this.topPortsChart) {
+                        const portLabels = data.details.destination_ports.map(item => `Port ${item.destination_port}`);
+                        const portData = data.details.destination_ports.map(item => item.count);
+                        this.updateChartData(this.topPortsChart, portLabels, portData);
+                    }
+                    if (data.details.protocols && this.topProtocolsChart) {
+                        const protocolLabels = data.details.protocols.map(item => item.protocol);
+                        const protocolData = data.details.protocols.map(item => item.count);
+                        this.updateChartData(this.topProtocolsChart, protocolLabels, protocolData);
+                    }
+                }
+            }
+            updateChartData(chart, labels, data) {
+                if (!chart) return;
+                chart.data.labels = labels;
+                chart.data.datasets[0].data = data;
+                chart.update();
+            }
             playNotificationSound() {
-                // Create a simple beep sound
                 const audioContext = new (window.AudioContext || window.webkitAudioContext)();
                 const oscillator = audioContext.createOscillator();
                 const gainNode = audioContext.createGain();
-                
                 oscillator.connect(gainNode);
                 gainNode.connect(audioContext.destination);
-                
                 oscillator.frequency.value = 800;
                 oscillator.type = 'sine';
-                
                 gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
                 gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-                
                 oscillator.start(audioContext.currentTime);
                 oscillator.stop(audioContext.currentTime + 0.5);
             }
         }
         
         // Global functions
-        function unblockIP(ip) {
-            if (confirm(`Are you sure you want to unblock ${ip}?`)) {
-                securityMonitor.sendMessage({
-                    action: 'unblock_ip',
-                    ip_address: ip
-                });
-            }
-        }
-        
-        function quickBlock(ip, reason) {
-            if (confirm(`Block IP ${ip}?`)) {
-                securityMonitor.sendMessage({
-                    action: 'manual_block',
-                    ip_address: ip,
-                    reason: reason || 'Quick block',
-                    permanent: false
-                });
-            }
-        }
+        function unblockIP(ip) { if (confirm(`Are you sure you want to unblock ${ip}?`)) { securityMonitor.sendMessage({ action: 'unblock_ip', ip_address: ip }); } }
+        function quickBlock(ip, reason) { if (confirm(`Block IP ${ip}?`)) { securityMonitor.sendMessage({ action: 'manual_block', ip_address: ip, reason: reason || 'Quick block', permanent: false }); } }
         
         // Initialize when page loads
         let securityMonitor;
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', () => {
             securityMonitor = new SecurityMonitor();
         });
     </script>

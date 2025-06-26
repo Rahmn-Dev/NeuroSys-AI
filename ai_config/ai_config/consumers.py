@@ -803,24 +803,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Inisialisasi agent
         agent = SmartAgent()
         
-        # Ambil user dari scope
-        user = self.scope["user"]
-
-        # Jika user tidak login, tolak atau gunakan default user (opsional)
-        if not user.is_authenticated:
-            await self.send(json.dumps({
-                "type": "error",
-                "content": {"message": "Authentication required."}
-            }))
-            return
-
-        # Simpan awal log eksekusi
+       
         execution_log = await sync_to_async(ExecutionLog.objects.create)(
             user_query=user_message,
             goal=user_message,
             start_time=time.time(),
-            final_status="in_progress",
-            created_by=user
+         
         )
 
         steps = []
@@ -1081,7 +1069,7 @@ class SecurityConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def get_security_stats(self):
-        from django.db.models import Q
+        from django.db.models import Q, Count
         from chatbot.models import BlockedIP, SuricataLog
         return {
             'total_blocked': BlockedIP.objects.count(),
@@ -1092,4 +1080,58 @@ class SecurityConsumer(AsyncWebsocketConsumer):
             'recent_alerts': SuricataLog.objects.filter(
                 timestamp__gte=timezone.now() - timezone.timedelta(hours=24)
             ).count(),
+                'details': {
+                'source_ips': list(
+                    SuricataLog.objects.values('source_ip')
+                    .annotate(count=Count('id'))
+                    .order_by('-count')
+                ),
+                'destination_ips': list(
+                    SuricataLog.objects.values('destination_ip')
+                    .annotate(count=Count('id'))
+                    .order_by('-count')
+                ),
+                'source_ports': list(
+                    SuricataLog.objects.values('source_port')
+                    .annotate(count=Count('id'))
+                    .order_by('-count')
+                ),
+                'destination_ports': list(
+                    SuricataLog.objects.values('destination_port')
+                    .annotate(count=Count('id'))
+                    .order_by('-count')
+                ),
+                'protocols': list(
+                    SuricataLog.objects.values('protocol')
+                    .annotate(count=Count('id'))
+                    .order_by('-count')
+                ),
+                'classifications': list(
+                    SuricataLog.objects.values('classification')
+                    .annotate(count=Count('id'))
+                    .order_by('-count')
+                ),
+                'severities': list(
+                    SuricataLog.objects.values('severity')
+                    .annotate(count=Count('id'))
+                    .order_by('-count')
+                ),
+                'priorities': list(
+                    SuricataLog.objects.values('priority')
+                    .annotate(count=Count('id'))
+                    .order_by('-count')
+                ),
+            }
         }
+    
+
+class AiIntrusionLogConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        await self.channel_layer.group_add("ai_intrusion_logs", self.channel_name)
+        await self.accept()
+
+    async def disconnect(self, close_code):
+        await self.channel_layer.group_discard("ai_intrusion_logs", self.channel_name)
+
+    async def send_intrusion_log(self, event):
+        await self.send(text_data=json.dumps(event["data"]))
