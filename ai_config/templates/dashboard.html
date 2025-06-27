@@ -13,25 +13,18 @@
             <div class="content-page">
                 <div class="chat-box-list">
 
-                    <div class="welcome-wrapper">
-                        <div class="content-section">
-                            <h4 class="title">👋 Welcome, {{user.username}}</h4>
+                    <div class="row mb-5" style="display: flex; align-items: center; justify-content: space-between;">
+                        <div class="col-md-8">
+                            <h3 style="color: #1a202c; font-weight: 600;">👋 Welcome, {{user.username}}</h3>
+                            <p style="color: #718096;">Welcome to the System & Resource Monitoring dashboard.</p>
                         </div>
-                        <div>
-                            <button id="analyzeBtn" class="btn btn-primary">Run AI Analysis</button>
-                            <div id="status" style="margin-top: 10px;"></div>
+                        <div class="col-md-4 text-end">
+                            <button id="analyzeBtn" class="btn" style="background-color: #805ad5; color: white; border-radius: 8px; padding: 10px 20px; font-weight: 500; border: none;">
+                                <i class="fas fa-magic me-1"></i> Run AI Analysis
+                            </button>
+                            <div id="status" style="margin-top: 10px; color: #718096; font-size: 0.9em;"></div>
                         </div>
                     </div>
-
-                    <!-- <div class="rainbow-generartor-section rainbow-section-gap">
-                        <div class="section-title text-center sal-animate" data-sal="slide-up" data-sal-duration="700" data-sal-delay="100">
-                            <h4 class="subtitle "><span class="theme-gradient">NeuroSys AI</span></h4>
-                            <h2 class="title w-600 mb--20">AI-Powered Linux Automation & Security</h2>
-                            <p class="description b1">Smart. Secure. Efficient.
-                            </p>
-                        </div>
-                       
-                    </div> -->
 
                 </div>
             </div>

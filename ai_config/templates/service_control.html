@@ -3,27 +3,44 @@
 
 {% endblock style%}
 {% block content %}
-
+<style>
+    .stats-card:hover {
+       transform: translateY(-5px);
+       box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
+   }
+   .status-indicator {
+       width: 12px;
+       height: 12px;
+       border-radius: 50%;
+       display: inline-block;
+       margin-right: 8px;
+       border: 2px solid white;
+       box-shadow: 0 0 5px rgba(0,0,0,0.2);
+       transition: background-color 0.3s ease;
+   }
+   .status-connected { background-color: #48bb78; } /* Hijau */
+   .status-disconnected { background-color: #f56565; } /* Merah */
+</style>
 <div class="rbt-main-content mr--0 ">
     <div class="rbt-daynamic-page-content">
-        <div class="rbt-dashboard-content" style="padding-left: 20px;padding-right: 20px;">
+        <div class="rbt-dashboard-content" style="padding: 30px;">
             <!-- Header Dashboard -->
-            <div class="row mb-4" style="
-            display: flex;
-            align-content: center;
-            justify-content: center;
-            align-items: center;
-            flex-direction: row;
-            flex-wrap: nowrap;
-        ">
+            <div class="row mb-5" style="display: flex; align-items: center; justify-content: space-between;">
                 <div class="col-md-6">
-                    <h3 class="text-primary theme-gradient">Service Monitoring & Control</h3>
-                    <p class="text-muted">Monitor and manage your Linux services in real-time.</p>
+                    <h3 style="color: #1a202c; font-weight: 600;">Service Monitoring & Control</h3>
+                    <p style="color: #718096;">Monitor and manage your Linux services in real-time.</p>
                 </div>
-                <div class="col-md-6 text-end" >
-                    <button class="btn btn-sm btn-default" onclick="refreshServices()">
-                        <i class="fas "></i> Refresh Services
-                    </button>
+                <div class="col-md-6 text-end">
+                    <div style="display: flex; align-items: center; justify-content: flex-end; gap: 20px;">
+                        
+                        <button class="btn" style="background-color: #3182ce; color: white; border-radius: 8px; padding: 10px 20px; font-weight: 500; border: none;" onclick="refreshServices()">
+                            <i class="fas fa-sync-alt me-1"></i> Refresh Services
+                        </button>
+                        <div class="navbar-text" style="display: flex; align-items: center;">
+                            <span class="status-indicator" id="connectionStatus"></span>
+                            <span id="connectionText" style="color: #4a5568; font-weight: 500;">Connecting...</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -31,48 +48,57 @@
           
             <!-- Service Status Overview -->
             <div class="row mb-4">
-                <div class="col-md-4">
-                    <div class="card  " style="color: white;border-radius: 14px; background: white; padding: 33px 22px; position: relative; overflow: hidden; background: linear-gradient(135deg, #198754, #28a57e, #6fc7ab); ">
-                        <div class="card-body">
-                            <h5 class="card-title text-white"><i class="fas fa-check-circle"></i> Active Services</h5>
-                            <p class="card-text" id="activeServicesCount" style="
-                            color: white;
-                            font-size: 25px;
-                            font-weight: 900;
-                        ">0</p>
+                <div class="col-md-4 mb-4">
+                    <div class="card stats-card" style="border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); transition: all 0.3s ease;">
+                        <div class="card-body" style="padding: 25px;">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h4 id="activeServicesCount" style="color: #38a169; font-weight: 700; margin-bottom: 5px;">0</h4>
+                                    <p class="card-text" style="color: #718096; margin: 0;">Active Services</p>
+                                </div>
+                                <div class="align-self-center" style="color: #38a169; opacity: 0.7;">
+                                    <i class="fas fa-play-circle fa-2x"></i>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div class="col-md-4">
-                    <div class="card " style=" color: white; border-radius: 14px; background: white; padding: 33px 22px; position: relative; overflow: hidden; background: linear-gradient(135deg, #dc3545, #e85a6b, #f7a1a9); ">
-                        <div class="card-body">
-                            <h5 class="card-title text-white"><i class="fas fa-times-circle"></i> Inactive Services</h5>
-                            <p class="card-text" id="inactiveServicesCount" style="
-                            color: white;
-                            font-size: 25px;
-                            font-weight: 900;
-                        ">0</p>
+                <div class="col-md-4 mb-4">
+                    <div class="card stats-card" style="border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); transition: all 0.3s ease;">
+                        <div class="card-body" style="padding: 25px;">
+                             <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h4 id="inactiveServicesCount" style="color: #e53e3e; font-weight: 700; margin-bottom: 5px;">0</h4>
+                                    <p class="card-text" style="color: #718096; margin: 0;">Inactive/Failed</p>
+                                </div>
+                                <div class="align-self-center" style="color: #e53e3e; opacity: 0.7;">
+                                    <i class="fas fa-stop-circle fa-2x"></i>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div class="col-md-4">
-                    <div class="card  " style="color: white; border-radius: 14px; background: white; padding: 33px 22px; position: relative; overflow: hidden; background: linear-gradient(135deg, #ffc107, #ffd84a, #fff3b0);">
-                        <div class="card-body">
-                            <h5 class="card-title text-white"><i class="fas fa-exclamation-triangle"></i> Total Services</h5>
-                            <p class="card-text" id="totalServicesCount" style="
-                            color: white;
-                            font-size: 25px;
-                            font-weight: 900;
-                        ">0</p>
+                <div class="col-md-4 mb-4">
+                    <div class="card stats-card" style="border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); transition: all 0.3s ease;">
+                        <div class="card-body" style="padding: 25px;">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h4 id="totalServicesCount" style="color: #3182ce; font-weight: 700; margin-bottom: 5px;">0</h4>
+                                    <p class="card-text" style="color: #718096; margin: 0;">Total Services</p>
+                                </div>
+                                <div class="align-self-center" style="color: #3182ce; opacity: 0.7;">
+                                    <i class="fas fa-server fa-2x"></i>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
-            <!-- Failed Services Table -->
+
             {% if failed_services %}
-            <div class="card ">
-                <div class="card-header bg-danger " style="    margin-bottom: 0px; color: white; border-top-left-radius: 14px;border-top-right-radius: 14px;  padding: 33px 22px; position: relative; overflow: hidden; ">
-                    <h5 class="text-white"><i class="fas fa-exclamation-triangle"></i> Failed Services</h5>
+            <div class="card mb-4" style="border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);">
+                <div class="card-header" style="background-color: #fff; border-bottom: 1px solid #e2e8f0; border-radius: 12px 12px 0 0;">
+                    <h5 style="color: #2d3748; font-weight: 600; margin: 0;"><i class="fas fa-exclamation-triangle me-2" style="color: #e53e3e;"></i>Failed Services</h5>
                 </div>
                 <div class="card-body">
                     <table class="table table-hover">
@@ -93,22 +119,23 @@
                                         <span class="badge bg-danger">{{ service.active }} {{ service.sub }}</span>
                                     </td>
                                     <td>
-                                        <button class="btn btn-sm btn-primary"
+                                        <button class="btn btn-sm" style="background-color: #805ad5; color: white;"
                                                 onclick="runAIAnalysis('{{ service.name }}')">
                                             <i class="fas fa-brain"></i> AI Diagnosis
                                         </button>
                                     </td>
                                 </tr>
-                                {% endfor %}
+                            {% endfor %}
                         </tbody>
                     </table>
                 </div>
             </div>
             {% else %}
-            <div class="alert alert-success mt-5">
+            <div class="alert alert-success mt-5" style="background-color: #f0fff4; border-left: 4px solid #38a169; border-radius: 0 8px 8px 0; color: #2d3748;">
                 <i class="fas fa-check-circle"></i> All services are running normally.
             </div>
             {% endif %}
+
             <div id="analysisResult" class="mt-4"></div>
             <!-- Services Table -->
             <div class="card" style="border-top-left-radius: 14px;     border-top-right-radius: 14px;">
@@ -159,11 +186,43 @@
 {% block script %}
 
 <script>
+    function updateConnectionStatus(isConnected) {
+        const indicator = document.getElementById('connectionStatus');
+        const text = document.getElementById('connectionText');
+        if (indicator && text) {
+            if (isConnected) {
+                indicator.className = 'status-indicator status-connected';
+                text.textContent = 'Connected';
+            } else {
+                indicator.className = 'status-indicator status-disconnected';
+                text.textContent = 'Disconnected';
+            }
+        }
+    }
+
     const isLocal = window.location.hostname === "localhost" || window.location.hostname.startsWith("192.168.");
     const wsProtocol = isLocal ? "ws" : "wss";
     const wsHost = isLocal ? "192.168.101.20:8000" : "experimental.rahmn.tech";
     const socket = new WebSocket(`${wsProtocol}://${wsHost}/ws/services/`);
+    updateConnectionStatus(false);
+    socket.onopen = function(event) {
+        console.log("WebSocket connected.");
+        updateConnectionStatus(true);
+    };
+
+    socket.onclose = function(event) {
+        console.log("WebSocket disconnected.");
+        updateConnectionStatus(false);
+    };
+
+    socket.onerror = function(event) {
+        console.error("WebSocket error:", event);
+        updateConnectionStatus(false);
+    };
+
+
     let openDropdownId = null;
+    
     // Handle incoming messages from the server
     socket.onmessage = function(event) {
         const data = JSON.parse(event.data);

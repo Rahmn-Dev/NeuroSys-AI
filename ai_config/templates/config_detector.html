@@ -74,13 +74,13 @@
     <div class="rbt-daynamic-page-content">
         <div class="rbt-dashboard-content p-4">
             <div class="container-fluid">
-                
+
                 <div class="row mb-4">
                     <div class="col-12">
                         <div class="card">
                             <div class="scan-header" style="padding: 20px;">
-                                <h2 class="mb-1 theme-gradient"><i class="fas fa-shield-alt me-3"></i>Sistem Keamanan Analyzer</h2>
-                                <p class="mb-0 opacity-75">Pantau dan perbaiki konfigurasi sistem Linux Anda secara otomatis</p>
+                                <h2 class="mb-1 theme-gradient"><i class="fas fa-shield-alt me-3"></i>Security System Analyzer</h2>
+                                <p class="mb-0 opacity-75">Monitor and automatically fix your Linux system configurations</p>
                             </div>
                         </div>
                     </div>
@@ -93,46 +93,46 @@
                                 <div class="d-flex align-items-center mb-3">
                                     <div class="bg-primary bg-gradient rounded-circle p-3 me-3"><i class="fas fa-search text-white"></i></div>
                                     <div>
-                                        <h5 class="card-title mb-1">Analisis Sistem</h5>
-                                        <p class="card-text text-muted mb-0">Mulai pemindaian komprehensif</p>
+                                        <h5 class="card-title mb-1">System Analysis</h5>
+                                        <p class="card-text text-muted mb-0">Start a comprehensive scan</p>
                                     </div>
                                 </div>
-                                <p class="card-text text-muted mb-4 flex-grow-1">Deteksi masalah keamanan, konfigurasi yang salah, dan peluang optimisasi sistem secara otomatis.</p>
+                                <p class="card-text text-muted mb-4 flex-grow-1">Automatically detect security issues, misconfigurations, and system optimization opportunities.</p>
                                 <div class="d-grid">
                                     <input type="hidden" id="csrfToken" value="{{ csrf_token }}">
                                     <div class="form-check form-switch mb-3 bg-light p-3 rounded-3 border">
                                         <input class="form-check-input" type="checkbox" role="switch" id="ai-enhancement-toggle">
                                         <label class="form-check-label" for="ai-enhancement-toggle">
-                                          <strong>Aktifkan Analisis & Rekomendasi AI</strong>
-                                          <small class="d-block text-muted">Memberikan detail risiko dan solusi yang lebih mendalam (memerlukan waktu lebih lama).</small>
+                                          <strong>Enable AI Analysis & Recommendations</strong>
+                                          <small class="d-block text-muted">Provides deeper risk insights and suggested solutions (may take longer).</small>
                                         </label>
-                                      </div>
-                                  
+                                    </div>
+
                                     <div class="btn-group">
                                         <button id="runScanBtn" type="button" class="btn btn-primary btn-lg pulse-animation" onclick="runNewScan('full', event)">
                                             <i class="fas fa-search me-2"></i>
-                                            <span id="scanBtnText">Scan Lengkap</span>
+                                            <span id="scanBtnText">Full Scan</span>
                                         </button>
                                         <button type="button" class="btn btn-primary btn-lg dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false">
                                             <i class="fas fa-caret-down"></i>
                                         </button>
                                         <ul class="dropdown-menu dropdown-menu-end">
-                                            <li><a class="dropdown-item" href="#" onclick="runNewScan('full', event)"><i class="fas fa-bolt fa-fw me-2"></i>Scan Lengkap (Rules + AI)</a></li>
-                                            <li><a class="dropdown-item" href="#" onclick="runNewScan('security', event)"><i class="fas fa-shield-alt fa-fw me-2"></i>Scan Keamanan (Rules)</a></li>
-                                            <li><a class="dropdown-item" href="#" onclick="runNewScan('performance', event)"><i class="fas fa-tachometer-alt fa-fw me-2"></i>Scan Performa (Rules)</a></li>
-                                            
+                                            <li><a class="dropdown-item" href="#" onclick="runNewScan('full', event)"><i class="fas fa-bolt fa-fw me-2"></i>Full Scan (Rules + AI)</a></li>
+                                            <li><a class="dropdown-item" href="#" onclick="runNewScan('security', event)"><i class="fas fa-shield-alt fa-fw me-2"></i>Security Scan (Rules Only)</a></li>
+                                            <li><a class="dropdown-item" href="#" onclick="runNewScan('performance', event)"><i class="fas fa-tachometer-alt fa-fw me-2"></i>Performance Scan (Rules Only)</a></li>
                                             <li><hr class="dropdown-divider"></li>
-                                            <li><a class="dropdown-item text-primary" href="#" onclick="runNewScan('ai_deep_scan', event)"><i class="fas fa-robot fa-fw me-2"></i>AI Deep Scan (Hanya AI)</a></li>
+                                            <li><a class="dropdown-item text-primary" href="#" onclick="runNewScan('ai_deep_scan', event)"><i class="fas fa-robot fa-fw me-2"></i>AI Deep Scan (AI Only)</a></li>
                                         </ul>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
+
                     <div class="col-lg-7">
                         <div class="card h-100">
                             <div class="card-header bg-light border-0 rounded-top">
-                                <h5 class="mb-0"><i class="fas fa-history me-2 text-primary"></i>Riwayat Pemindaian</h5>
+                                <h5 class="mb-0"><i class="fas fa-history me-2 text-primary"></i>Scan History</h5>
                             </div>
                             <div class="card-body p-3">
                                 <div id="recent-scans-list" class="list-group">
@@ -146,7 +146,7 @@
                                             </div>
                                         </div>
                                         <button class="btn btn-sm btn-outline-primary rounded-pill" onclick="loadScanResults({{ scan.id }})">
-                                            <i class="fas fa-eye me-1"></i> Lihat Hasil
+                                            <i class="fas fa-eye me-1"></i> View Results
                                         </button>
                                     </div>
                                     {% endfor %}
@@ -154,8 +154,8 @@
                                 {% if not recent_scans %}
                                 <div id="no-scans-placeholder" class="text-center p-4 text-muted">
                                     <i class="fas fa-inbox fa-3x mb-3 opacity-50"></i>
-                                    <p class="mb-0">Belum ada riwayat pemindaian.</p>
-                                    <small>Mulai scan pertama Anda untuk melihat hasilnya di sini.</small>
+                                    <p class="mb-0">No scan history available.</p>
+                                    <small>Start your first scan to see results here.</small>
                                 </div>
                                 {% endif %}
                             </div>
@@ -165,17 +165,54 @@
 
                 <div id="results-container" style="display: none;" class="fade-in">
                     <div class="row g-4 mb-4">
-                        <div class="col-lg-3 col-md-6"><div class="card stats-card stats-card-total text-center h-100"><div class="card-body p-4"><i class="fas fa-list-ul fa-2x mb-3 opacity-75"></i><h1 id="total-issues-count" class="display-4 fw-bold mb-2">0</h1><p class="mb-0 opacity-75">Total Masalah</p></div></div></div>
-                        <div class="col-lg-3 col-md-6"><div class="card stats-card stats-card-critical text-center h-100"><div class="card-body p-4"><i class="fas fa-exclamation-triangle fa-2x mb-3 opacity-75"></i><h1 id="critical-count" class="display-4 fw-bold mb-2">0</h1><p class="mb-0 opacity-75">Level Kritikal</p></div></div></div>
-                        <div class="col-lg-3 col-md-6"><div class="card stats-card stats-card-high text-center h-100"><div class="card-body p-4"><i class="fas fa-exclamation-circle fa-2x mb-3 opacity-75"></i><h1 id="high-count" class="display-4 fw-bold mb-2">0</h1><p class="mb-0 opacity-75">Level Tinggi</p></div></div></div>
-                        <div class="col-lg-3 col-md-6"><div class="card stats-card stats-card-fixable text-center h-100"><div class="card-body p-4"><i class="fas fa-magic fa-2x mb-3 opacity-75"></i><h1 id="auto-fixable-count" class="display-4 fw-bold mb-2">0</h1><p class="mb-0 opacity-75">Dapat Diperbaiki</p></div></div></div>
+                        <div class="col-lg-3 col-md-6">
+                            <div class="card stats-card stats-card-total text-center h-100">
+                                <div class="card-body p-4">
+                                    <i class="fas fa-list-ul fa-2x mb-3 opacity-75"></i>
+                                    <h1 id="total-issues-count" class="display-4 fw-bold mb-2">0</h1>
+                                    <p class="mb-0 opacity-75">Total Issues</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-md-6">
+                            <div class="card stats-card stats-card-critical text-center h-100">
+                                <div class="card-body p-4">
+                                    <i class="fas fa-exclamation-triangle fa-2x mb-3 opacity-75"></i>
+                                    <h1 id="critical-count" class="display-4 fw-bold mb-2">0</h1>
+                                    <p class="mb-0 opacity-75">Critical Level</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-md-6">
+                            <div class="card stats-card stats-card-high text-center h-100">
+                                <div class="card-body p-4">
+                                    <i class="fas fa-exclamation-circle fa-2x mb-3 opacity-75"></i>
+                                    <h1 id="high-count" class="display-4 fw-bold mb-2">0</h1>
+                                    <p class="mb-0 opacity-75">High Severity</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-md-6">
+                            <div class="card stats-card stats-card-fixable text-center h-100">
+                                <div class="card-body p-4">
+                                    <i class="fas fa-magic fa-2x mb-3 opacity-75"></i>
+                                    <h1 id="auto-fixable-count" class="display-4 fw-bold mb-2">0</h1>
+                                    <p class="mb-0 opacity-75">Auto-Fixable</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="card">
-                        <div class="card-header bg-light border-0"><h4 class="mb-0"><i class="fas fa-bug me-2 text-danger"></i>Daftar Masalah yang Ditemukan</h4></div>
-                        <div class="card-body p-4"><div id="issues-list" class="d-grid gap-3"></div></div>
+                        <div class="card-header bg-light border-0">
+                            <h4 class="mb-0"><i class="fas fa-bug me-2 text-danger"></i>Detected Issues</h4>
+                        </div>
+                        <div class="card-body p-4">
+                            <div id="issues-list" class="d-grid gap-3"></div>
+                        </div>
                     </div>
                 </div>
+
             </div>
         </div>
     </div>
@@ -186,8 +223,8 @@
         <div class="modal-content">
             <div class="modal-body text-center p-5">
                 <div class="spinner-border text-primary mb-3" role="status" style="width: 4rem; height: 4rem;"><span class="visually-hidden">Loading...</span></div>
-                <h4 class="modal-title text-primary mb-3" id="loadingModalLabel">Memproses...</h4>
-                <p class="text-muted mb-0" id="loadingModalText">Mohon tunggu sebentar.</p>
+                <h4 class="modal-title text-primary mb-3" id="loadingModalLabel">Processing...</h4>
+                <p class="text-muted mb-0" id="loadingModalText">Please wait a moment.</p>
             </div>
         </div>
     </div>
