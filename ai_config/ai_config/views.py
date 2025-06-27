@@ -2521,7 +2521,7 @@ class SafeCommandExecutor:
         
         try:
             result = subprocess.run(
-                ['bash', '-c', command],
+                ['sudo', '-u', 'sysai', 'bash', '-c', command],
                 capture_output=True,
                 text=True,
                 timeout=30,
@@ -2809,93 +2809,151 @@ class SmartAgent:
                 }
     
     def stream_process_smart_workflow(self, user_query):
-        """Main method to process user query with smart workflow - streams results"""
-        self.current_goal = user_query
-        self.conversation_history = [{"role": "user", "content": user_query}]
-        
-        workflow_result = {
-            "steps": [],
-            "final_status": "in_progress",
-            "goal": user_query,
-            "start_time": time.time()
-        }
-        
-        yield {"type": "status", "content": f"🧠 Starting smart workflow for: {user_query}"}
-        
-        step_count = 0
-        max_steps = 50
-        
-        while step_count < max_steps:
-            yield {"type": "step_info", "content": f"--- Step {step_count + 1} ---"}
+            """Main method to process user query with smart workflow - streams results"""
+            self.current_goal = user_query
+            self.conversation_history = [{"role": "user", "content": user_query}]
             
-            next_action = self.get_next_action()
-            yield {"type": "decision", "content": f"AI Decision: {next_action}"}
+            workflow_result = {
+                "steps": [],
+                "final_status": "in_progress",
+                "goal": user_query,
+                "start_time": time.time()
+            }
             
-            if next_action.get("action") == "complete":
-                workflow_result["final_status"] = "completed"
-                workflow_result["summary"] = next_action.get("summary")
-                workflow_result["end_time"] = time.time()
-                workflow_result["duration"] = workflow_result["end_time"] - workflow_result["start_time"]
-                yield {"type": "complete", "content": workflow_result}
-                break
+            # Log workflow start
+            print(f"[WORKFLOW START] Goal: {user_query}")
+            print(f"[WORKFLOW START] Start time: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(workflow_result['start_time']))}")
+            
+            yield {"type": "status", "content": f"🧠 Starting smart workflow for: {user_query}"}
+            
+            step_count = 0
+            max_steps = 50
+            
+            print(f"[WORKFLOW INFO] Maximum steps allowed: {max_steps}")
+            
+            while step_count < max_steps:
+                print(f"[STEP {step_count + 1}] Starting step execution")
+                yield {"type": "step_info", "content": f"--- Step {step_count + 1} ---"}
                 
-            elif next_action.get("action") == "execute":
-                command = next_action.get("command")
-                reasoning = next_action.get("reasoning")
+                next_action = self.get_next_action()
+                print(f"[STEP {step_count + 1}] AI Decision: {next_action.get('action', 'unknown')}")
+                yield {"type": "decision", "content": f"AI Decision: {next_action}"}
                 
-                yield {"type": "reasoning", "content": reasoning}
-                yield {"type": "command", "content": f"Executing bash command: {command}"}
-                
-                execution_result = self.execute_with_context(command)
-                
-                step_data = {
-                    "step": step_count + 1,
-                    "type": "bash_command",
-                    "reasoning": reasoning,
-                    "command": command,
-                    "result": execution_result,
-                    "timestamp": time.time()
-                }
-                
-                workflow_result["steps"].append(step_data)
-                yield {"type": "step", "content": step_data}
-                yield {"type": "result", "content": f"Result: {execution_result.get('output', 'No output')[:100]}..."}
-                
-                self.add_execution_result_to_conversation(command, execution_result)
-                step_count += 1
-                
-            elif next_action.get("action") == "tool_call":
-                tool_name = next_action.get("tool_name")
-                parameters = next_action.get("parameters", {})
-                reasoning = next_action.get("reasoning")
-                
-                yield {"type": "reasoning", "content": reasoning}
-                yield {"type": "tool_call", "content": f"Calling AITool: {tool_name} with parameters: {parameters}"}
-                
-                # Call the AITools function
-                if hasattr(self.ai_tools, tool_name):
-                    tool_func = getattr(self.ai_tools, tool_name)
-                    try:
-                        tool_result = tool_func(**parameters)
+                if next_action.get("action") == "complete":
+                    print(f"[WORKFLOW COMPLETE] Workflow completed successfully")
+                    print(f"[WORKFLOW COMPLETE] Summary: {next_action.get('summary', 'No summary')}")
+                    
+                    workflow_result["final_status"] = "completed"
+                    workflow_result["summary"] = next_action.get("summary")
+                    workflow_result["end_time"] = time.time()
+                    workflow_result["duration"] = workflow_result["end_time"] - workflow_result["start_time"]
+                    
+                    print(f"[WORKFLOW COMPLETE] Duration: {workflow_result['duration']:.2f} seconds")
+                    print(f"[WORKFLOW COMPLETE] Total steps executed: {step_count}")
+                    
+                    yield {"type": "complete", "content": workflow_result}
+                    break
+                    
+                elif next_action.get("action") == "execute":
+                    command = next_action.get("command")
+                    reasoning = next_action.get("reasoning")
+                    
+                    print(f"[STEP {step_count + 1}] Type: BASH COMMAND")
+                    print(f"[STEP {step_count + 1}] Reasoning: {reasoning}")
+                    print(f"[STEP {step_count + 1}] Command: {command}")
+                    
+                    yield {"type": "reasoning", "content": reasoning}
+                    yield {"type": "command", "content": f"Executing bash command: {command}"}
+                    
+                    execution_result = self.execute_with_context(command)
+                    
+                    print(f"[STEP {step_count + 1}] Execution success: {execution_result.get('success', False)}")
+                    print(f"[STEP {step_count + 1}] Output length: {len(str(execution_result.get('output', '')))}")
+                    if execution_result.get('error'):
+                        print(f"[STEP {step_count + 1}] Error: {execution_result.get('error')}")
+                    
+                    step_data = {
+                        "step": step_count + 1,
+                        "type": "bash_command",
+                        "reasoning": reasoning,
+                        "command": command,
+                        "result": execution_result,
+                        "timestamp": time.time()
+                    }
+                    
+                    workflow_result["steps"].append(step_data)
+                    yield {"type": "step", "content": step_data}
+                    yield {"type": "result", "content": f"Result: {execution_result.get('output', 'No output')[:100]}..."}
+                    
+                    self.add_execution_result_to_conversation(command, execution_result)
+                    step_count += 1
+                    print(f"[STEP {step_count}] Bash command step completed")
+                    
+                elif next_action.get("action") == "tool_call":
+                    tool_name = next_action.get("tool_name")
+                    parameters = next_action.get("parameters", {})
+                    reasoning = next_action.get("reasoning")
+                    
+                    print(f"[STEP {step_count + 1}] Type: TOOL CALL")
+                    print(f"[STEP {step_count + 1}] Reasoning: {reasoning}")
+                    print(f"[STEP {step_count + 1}] Tool: {tool_name}")
+                    print(f"[STEP {step_count + 1}] Parameters: {parameters}")
+                    
+                    yield {"type": "reasoning", "content": reasoning}
+                    yield {"type": "tool_call", "content": f"Calling AITool: {tool_name} with parameters: {parameters}"}
+                    
+                    # Call the AITools function
+                    if hasattr(self.ai_tools, tool_name):
+                        tool_func = getattr(self.ai_tools, tool_name)
+                        try:
+                            print(f"[STEP {step_count + 1}] Executing tool function...")
+                            tool_result = tool_func(**parameters)
+                            print(f"[STEP {step_count + 1}] Tool execution successful")
+                            print(f"[STEP {step_count + 1}] Tool result type: {type(tool_result)}")
+                            
+                            step_data = {
+                                "step": step_count + 1,
+                                "type": "tool_call",
+                                "reasoning": reasoning,
+                                "tool_name": tool_name,
+                                "parameters": parameters,
+                                "result": tool_result,
+                                "timestamp": time.time()
+                            }
+                            
+                            workflow_result["steps"].append(step_data)
+                            yield {"type": "step", "content": step_data}
+                            yield {"type": "tool_result", "content": f"Tool Result: {tool_result}"}
+                            
+                            self.add_tool_result_to_conversation(tool_name, parameters, tool_result)
+                            print(f"[STEP {step_count + 1}] Tool result added to conversation")
+                            
+                        except Exception as e:
+                            print(f"[STEP {step_count + 1}] Tool execution failed: {str(e)}")
+                            print(f"[STEP {step_count + 1}] Exception type: {type(e).__name__}")
+                            
+                            error_result = {"success": False, "error": str(e)}
+                            
+                            step_data = {
+                                "step": step_count + 1,
+                                "type": "tool_call",
+                                "reasoning": reasoning,
+                                "tool_name": tool_name,
+                                "parameters": parameters,
+                                "result": error_result,
+                                "timestamp": time.time()
+                            }
+                            
+                            workflow_result["steps"].append(step_data)
+                            yield {"type": "step", "content": step_data}
+                            yield {"type": "error", "content": f"Error calling tool: {str(e)}"}
+                            
+                            self.add_tool_result_to_conversation(tool_name, parameters, error_result)
+                    else:
+                        print(f"[STEP {step_count + 1}] Error: Unknown tool '{tool_name}'")
+                        print(f"[STEP {step_count + 1}] Available tools: {[attr for attr in dir(self.ai_tools) if not attr.startswith('_')]}")
                         
-                        step_data = {
-                            "step": step_count + 1,
-                            "type": "tool_call",
-                            "reasoning": reasoning,
-                            "tool_name": tool_name,
-                            "parameters": parameters,
-                            "result": tool_result,
-                            "timestamp": time.time()
-                        }
-                        
-                        workflow_result["steps"].append(step_data)
-                        yield {"type": "step", "content": step_data}
-                        yield {"type": "tool_result", "content": f"Tool Result: {tool_result}"}
-                        
-                        self.add_tool_result_to_conversation(tool_name, parameters, tool_result)
-                        
-                    except Exception as e:
-                        error_result = {"success": False, "error": str(e)}
+                        error_result = {"success": False, "error": f"Unknown tool: {tool_name}"}
                         
                         step_data = {
                             "step": step_count + 1,
@@ -2909,45 +2967,45 @@ class SmartAgent:
                         
                         workflow_result["steps"].append(step_data)
                         yield {"type": "step", "content": step_data}
-                        yield {"type": "error", "content": f"Error calling tool: {str(e)}"}
+                        yield {"type": "error", "content": f"Unknown tool: {tool_name}"}
                         
                         self.add_tool_result_to_conversation(tool_name, parameters, error_result)
+                    
+                    step_count += 1
+                    print(f"[STEP {step_count}] Tool call step completed")
+                    
                 else:
-                    error_result = {"success": False, "error": f"Unknown tool: {tool_name}"}
+                    print(f"[WORKFLOW ERROR] Unknown action: {next_action.get('action', 'none')}")
+                    print(f"[WORKFLOW ERROR] Full action data: {next_action}")
                     
-                    step_data = {
-                        "step": step_count + 1,
-                        "type": "tool_call",
-                        "reasoning": reasoning,
-                        "tool_name": tool_name,
-                        "parameters": parameters,
-                        "result": error_result,
-                        "timestamp": time.time()
-                    }
+                    workflow_result["final_status"] = "failed"
+                    workflow_result["error"] = next_action.get("error", "Unknown error")
+                    workflow_result["end_time"] = time.time()
+                    workflow_result["duration"] = workflow_result["end_time"] - workflow_result["start_time"]
                     
-                    workflow_result["steps"].append(step_data)
-                    yield {"type": "step", "content": step_data}
-                    yield {"type": "error", "content": f"Unknown tool: {tool_name}"}
+                    print(f"[WORKFLOW ERROR] Duration before failure: {workflow_result['duration']:.2f} seconds")
                     
-                    self.add_tool_result_to_conversation(tool_name, parameters, error_result)
+                    yield {"type": "error", "content": workflow_result["error"]}
+                    break
+            
+            # Handle max steps reached
+            if step_count >= max_steps:
+                print(f"[WORKFLOW WARNING] Maximum steps ({max_steps}) reached")
+                print(f"[WORKFLOW WARNING] Workflow terminated due to step limit")
                 
-                step_count += 1
-                
-            else:
-                workflow_result["final_status"] = "failed"
-                workflow_result["error"] = next_action.get("error", "Unknown error")
+                workflow_result["final_status"] = "max_steps_reached"
                 workflow_result["end_time"] = time.time()
                 workflow_result["duration"] = workflow_result["end_time"] - workflow_result["start_time"]
-                yield {"type": "error", "content": workflow_result["error"]}
-                break
-        
-        # Handle max steps reached
-        if step_count >= max_steps:
-            workflow_result["final_status"] = "max_steps_reached"
-            workflow_result["end_time"] = time.time()
-            workflow_result["duration"] = workflow_result["end_time"] - workflow_result["start_time"]
-            yield {"type": "warning", "content": f"Workflow reached maximum steps ({max_steps})"}
-            yield {"type": "complete", "content": workflow_result}
+                
+                print(f"[WORKFLOW WARNING] Total duration: {workflow_result['duration']:.2f} seconds")
+                print(f"[WORKFLOW WARNING] Steps executed: {step_count}")
+                
+                yield {"type": "warning", "content": f"Workflow reached maximum steps ({max_steps})"}
+                yield {"type": "complete", "content": workflow_result}
+            
+            print(f"[WORKFLOW END] Final status: {workflow_result.get('final_status', 'unknown')}")
+            print(f"[WORKFLOW END] Total steps in result: {len(workflow_result.get('steps', []))}")
+            print("=" * 80)  # Separator line for better log readability
             
     def get_next_action(self):
         """Ask AI what to do next based on conversation history"""
