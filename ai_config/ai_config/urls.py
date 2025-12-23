@@ -32,6 +32,7 @@ urlpatterns = [
     path('', views.dashboard, name='index'),
     path('chat/', views.chatAI, name='chat'),
     path('chat2/', views.chatAI2, name='chat'),
+    path('get_suggestions/', views.get_ai_suggestions, name='get_suggestions'), # URL Baru
     # experimental testing
     path('api/chat/', views.chat_interface, name='chat interface'),
     path('api/react_chat_interface_lc/', views.react_chat_interface_lc, name='react_chat_interface_lc'),

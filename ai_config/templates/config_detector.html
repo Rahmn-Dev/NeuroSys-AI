@@ -42,8 +42,6 @@
     @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
     .fade-in { animation: fadeIn 0.5s ease-in; }
     @keyframes fadeIn { 0% { opacity: 0; transform: translateY(20px); } 100% { opacity: 1; transform: translateY(0); } }
-    .scan-header { background: var(--primary-gradient); color: white; border-radius: 20px 20px 0 0; padding: 20px; position: relative; overflow: hidden; padding: 20px; }
-    .scan-header::before { content: ''; position: absolute; top: -50%; right: -20px; width: 100px; height: 200%; background: rgba(255, 255, 255, 0.1); transform: rotate(15deg); }
     .success-state { background: var(--success-gradient); color: white; border-radius: 20px; padding: 40px; text-align: center; position: relative; overflow: hidden; }
     .success-state::before { content: '✨'; position: absolute; top: 20px; right: 20px; font-size: 2em; opacity: 0.3; animation: twinkle 2s infinite; }
     @keyframes twinkle { 0%, 100% { opacity: 0.3; transform: scale(1); } 50% { opacity: 0.8; transform: scale(1.2); } }
@@ -109,7 +107,7 @@
                                     </div>
 
                                     <div class="btn-group">
-                                        <button id="runScanBtn" type="button" class="btn btn-primary btn-lg pulse-animation" onclick="runNewScan('full', event)">
+                                        <button id="runScanBtn" type="button" class="btn btn-primary btn-lg " onclick="runNewScan('full', event)">
                                             <i class="fas fa-search me-2"></i>
                                             <span id="scanBtnText">Full Scan</span>
                                         </button>
@@ -170,7 +168,9 @@
                                 <div class="card-body p-4">
                                     <i class="fas fa-list-ul fa-2x mb-3 opacity-75"></i>
                                     <h1 id="total-issues-count" class="display-4 fw-bold mb-2">0</h1>
-                                    <p class="mb-0 opacity-75">Total Issues</p>
+                                    <p class="mb-0 opacity-75" style="
+                                    color: white;
+                                ">Total Issues</p>
                                 </div>
                             </div>
                         </div>
@@ -179,7 +179,9 @@
                                 <div class="card-body p-4">
                                     <i class="fas fa-exclamation-triangle fa-2x mb-3 opacity-75"></i>
                                     <h1 id="critical-count" class="display-4 fw-bold mb-2">0</h1>
-                                    <p class="mb-0 opacity-75">Critical Level</p>
+                                    <p class="mb-0 opacity-75" style="
+                                    color: white;
+                                ">Critical Level</p>
                                 </div>
                             </div>
                         </div>
@@ -188,7 +190,9 @@
                                 <div class="card-body p-4">
                                     <i class="fas fa-exclamation-circle fa-2x mb-3 opacity-75"></i>
                                     <h1 id="high-count" class="display-4 fw-bold mb-2">0</h1>
-                                    <p class="mb-0 opacity-75">High Severity</p>
+                                    <p class="mb-0 opacity-75" style="
+                                    color: white;
+                                ">High Severity</p>
                                 </div>
                             </div>
                         </div>
@@ -197,7 +201,9 @@
                                 <div class="card-body p-4">
                                     <i class="fas fa-magic fa-2x mb-3 opacity-75"></i>
                                     <h1 id="auto-fixable-count" class="display-4 fw-bold mb-2">0</h1>
-                                    <p class="mb-0 opacity-75">Auto-Fixable</p>
+                                    <p class="mb-0 opacity-75" style="
+                                    color: white;
+                                ">Auto-Fixable</p>
                                 </div>
                             </div>
                         </div>

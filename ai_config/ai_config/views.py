@@ -2468,14 +2468,16 @@ class MCPClient:
 
 
 class SafeCommandExecutor:
-    def __init__(self):
+    def __init__(self, sudo_password=None): 
+        # Simpan password ke instance variable
+        self.sudo_password = sudo_password
         # Whitelist of allowed commands
         self.allowed_commands = [
             'ls', 'cat', 'grep', 'find', 'wc', 'head', 'tail', 
             'ps', 'top', 'free', 'df', 'du', 'uptime', 'whoami',
             'pwd', 'which', 'file', 'stat', 'chmod', 'chown',
             'mkdir', 'rmdir', 'cp', 'mv', 'rsync', 'diff',
-            'tar', 'gzip', 'gunzip', 'zip', 'unzip'
+            'tar', 'gzip', 'gunzip', 'zip', 'unzip', 'systemctl', 'journalctl'
         ]
     
     def execute(self, command_json):
@@ -2497,58 +2499,97 @@ class SafeCommandExecutor:
             return {"error": str(e)}
     
     def execute_bash_command(self, command, context_memory=None):
-        """Execute complex bash commands with safety checks"""
+        """Execute complex bash commands with safety checks and Sudo injection"""
+        cwd_to_use = os.getcwd()
+
         current_dir = context_memory.get("current_directory") if context_memory else os.getcwd()
+        
+        if context_memory and "current_directory" in context_memory:
+            cwd_to_use = context_memory["current_directory"]
+
         # Blacklist dangerous commands
         dangerous_patterns = [
-            'rm -rf /', 'dd if=', 'mkfs', 'fdisk', 'parted',
-            'format', 'del /f', 'deltree', '> /dev/', 'chmod 777 /',
-            'chown root /', 'sudo su', 'su -', 'passwd'
+            'rm -rf /', 'mkfs', 'fdisk', 'parted', '> /dev/', ':(){ :|:& };:'
         ]
         
         if any(pattern in command.lower() for pattern in dangerous_patterns):
-            return {"error": "Dangerous command detected and blocked"}
-        
-        # Check if base command is allowed (for simple commands)
-        cmd_base = command.split()[0] if command.split() else ""
-        
-        # Allow complex commands with pipes, loops, etc.
-        complex_indicators = ['|', '&&', '||', ';', 'for', 'while', 'if']
-        is_complex = any(indicator in command for indicator in complex_indicators)
-        
-        # if not is_complex and cmd_base not in self.allowed_commands:
-        #     return {"error": f"Command '{cmd_base}' not in allowed list"}
+            return {"output": "", "error": "Dangerous command detected and blocked", "return_code": 1}
         
         try:
+            # Update 2: Logic Sudo yang Aman
+            final_command = command
+            input_feed = None
+
+            # Jika command butuh sudo (eksplisit ada kata 'sudo' ATAU kita punya password root)
+            if "sudo" in command or self.sudo_password:
+                if self.sudo_password:
+                    # Hapus kata 'sudo' manual user jika ada, kita handle via pipe
+                    clean_cmd = command.replace("sudo", "").strip()
+                    # Gunakan sudo -S untuk baca password dari stdin
+                    final_command = f"sudo -S -p '' {clean_cmd}" 
+                    input_feed = f"{self.sudo_password}\n"
+                elif "sudo" in command and not self.sudo_password:
+                    return {"output": "", "error": "Command requires sudo but no password provided.", "return_code": 1}
+
+            # Eksekusi
             result = subprocess.run(
-                ['sudo', '-u', 'sysai', 'bash', '-c', command],
+                final_command,
+                shell=True,
                 capture_output=True,
                 text=True,
+                input=input_feed, # Inject password disini
                 timeout=30,
-                cwd=current_dir  # Execute in current directory
+                cwd=cwd_to_use
             )
             
+            # Bersihkan pesan error standar sudo
+            err_msg = result.stderr
+            if "incorrect password" in err_msg.lower():
+                 err_msg = "Sudo password incorrect."
+
             return {
                 "output": result.stdout,
-                "error": result.stderr,
+                "error": err_msg,
                 "return_code": result.returncode,
                 "command": command
             }
             
         except subprocess.TimeoutExpired:
-            return {"error": "Command timeout (30s)"}
+            return {"output": "", "error": "Command timeout (30s)", "return_code": 124}
         except Exception as e:
-            return {"error": str(e)}
+            return {"output": "", "error": str(e), "return_code": 1}
 
 
 class SmartAgent:
-    def __init__(self):
+    def __init__(self, sudo_password=None):
         self.mcp_client = MCPClient()
-        self.executor = SafeCommandExecutor()
+        # Teruskan password ke executor
+        self.executor = SafeCommandExecutor(sudo_password=sudo_password)
         self.ai_tools = AITools()
         self.conversation_history = []
         self.current_goal = None
         self.context_memory = {}
+        try:
+            # Jalankan pwd & whoami di awal agar context tidak kosong
+            pwd_res = self.executor.execute_bash_command("pwd")
+            who_res = self.executor.execute_bash_command("whoami")
+            self.context_memory["current_directory"] = pwd_res.get("output", "").strip()
+            self.context_memory["current_user"] = who_res.get("output", "").strip()
+        except:
+            pass
+    
+    def get_initial_plan(self, user_query):
+        """
+        Digunakan untuk Human-in-the-Loop.
+        Hanya meminta AI menentukan langkah pertama TANPA eksekusi.
+        """
+        self.current_goal = user_query
+        self.conversation_history = [{"role": "user", "content": user_query}]
+        
+        # Minta keputusan AI
+        next_action = self.get_next_action()
+        
+        return next_action # Return JSON murni (execute/tool_call/complete)
         
         # Set OpenAI API key
         
@@ -2886,8 +2927,18 @@ class SmartAgent:
                     yield {"type": "result", "content": f"Result: {execution_result.get('output', 'No output')[:100]}..."}
                     
                     self.add_execution_result_to_conversation(command, execution_result)
+                    yield {
+                        "type": "context_update", 
+                        "content": {
+                            "cwd": self.context_memory.get("current_directory", "/unknown"),
+                            "user": self.context_memory.get("current_user", "unknown"),
+                            "last_status": execution_result.get("return_code", 0),
+                            "memory": self.context_memory 
+                        }
+                    }
                     step_count += 1
                     print(f"[STEP {step_count}] Bash command step completed")
+                    
                     
                 elif next_action.get("action") == "tool_call":
                     tool_name = next_action.get("tool_name")
@@ -2926,6 +2977,15 @@ class SmartAgent:
                             yield {"type": "tool_result", "content": f"Tool Result: {tool_result}"}
                             
                             self.add_tool_result_to_conversation(tool_name, parameters, tool_result)
+                            yield {
+                                "type": "context_update", 
+                                "content": {
+                                    "cwd": self.context_memory.get("current_directory", "/unknown"),
+                                    "user": self.context_memory.get("current_user", "unknown"),
+                                    "last_status": 0 if tool_result.get('success', True) else 1, # Asumsi tool result punya key success
+                                    "memory": self.context_memory 
+                                }
+                            }
                             print(f"[STEP {step_count + 1}] Tool result added to conversation")
                             
                         except Exception as e:
@@ -2949,6 +3009,15 @@ class SmartAgent:
                             yield {"type": "error", "content": f"Error calling tool: {str(e)}"}
                             
                             self.add_tool_result_to_conversation(tool_name, parameters, error_result)
+                            yield {
+                                "type": "context_update", 
+                                "content": {
+                                    "cwd": self.context_memory.get("current_directory", "/unknown"),
+                                    "user": self.context_memory.get("current_user", "unknown"),
+                                    "last_status": 1, # Error code
+                                    "memory": self.context_memory 
+                                }
+                            }
                     else:
                         print(f"[STEP {step_count + 1}] Error: Unknown tool '{tool_name}'")
                         print(f"[STEP {step_count + 1}] Available tools: {[attr for attr in dir(self.ai_tools) if not attr.startswith('_')]}")
@@ -3073,13 +3142,54 @@ class SmartAgent:
             return {"action": "fail", "error": str(e)}
     
     def execute_with_context(self, command):
-        """Execute command with current context"""
-        if command.startswith("cd"):
-            # Execute 'cd' and update current directory
-            result = self.executor.execute_bash_command(command, context_memory=self.context_memory)
-            self.update_context_memory(command, result)
-            return result
+        current_dir = self.context_memory.get("current_directory", os.getcwd())
+
+        if command.strip().startswith("cd"):
+            try:
+                parts = command.strip().split(maxsplit=1)
+                
+                # 1. Tentukan target path
+                if len(parts) < 2:
+                    # Kasus: user cuma ketik "cd" (biasanya ke home user)
+                    target_path = os.path.expanduser("~")
+                else:
+                    target_path = parts[1]
+
+                # 2. Ambil direktori saat ini dari memory
+                current_dir = self.context_memory.get("current_directory", os.getcwd())
+                
+                # 3. Resolve Path (Gabungkan current + target)
+                # Ini menghandle path relative (..) dan absolute (/)
+                if os.path.isabs(target_path):
+                    new_dir = os.path.abspath(target_path)
+                else:
+                    new_dir = os.path.abspath(os.path.join(current_dir, target_path))
+                
+                # 4. Cek apakah direktori valid?
+                if os.path.isdir(new_dir):
+                    # UPDATE MEMORY! Ini kuncinya agar Panel Kanan berubah
+                    self.context_memory["current_directory"] = new_dir
+                    
+                    # Return success palsu agar tercatat berhasil
+                    return {
+                        "output": f"Successfully changed directory to {new_dir}",
+                        "error": "",
+                        "return_code": 0,
+                        "success": True
+                    }
+                else:
+                    return {
+                        "output": "",
+                        "error": f"Directory not found: {new_dir}",
+                        "return_code": 1,
+                        "success": False
+                    }
+            except Exception as e:
+                return {"output": "", "error": str(e), "return_code": 1, "success": False}
+
         else:
+            # Kirim 'current_dir' yang sudah diupdate ke executor
+            # Executor akan menjalankan perintah DI DALAM folder tersebut
             return self.executor.execute_bash_command(command, context_memory=self.context_memory)
         
     # def add_execution_result_to_conversation(self, command, result):
@@ -4149,3 +4259,43 @@ def detect_view(request):
             return JsonResponse({"error": str(e)}, status=500)
 
     return JsonResponse({"error": "Invalid method"}, status=405)
+
+@csrf_exempt
+def get_ai_suggestions(request):
+    """
+    Meminta AI memberikan 3 saran task dalam format JSON Object:
+    - title: Judul pendek untuk Kartu (misal: "Cek RAM")
+    - prompt: Perintah lengkap untuk dikirim ke Chat (misal: "Tolong cek penggunaan RAM")
+    - icon: (Opsional) Icon class bootstrap
+    """
+    try:
+        client = Mistral(api_key=MISTRAL_API_KEY)
+
+        # Prompt khusus agar outputnya JSON struktur
+        system_instruction = (
+            "Berikan 3 saran perintah Linux untuk maintenance server dalam format JSON Array murni. "
+            "Setiap item harus punya key: 'title' (maks 3 kata), 'prompt' (perintah lengkap), dan 'icon' (nama class bootstrap icon, misal 'bi-hdd'). "
+            "Contoh: [{\"title\": \"Cek Disk\", \"prompt\": \"Cek sisa kapasitas disk df -h\", \"icon\": \"bi-hdd\"}]"
+        )
+
+        chat_response = client.chat.complete(
+            model="mistral-tiny",
+            messages=[{"role": "user", "content": system_instruction}],
+            temperature=0.3,
+        )
+        
+        # Bersihkan response jika ada markdown ```json
+        raw_content = chat_response.choices[0].message.content
+        clean_json = raw_content.replace("```json", "").replace("```", "").strip()
+        
+        ai_suggestions = json.loads(clean_json)
+        return JsonResponse({"suggestions": ai_suggestions, "status": "success"})
+
+    except Exception as e:
+        # Fallback jika API Error/Limit Habis (Biar tampilan gak rusak)
+        fallback = [
+            {"title": "System Health", "prompt": "Cek status kesehatan sistem server (htop/free)", "icon": "bi-activity"},
+            {"title": "Network Scan", "prompt": "Scan port yang terbuka di localhost", "icon": "bi-router"},
+            {"title": "Disk Usage", "prompt": "Tampilkan penggunaan disk space (df -h)", "icon": "bi-hdd-network"}
+        ]
+        return JsonResponse({"suggestions": fallback, "status": "success"}) #

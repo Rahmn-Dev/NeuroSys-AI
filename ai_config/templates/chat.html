@@ -4,8 +4,177 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="[https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap](https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap)" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
 
+<link href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css">
 <style>
+    body {
+        font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+
+    /* --- CONTROL PANEL (New) --- */
+    .control-panel {
+        background: rgba(255, 255, 255, 0.9);
+        border: 1px solid rgba(226, 232, 240, 0.8);
+        border-radius: 16px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        flex-wrap: wrap;
+    }
+
+    .sudo-input-group {
+        flex: 1;
+        min-width: 250px;
+        position: relative;
+    }
+
+    .sudo-input-group input {
+        padding-left: 40px;
+        border-radius: 10px;
+        border: 1px solid #e2e8f0;
+        height: 45px;
+        font-size: 14px;
+        background: #f8fafc;
+    }
+
+    .sudo-input-group i {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #64748b;
+        z-index: 10;
+    }
+
+    .mode-toggle-group {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: #f1f5f9;
+        padding: 8px 15px;
+        border-radius: 12px;
+        transition: all 0.3s ease;
+    }
+
+    .mode-toggle-group.active-mode {
+        background: #fee2e2; /* Red tint for auto mode */
+        border: 1px solid #fecaca;
+    }
+
+    .form-check-input:checked {
+        background-color: #ef4444;
+        border-color: #ef4444;
+    }
+
+    #recommendation-area {
+        margin: 20px 0;
+        padding: 0 10px;
+    }
+
+    .ai-card-wrapper {
+        padding: 10px;
+    }
+
+    .card-suggestion {
+        background: rgba(255, 255, 255, 0.8);
+        border: 1px solid rgba(0, 0, 0, 0.05);
+        border-radius: 16px;
+        padding: 20px;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        height: 100%;
+        backdrop-filter: blur(10px); /* Efek Kaca */
+    }
+
+    /* Gradient Border effect saat Hover */
+    .card-suggestion::before {
+        content: "";
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        border-radius: 16px;
+        padding: 2px;
+        background: linear-gradient(45deg, #007bff, #00d4ff);
+        -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    }
+
+    .card-suggestion:hover {
+        transform: translateY(-5px) scale(1.02);
+        box-shadow: 0 15px 30px rgba(0, 123, 255, 0.15);
+        background: #fff;
+    }
+
+    .card-suggestion:hover::before {
+        opacity: 1; /* Munculkan border pelangi/biru saat hover */
+    }
+
+    /* Icon Box */
+    .suggestion-icon-box {
+        width: 50px;
+        height: 50px;
+        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+        color: #007bff;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        transition: transform 0.3s ease;
+    }
+
+    .card-suggestion:hover .suggestion-icon-box {
+        transform: rotate(15deg);
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+    }
+
+    .suggestion-content {
+        flex: 1;
+    }
+
+    .suggestion-content h6 {
+        font-weight: 700;
+        margin: 0;
+        color: #333;
+        font-family: 'Inter', sans-serif;
+        font-size: 15px;
+    }
+
+    .suggestion-content span {
+        font-size: 12px;
+        color: #777;
+    }
+
+    /* Panah kecil di kanan */
+    .arrow-indicator {
+        opacity: 0;
+        transform: translateX(-10px);
+        transition: all 0.3s ease;
+        color: #007bff;
+    }
+
+    .card-suggestion:hover .arrow-indicator {
+        opacity: 1;
+        transform: translateX(0);
+    }
+
     .modal-overlay {
     position: fixed;
     top: 0;
@@ -91,6 +260,18 @@
     font-size: 13px;
 }
 
+.status-indicator {
+       width: 12px;
+       height: 12px;
+       border-radius: 50%;
+       display: inline-block;
+       margin-right: 8px;
+       border: 2px solid white;
+       box-shadow: 0 0 5px rgba(0,0,0,0.2);
+       transition: background-color 0.3s ease;
+   }
+   .status-connected { background-color: #48bb78; } /* Hijau */
+   .status-disconnected { background-color: #f56565; } /* Merah */
 
 </style>
 
@@ -103,10 +284,36 @@
         <div class="rbt-dashboard-content">
             <div class="content-page">
                 <!-- <div id="terminal"></div> -->
+                <div class="control-panel">
+                    <div class="sudo-input-group">
+                        <i class="bi bi-lock-fill"></i>
+                        <input type="password" id="sudo-input" class="form-control" placeholder="Root/Sudo Password (for Auto-Execution)">
+                    </div>
+                    
+                    <div class="mode-toggle-group" id="toggle-container">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="auto-execute-toggle" style="cursor: pointer; width: 40px; height: 20px;">
+                        </div>
+                        <div style="line-height: 1.2;">
+                            <span id="mode-title" style="font-weight: 700; font-size: 14px; color: #475569;">Human Verification</span><br>
+                            <small id="mode-desc" style="font-size: 11px; color: #64748b;">Aman: Tanya sebelum eksekusi</small>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="chat-box-list pt--30" id="bashContainer">
                     <div class="placeholder-content">
-                        <img src="/static/images/handai.png" alt="AI Generating Artworks">
+                        <img src="/static/images/handai.png" alt="AI Generating Artworks" style="max-width: 250px;">
                         <p class="placeholder-text">Ready to receive commands...</p>
+                    </div>
+                </div>
+                <div id="recommendation-area" class="mt-4 mb-5">
+                    <p class="mb-3 text-muted" style="font-weight:600; padding-left:5px;">✨ AI Suggested Actions:</p>
+                    <div class="row" id="suggestion-cards-container">
+                        <div class="col-12 text-center py-4">
+                            <div class="spinner-border text-primary" role="status"></div>
+                            <span class="ms-2 text-muted">Analyzing system context...</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -131,9 +338,64 @@
             </div>
         </div>
         <div class="rbt-right-side-panel popup-dashboardright-section" style="top: 60px;">
+            <div class="navbar-text" style="display: flex;align-items: center;justify-content: center;">
+                <span class="status-indicator" id="connectionStatus"></span>
+                <span id="connectionText" style="color: #4a5568; font-weight: 500;">Connecting...</span>
+            </div>
             <div class="right-side-top">
-                <div class="card-header" style="border-top-left-radius: 10px;border-top-right-radius: 10px;background: linear-gradient(90deg, rgb(18, 181, 222) -30%, rgb(48, 123, 195) 30%, rgb(59, 186, 255) 90%);color: white;">Response Chat</div>
-                <div class="card-body" id="chat-history" style="max-height: 300px; overflow-y: auto; background: white;">
+                <div class="card-header" style="border-top-left-radius: 10px; border-top-right-radius: 10px; background: #0f172a; color: #38bdf8; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155;">
+                    <span style="font-family: 'Fira Code', monospace; font-size: 14px;">
+                        <i class="bi bi-terminal-split me-2"></i>AI WORKSPACE STATE
+                    </span>
+                    <span class="badge bg-primary" style="font-size: 10px;">ACTIVE</span>
+                </div>
+            
+                <div class="card-body" style="background: #1e293b; padding: 15px; max-height: 300px; overflow-y: auto; color: #cbd5e1;">
+                    
+                    <div class="mb-3">
+                        <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; font-weight: bold;">Current Directory</label>
+                        <div class="d-flex align-items-center mt-1 p-2 rounded" style="background: #0f172a; border: 1px solid #334155;">
+                            <i class="bi bi-folder2-open me-2 text-warning"></i>
+                            <span id="ctx-cwd" style="font-family: 'Fira Code', monospace; font-size: 13px; color: #fbbf24;">/home/user</span>
+                        </div>
+                    </div>
+            
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <div class="p-2 rounded text-center" style="background: #0f172a; border: 1px solid #334155;">
+                                <div style="font-size: 10px; color: #64748b;">USER</div>
+                                <div id="ctx-user" style="font-family: 'Fira Code', monospace; font-weight: bold; color: #a5b4fc;">root</div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="p-2 rounded text-center" style="background: #0f172a; border: 1px solid #334155;">
+                                <div style="font-size: 10px; color: #64748b;">LAST STATUS</div>
+                                <div id="ctx-status" style="font-family: 'Fira Code', monospace; font-weight: bold; color: #4ade80;">0 (Success)</div>
+                            </div>
+                        </div>
+                    </div>
+            
+                    <div class="mb-3">
+                        <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; font-weight: bold;">
+                            <i class="bi bi-memory me-1"></i> Context Memory
+                        </label>
+                        <div id="ctx-memory-list" class="mt-1 d-flex flex-column gap-2">
+                            <div class="memory-item p-2 rounded" style="background: rgba(56, 189, 248, 0.1); border-left: 3px solid #38bdf8; font-size: 12px;">
+                                <span class="d-block text-info" style="font-size: 10px;">LAST_ACTION</span>
+                                <span style="font-family: 'Fira Code';">analyzing_disk</span>
+                            </div>
+                        </div>
+                    </div>
+            
+                    <div class="d-grid gap-2">
+                        <button onclick="sendQuickCommand('clear')" class="btn btn-sm btn-outline-secondary" style="font-size: 11px; text-align: left;">
+                            <i class="bi bi-eraser me-2"></i>Clear Terminal View
+                        </button>
+                        <button onclick="sendQuickCommand('ls -la')" class="btn btn-sm btn-outline-secondary" style="font-size: 11px; text-align: left;">
+                            <i class="bi bi-list-ul me-2"></i>List Files (ls -la)
+                        </button>
+                    </div>
+            
                 </div>
             </div>
             <div class="right-side-bottom">
@@ -194,7 +456,38 @@ function createWorkflowCard(iconClass, title, content, logType, ) {
     const workflowSteps = document.getElementById('workflow-steps');
     const statusButton = document.getElementById('status-final');
 
+    const statusIndicator = document.getElementById('connectionStatus');
+    const statusText = document.getElementById('connectionText');
+    const toggleBtn = document.getElementById('auto-execute-toggle');
+    const sudoInput = document.getElementById('sudo-input');
+
     let ws;
+
+    // --- 1. LOGIC SAKLAR (TOGGLE) ---
+    toggleBtn.addEventListener('change', function() {
+        const container = document.getElementById('toggle-container');
+        const title = document.getElementById('mode-title');
+        const desc = document.getElementById('mode-desc');
+
+        if(this.checked) {
+            // Mode Auto (Danger)
+            container.classList.add('active-mode');
+            title.innerHTML = "⚡ Auto Execute";
+            title.style.color = "#dc2626"; // Merah
+            desc.innerHTML = "Warning: Perintah langsung dijalankan!";
+        } else {
+            // Mode Safe (Human in Loop)
+            container.classList.remove('active-mode');
+            title.innerHTML = "🛡️ Human Verification";
+            title.style.color = "#475569"; // Abu-abu
+            desc.innerHTML = "Aman: Konfirmasi sebelum eksekusi";
+        }
+    });
+    function sendQuickCommand(cmd) {
+            const chatInput = document.getElementById('chat-input');
+            chatInput.value = cmd;
+            sendMessage();
+        }
 
     async function connectWebSocket() {
         // Ganti dengan URL WebSocket kamu
@@ -217,7 +510,9 @@ function createWorkflowCard(iconClass, title, content, logType, ) {
 
         ws.onopen = () => {
             console.log("WebSocket connected");
+            updateConnectionStatus(true);
         };
+       
 
         ws.onmessage = async function(event) {
             const data = JSON.parse(event.data);
@@ -246,7 +541,7 @@ function createWorkflowCard(iconClass, title, content, logType, ) {
                     break;
 
                 case "step":
-                    // Render kartu final untuk langkah yang selesai (tidak pakai efek ketik)
+                    // Render kartu final
                     const step = data.content;
                     const resultCard = document.createElement("div");
                     resultCard.className = "workflow-card workflow-step-final log-complete";
@@ -263,8 +558,6 @@ function createWorkflowCard(iconClass, title, content, logType, ) {
                     `;
                     workflowSteps.appendChild(resultCard);
                     workflowSteps.scrollTop = workflowSteps.scrollHeight;
-
-                    // Update container bash terpisah
                     displayBashOutput(step.result.output, step.result.error, step.command);
                     break;
 
@@ -280,6 +573,43 @@ function createWorkflowCard(iconClass, title, content, logType, ) {
                     updateFinalStatus("Failed", "danger");
                     break;
 
+                // --- TAMBAHKAN BAGIAN INI ---
+                case "context_update":
+                    updateWorkspacePanel(data.content);
+                    break;
+                case "confirmation_request":
+                    // Tampilkan Bubble khusus dengan tombol Konfirmasi
+                    const div = document.createElement("div");
+                    div.className = "chat-bubble ai-bubble";
+                    div.style.border = "1px solid #f59e0b"; 
+                    div.style.backgroundColor = "#fffbeb";
+                    
+                    // Escape single quotes pada command agar tidak merusak fungsi onclick
+                    const safeCommand = data.command.replace(/'/g, "\\'");
+
+                    div.innerHTML = `
+                        <div style="font-weight:bold; color:#b45309; margin-bottom:5px;">
+                            <i class="bi bi-shield-lock"></i> Approval Needed
+                        </div>
+                        <p>${data.reasoning}</p>
+                        <code style="display:block; background:#1e293b; color:#10b981; padding:8px; border-radius:4px; margin:5px 0;">
+                            ${data.command}
+                        </code>
+                        <div style="margin-top:10px; display:flex; gap:10px;">
+                            <button onclick="confirmExecution('${safeCommand}')" class="btn btn-sm btn-success">
+                                <i class="bi bi-check-lg"></i> Execute
+                            </button>
+                            <button onclick="cancelExecution(this)" class="btn btn-sm btn-secondary">
+                                <i class="bi bi-x-lg"></i> Cancel
+                            </button>
+                        </div>
+                    `;
+                    
+                    bashContainer.appendChild(div);
+                    window.scrollTo(0, document.body.scrollHeight);
+                    break;
+                // --- AKHIR TAMBAHAN ---
+
                 default:
                     console.log("Unhandled message type:", data.type);
                     createWorkflowCard('bi bi-question-circle', 'Unknown Event', JSON.stringify(data), 'status');
@@ -288,11 +618,26 @@ function createWorkflowCard(iconClass, title, content, logType, ) {
 
         ws.onclose = () => {
             console.log("WebSocket disconnected, reconnecting...");
+            updateConnectionStatus(false);
             setTimeout(connectWebSocket, 3000); // reconnect otomatis
         };
     }
 
     connectWebSocket(); // Hubungkan saat halaman dimuat
+    loadAiSuggestions();
+    function updateConnectionStatus(isConnected) {
+        const indicator = document.getElementById('connectionStatus');
+        const text = document.getElementById('connectionText');
+        if (indicator && text) {
+            if (isConnected) {
+                indicator.className = 'status-indicator status-connected';
+                text.textContent = 'Connected';
+            } else {
+                indicator.className = 'status-indicator status-disconnected';
+                text.textContent = 'Disconnected';
+            }
+        }
+    }
     function addWorkflowLog(htmlContent, typeClass = '') {
         const entry = document.createElement("div");
         // Menambahkan kelas untuk styling opsional
@@ -302,27 +647,153 @@ function createWorkflowCard(iconClass, title, content, logType, ) {
         workflowSteps.scrollTop = workflowSteps.scrollHeight; // Auto-scroll
     }
     function sendMessage() {
-        const message = chatInput.value.trim();
-        if (!message || !ws || ws.readyState !== WebSocket.OPEN) return;
+        const rawMessage = chatInput.value; 
+        const message = rawMessage.trim(); // Hapus spasi di awal/akhir
 
-        // Tambahkan chat user
+        // 1. Cek Validasi Ketat: Jika kosong, BERHENTI DI SINI.
+        if (message === "") {
+            // Opsional: Jika input hanya spasi/enter, bersihkan sekalian biar rapi
+            if (rawMessage.length > 0) chatInput.value = ""; 
+            return; 
+        }
+
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            console.error("WebSocket belum terkoneksi.");
+            return;
+        }
+
+        // Tampilkan bubble user
         addChatBubble(message, "user");
 
-        // Kirim ke WebSocket
-        ws.send(JSON.stringify({ message: message }));
+        // --- AMBIL DATA SAKLAR & PASSWORD ---
+        const isAutoMode = toggleBtn.checked;
+        const rawPassword = sudoInput.value;
+        const encodedPassword = rawPassword ? btoa(rawPassword) : "";
 
-        // Reset input
+        // Buat Payload JSON
+        const payload = {
+            message: message,
+            config: {
+                auto_execute: isAutoMode,
+                sudo_pass: encodedPassword
+            }
+        };
+
+        console.log("Sending Payload:", payload);
+        ws.send(JSON.stringify(payload));
+
+        // Reset input chat
         chatInput.value = "";
-        chatInput.focus();
+        
+        // Kembalikan tinggi textarea ke semula (jika textarea auto-expand)
+        chatInput.style.height = 'auto'; 
+
+        // Sembunyikan placeholder gambar jika ada chat
+        const placeholder = document.querySelector('.placeholder-content');
+        if(placeholder) placeholder.style.display = 'none';
+    }
+    // --- 4. HANDLE INCOMING MESSAGES ---
+    function handleWsMessage(data) {
+        // Handle berbagai tipe pesan dari backend
+        switch (data.type) {
+            case "status":
+            case "step_info":
+                createWorkflowCard('bi bi-info-circle', 'Info', data.content, 'status');
+                break;
+            
+            case "decision":
+            case "reasoning":
+                const text = data.content.replace("AI Decision: ", "");
+                createWorkflowCard('bi bi-cpu', 'AI Reasoning', text, 'decision');
+                break;
+
+            case "command": // Backend memberitahu command apa yg akan/sedang dijalankan
+                const cmd = data.content.replace("Executing bash command: ", "");
+                createWorkflowCard('bi bi-terminal', 'Executing', cmd, 'command');
+                break;
+
+            case "output": // Output dari terminal
+            case "step": // Step result
+                let outputText = data.content;
+                // Jika formatnya object step
+                if (typeof data.content === 'object') {
+                     outputText = data.content.result?.output || "Done.";
+                }
+                
+                // Tampilkan di Log Kanan
+                createWorkflowCard('bi bi-check-circle', 'Result', `<pre>${outputText}</pre>`, 'complete');
+                
+                // Tampilkan juga di Chat Utama sebagai bubble AI
+                addChatBubble(`Output:\n${outputText}`, "ai");
+                break;
+
+            case "error":
+                createWorkflowCard('bi bi-x-circle', 'Error', data.content, 'error');
+                addChatBubble(`Error: ${data.content}`, "ai");
+                break;
+                
+            case "confirmation_request": 
+                // KASUS: Human in the loop aktif (Saklar OFF)
+                // Backend minta konfirmasi sebelum eksekusi
+                // Tampilkan tombol YES/NO di chat bubble
+                showConfirmationBubble(data.command);
+                break;
+
+            default:
+                // Jika tipe lain (misal chat biasa)
+                if(data.content) {
+                   // addChatBubble(data.content, "ai");
+                }
+
+            case "confirmation_request":
+                    // 1. Tampilkan Bubble khusus dengan tombol
+                    const chatBox = document.getElementById("bashContainer"); // Sesuaikan ID container chat
+                    const div = document.createElement("div");
+                    div.className = "chat-bubble ai-bubble";
+                    div.style.border = "1px solid #f59e0b"; // Warna kuning warning
+                    div.style.backgroundColor = "#fffbeb";
+                    
+                    div.innerHTML = `
+                        <div style="font-weight:bold; color:#b45309; margin-bottom:5px;">
+                            <i class="bi bi-shield-lock"></i> Approval Needed
+                        </div>
+                        <p>${data.reasoning}</p>
+                        <code style="display:block; background:#1e293b; color:#10b981; padding:8px; border-radius:4px; margin:5px 0;">
+                            ${data.command}
+                        </code>
+                        <div style="margin-top:10px; display:flex; gap:10px;">
+                            <button onclick="confirmExecution('${data.command.replace(/'/g, "\\'")}')" class="btn btn-sm btn-success">
+                                <i class="bi bi-check-lg"></i> Execute
+                            </button>
+                            <button onclick="cancelExecution(this)" class="btn btn-sm btn-secondary">
+                                <i class="bi bi-x-lg"></i> Cancel
+                            </button>
+                        </div>
+                    `;
+                    
+                    chatBox.appendChild(div);
+                    window.scrollTo(0, document.body.scrollHeight);
+                    break;
+        }
     }
 
     function addChatBubble(text, sender) {
         const div = document.createElement("div");
-        div.className = `chat-box bg-flashlight ${sender === "user" ? "author-speech" : "ai-speech"}`;
-        div.innerHTML = `<span class="rainbow-badge-card">${sender === "user" ? "You" : "AI"}</span> <p>${text}</p>`;
-        chatHistory.appendChild(div);
-        chatHistory.scrollTop = chatHistory.scrollHeight;
+        div.className = `chat-bubble ${sender === "user" ? "user-bubble" : "ai-bubble"}`;
+        
+        // Jika text berisi kode, format dengan pre/code
+        if(text.includes('\n') || text.length > 50) {
+            div.innerHTML = `<pre style="background:transparent; padding:0; margin:0; white-space: pre-wrap; font-family:inherit;">${text}</pre>`;
+        } else {
+            div.textContent = text;
+        }
+
+        bashContainer.appendChild(div);
+        
+        // Auto scroll ke bawah (tapi scroll halaman, bukan container karena container chat-box-list flow document)
+        window.scrollTo(0, document.body.scrollHeight);
     }
+    
 
     function displayBashOutput(stdout, stderr, command = "") {
         const pre = document.createElement("pre");
@@ -360,8 +831,145 @@ function createWorkflowCard(iconClass, title, content, logType, ) {
 
     // Event listeners
     sendButton.addEventListener("click", sendMessage);
-    chatInput.addEventListener("keypress", e => {
-        if (e.key === "Enter") sendMessage();
+    chatInput.addEventListener("keydown", e => { // Gunakan keydown agar lebih responsif menangkap Enter
+        if (e.key === "Enter" && !e.shiftKey) { 
+            // Jika Enter ditekan TANPA Shift
+            e.preventDefault(); // <--- INI KUNCINYA: Mencegah enter membuat baris baru di textarea
+            sendMessage();
+        }
     });
+   
+    function loadAiSuggestions() {
+        const container = document.getElementById("suggestion-cards-container");
+        
+        // Tampilkan loading skeleton/spinner
+        container.innerHTML = '<div class="col-12 text-center py-4"><div class="spinner-border text-primary" role="status"></div><p class="mt-2 text-muted">Asking AI for maintenance tips...</p></div>';
+
+        fetch('/get_suggestions/') 
+            .then(response => response.json())
+            .then(data => {
+                container.innerHTML = ""; // Bersihkan loading
+
+                if (data.suggestions && data.suggestions.length > 0) {
+                    data.suggestions.forEach(item => {
+                        // Pastikan icon ada defaultnya kalau null
+                        let iconClass = item.icon || "bi-terminal-fill";
+                        // Bersihkan string agar aman masuk fungsi onClick
+                        let safePrompt = item.prompt.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+
+                        // HTML KARTU KEREN
+                        let cardHTML = `
+                            <div class="col-lg-4 col-md-6 col-sm-12 ai-card-wrapper">
+                                <div class="card-suggestion" onclick="triggerTask('${safePrompt}')">
+                                    <div class="suggestion-icon-box">
+                                        <i class="bi ${iconClass}"></i>
+                                    </div>
+                                    <div class="suggestion-content">
+                                        <h6>${item.title}</h6>
+                                        <span>Click to run workflow</span>
+                                    </div>
+                                    <div class="arrow-indicator">
+                                        <i class="bi bi-arrow-right-short" style="font-size: 24px;"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                        container.innerHTML += cardHTML;
+                    });
+                } else {
+                    container.innerHTML = `<div class="col-12 text-center text-muted">Tidak ada rekomendasi saat ini.</div>`;
+                }
+            })
+            .catch(err => {
+                console.error("Error loading suggestions:", err);
+                container.innerHTML = `<div class="col-12 text-center text-danger"><i class="bi bi-exclamation-triangle"></i> Gagal memuat saran AI.</div>`;
+            });
+    }
+
+    // 2. Fungsi Trigger saat Kartu diklik
+    function triggerTask(promptText) {
+        const chatInput = document.getElementById('chat-input');
+        
+        // Efek visual: Isi input box & Scroll ke bawah
+        chatInput.value = promptText;
+        chatInput.focus();
+        
+        // Opsional: Delay sedikit biar user lihat teksnya masuk, baru kirim
+        // setTimeout(() => { sendMessage(); }, 300); 
+        
+        // ATAU Langsung kirim:
+        sendMessage();
+    }
+
+    function confirmExecution(command) {
+        // Saat user klik "Execute", kita kirim pesan lagi ke WebSocket
+        // TAPI kali ini kita paksa config: { auto_execute: true }
+        // agar backend langsung masuk ke blok eksekusi.
+        
+        // Ambil password dari input box (jika ada)
+        const rawPass = document.getElementById("sudo-input").value;
+        const encodedPass = rawPass ? btoa(rawPass) : "";
+
+        const payload = {
+            message: "Execute: " + command, // Pesan dummy agar log terbaca
+            config: {
+                auto_execute: true, // FORCE AUTO KARENA SUDAH DIKONFIRMASI
+                sudo_pass: encodedPass
+            }
+        };
+        
+        // Kirim
+        ws.send(JSON.stringify(payload));
+        
+        // Opsional: Hapus tombol agar tidak diklik 2x
+        // (Bisa tambahkan logika DOM remove di sini)
+    }
+
+    function cancelExecution(btnElement) {
+        // Hapus parent div atau ganti text jadi "Cancelled"
+        const bubble = btnElement.closest('.chat-bubble');
+        bubble.innerHTML = "<i class='text-muted'>Action cancelled by user.</i>";
+    }
+
+    function updateWorkspacePanel(ctx) {
+        // Update CWD
+        if(ctx.cwd) document.getElementById('ctx-cwd').textContent = ctx.cwd;
+        
+        // Update User
+        if(ctx.user) document.getElementById('ctx-user').textContent = ctx.user;
+        
+        // Update Status Color
+        const statusEl = document.getElementById('ctx-status');
+        if(ctx.last_status === 0) {
+            statusEl.textContent = "0 (Success)";
+            statusEl.style.color = "#4ade80"; // Hijau
+        } else {
+            statusEl.textContent = `${ctx.last_status} (Error)`;
+            statusEl.style.color = "#f87171"; // Merah
+        }
+
+        // Update Memory List (Key-Value yang dipelajari AI)
+        const memList = document.getElementById('ctx-memory-list');
+        memList.innerHTML = ""; // Clear list
+
+        // Loop through memory object
+        for (const [key, value] of Object.entries(ctx.memory)) {
+            // Skip key cwd/user karena sudah ada display khususnya
+            if(key === 'current_directory' || key === 'current_user') continue;
+
+            // Potong value kalau kepanjangan
+            let displayVal = typeof value === 'object' ? JSON.stringify(value) : value.toString();
+            if(displayVal.length > 30) displayVal = displayVal.substring(0, 30) + "...";
+
+            const item = document.createElement('div');
+            item.className = "memory-item p-2 rounded mb-1";
+            item.style.cssText = "background: rgba(56, 189, 248, 0.1); border-left: 3px solid #38bdf8; font-size: 12px;";
+            item.innerHTML = `
+                <span class="d-block text-info" style="font-size: 10px; text-transform:uppercase;">${key.replace(/_/g, ' ')}</span>
+                <span style="font-family: 'Fira Code'; color: #e2e8f0;">${displayVal}</span>
+            `;
+            memList.appendChild(item);
+        }
+    }
 </script>
 {% endblock script %}

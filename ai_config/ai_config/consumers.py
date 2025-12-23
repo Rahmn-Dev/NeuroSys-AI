@@ -13,6 +13,8 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.layers import get_channel_layer
 from asgiref.sync import sync_to_async
 from django.utils import timezone
+import base64
+import traceback
 
 import os, django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ai_config.settings")
@@ -791,35 +793,119 @@ async def broadcast_to_mcp_agents(message, user_id=None):
 class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         await self.accept()
+        await self.send(text_data=json.dumps({
+            "type": "status",
+            "content": "✅ Connected to AI SysAdmin Agent."
+        }))
 
     async def disconnect(self, close_code):
         pass
 
     async def receive(self, text_data):
         from chatbot.models import ExecutionLog
-        data = json.loads(text_data)
-        user_message = data.get("message")
         from .views import SmartAgent
-        # Inisialisasi agent
-        agent = SmartAgent()
         
-       
-        execution_log = await sync_to_async(ExecutionLog.objects.create)(
-            user_query=user_message,
-            goal=user_message,
-            start_time=time.time(),
-         
-        )
+        # 1. Parsing Data JSON
+        try:
+            data = json.loads(text_data)
+        except json.JSONDecodeError:
+            return # Ignore invalid JSON
 
-        steps = []
+        user_message = data.get("message")
+        
+        # Ambil Config dari Frontend
+        config = data.get("config", {})
+        is_auto_mode = config.get("auto_execute", False)
+        encoded_pass = config.get("sudo_pass", "")
 
-        # Streaming hasil langkah demi langkah
-        for result in agent.stream_process_smart_workflow(user_message):
-            if result.get("type") == "step":
-                step_data = result.get("content", {})
-                steps.append(step_data)
-            await self.send(json.dumps(result))
-        await sync_to_async(self._finalize_execution_log)(execution_log, steps, "completed")
+        # 2. Decode Password
+        sudo_password = None
+        if encoded_pass:
+            try:
+                sudo_password = base64.b64decode(encoded_pass).decode("utf-8")
+            except:
+                pass # Jika gagal decode, biarkan None
+
+        # 3. Init Agent dengan Password
+        agent = SmartAgent(sudo_password=sudo_password)
+
+        # ---------------------------------------------------------
+        # SKENARIO 1: MODE AUTO (Langsung Jalan)
+        # ---------------------------------------------------------
+        if is_auto_mode:
+            await self.send(json.dumps({"type": "status", "content": "⚡ Auto-Execution Mode Active"}))
+            
+            # Log ke Database
+            execution_log = await sync_to_async(ExecutionLog.objects.create)(
+                user_query=user_message,
+                goal=user_message,
+                start_time=time.time(),
+            )
+
+            steps = []
+            # Jalankan stream seperti biasa
+            for result in agent.stream_process_smart_workflow(user_message):
+                # Kirim ke WebSocket
+                await self.send(json.dumps(result))
+                
+                # Simpan steps untuk log DB
+                if result.get("type") == "step":
+                    steps.append(result.get("content", {}))
+
+            await sync_to_async(self._finalize_execution_log)(execution_log, steps, "completed")
+
+        # ---------------------------------------------------------
+        # SKENARIO 2: MODE MANUAL (Human-in-the-Loop)
+        # ---------------------------------------------------------
+        else:
+            await self.send(json.dumps({"type": "status", "content": "🛡️ Analyzing request (Safety Mode)..."}))
+            
+            # Minta AI merencanakan langkah pertama saja (tanpa eksekusi)
+            # Kita panggil fungsi sync di dalam async wrapper
+            plan = await sync_to_async(agent.get_initial_plan)(user_message)
+            
+            action_type = plan.get("action")
+            
+            if action_type == "execute":
+                # AI ingin menjalankan perintah -> TAHAN dan minta konfirmasi
+                command = plan.get("command")
+                reasoning = plan.get("reasoning")
+                
+                # Kirim Reasoning
+                await self.send(json.dumps({"type": "reasoning", "content": reasoning}))
+                
+                # Kirim Request Konfirmasi ke Frontend
+                await self.send(json.dumps({
+                    "type": "confirmation_request", # Trigger tombol Y/N di frontend
+                    "command": command,
+                    "reasoning": reasoning
+                }))
+                
+                # Feedback visual step
+                await self.send(json.dumps({
+                    "type": "step", 
+                    "content": {
+                        "step": 1, 
+                        "reasoning": reasoning, 
+                        "command": command, 
+                        "result": {"output": "Waiting for user approval..."}
+                    }
+                }))
+
+            elif action_type == "complete":
+                # AI hanya ngobrol/selesai
+                 await self.send(json.dumps({
+                    "type": "complete", 
+                    "content": {"summary": plan.get("summary")}
+                }))
+                 
+            else:
+                 # Kasus lain (fail/tool_call), jalankan standard flow saja
+                 # (Atau kamu bisa implementasi konfirmasi per tool call jika mau lebih detail)
+                 for result in agent.stream_process_smart_workflow(user_message):
+                    await self.send(json.dumps(result))
+
+
     def _finalize_execution_log(self, execution_log, steps, status, error=None):
         execution_log.final_status = status
         execution_log.end_time = time.time()
