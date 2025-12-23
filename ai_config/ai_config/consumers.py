@@ -15,6 +15,7 @@ from asgiref.sync import sync_to_async
 from django.utils import timezone
 import base64
 import traceback
+from asgiref.sync import sync_to_async
 
 import os, django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ai_config.settings")
@@ -809,11 +810,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
         try:
             data = json.loads(text_data)
         except json.JSONDecodeError:
-            return # Ignore invalid JSON
+            return 
 
         user_message = data.get("message")
         
-        # Ambil Config dari Frontend
         config = data.get("config", {})
         is_auto_mode = config.get("auto_execute", False)
         encoded_pass = config.get("sudo_pass", "")
@@ -824,18 +824,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
             try:
                 sudo_password = base64.b64decode(encoded_pass).decode("utf-8")
             except:
-                pass # Jika gagal decode, biarkan None
+                pass 
 
-        # 3. Init Agent dengan Password
+        # 3. Init Agent (THIS IS A LOCAL VARIABLE, NOT SELF.AGENT)
         agent = SmartAgent(sudo_password=sudo_password)
 
-        # ---------------------------------------------------------
-        # SKENARIO 1: MODE AUTO (Langsung Jalan)
+      # ---------------------------------------------------------
+        # SKENARIO 1: MODE AUTO (Langsung Jalan) - VERSI FIXED STOP ITERATION
         # ---------------------------------------------------------
         if is_auto_mode:
             await self.send(json.dumps({"type": "status", "content": "⚡ Auto-Execution Mode Active"}))
             
-            # Log ke Database
             execution_log = await sync_to_async(ExecutionLog.objects.create)(
                 user_query=user_message,
                 goal=user_message,
@@ -843,17 +842,52 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
 
             steps = []
-            # Jalankan stream seperti biasa
-            for result in agent.stream_process_smart_workflow(user_message):
-                # Kirim ke WebSocket
-                await self.send(json.dumps(result))
-                
-                # Simpan steps untuk log DB
-                if result.get("type") == "step":
-                    steps.append(result.get("content", {}))
+            
+            try:
+                # 1. Inisialisasi Generator
+                workflow_iterator = agent.stream_process_smart_workflow(user_message)
 
-            await sync_to_async(self._finalize_execution_log)(execution_log, steps, "completed")
+                # 2. Fungsi Helper untuk 'Next' yang Aman
+                # Fungsi ini akan berjalan di thread sync. 
+                # Jika generator habis, dia return None, BUKAN raise Error.
+                def safe_next_step():
+                    try:
+                        return next(workflow_iterator)
+                    except StopIteration:
+                        return None
 
+                # 3. Iterasi Manual
+                while True:
+                    # Panggil safe_next_step via sync_to_async
+                    result = await sync_to_async(safe_next_step, thread_sensitive=False)()
+                    
+                    # Jika result None, berarti generator sudah selesai (habis)
+                    if result is None:
+                        break
+                    
+                    # Kirim data ke WebSocket
+                    await self.send(text_data=json.dumps(result))
+                    
+                    # Simpan steps untuk log DB
+                    if result.get("type") == "step":
+                        steps.append(result.get("content", {}))
+
+            except Exception as e:
+                # Tangkap error lain (bukan StopIteration)
+                error_msg = f"Workflow Error: {str(e)}"
+                print(error_msg)
+                traceback.print_exc()
+                await self.send(json.dumps({"type": "error", "content": error_msg}))
+                await sync_to_async(self._finalize_execution_log)(execution_log, steps, "failed", error=str(e))
+                return
+
+            # Finalisasi sukses
+            # Cek status terakhir dari step terakhir untuk menentukan status log
+            final_status = "completed"
+            if steps and steps[-1].get('result', {}).get('status') == 'max_steps_reached':
+                 final_status = "max_steps_reached"
+            
+            await sync_to_async(self._finalize_execution_log)(execution_log, steps, final_status)
         # ---------------------------------------------------------
         # SKENARIO 2: MODE MANUAL (Human-in-the-Loop)
         # ---------------------------------------------------------
