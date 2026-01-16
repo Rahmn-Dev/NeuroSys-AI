@@ -170,6 +170,7 @@ class WhitelistedIP(models.Model):
 class AIIntrusionLog(models.Model):
     timestamp = models.DateTimeField(auto_now_add=True)
     src_ip = models.GenericIPAddressField(null=True, blank=True)
+    destination_ip = models.GenericIPAddressField(blank=True, null=True)
     result = models.CharField(max_length=50)
     raw_features = models.JSONField()
     confidence = models.FloatField(null=True, blank=True)  # kalau kamu tambahkan

@@ -505,10 +505,8 @@
                 };
 
                 this.aiLogsWs.onmessage = (event) => {
-                    const message = JSON.parse(event.data);
-                    if (message.type === 'send_intrusion_log' && message.data) {
-                        this.addAiIntrusionLogToList(message.data);
-                    }
+                  
+                    this.handleAiLogsMessage(event);
                 };
 
                 this.aiLogsWs.onclose = () => {
@@ -727,8 +725,12 @@
             }
 
             addAiIntrusionLogToList(data) {
-                const logsList = document.getElementById('ai');
-                if (!logsList) return;
+                const logsList = document.getElementById('aiIntrusionLogsList'); 
+                
+                if (!logsList) {
+                    console.error("Element aiIntrusionLogsList not found!");
+                    return;
+                }
 
                 const newItem = document.createElement('div');
                 newItem.className = 'alert new-alert'; // Animasi fade-in
@@ -886,9 +888,11 @@
             }
             handleAiLogsMessage(event) {
                 const message = JSON.parse(event.data);
+               
                 if (message.type === 'send_intrusion_log' && message.data) {
                     if (message.data.result.toLowerCase() !== 'benign') {
                         this.pendingAiDetections.malicious++;
+                      
                     } else {
                         this.pendingAiDetections.benign++;
                     }

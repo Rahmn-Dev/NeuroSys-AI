@@ -69,5 +69,6 @@ urlpatterns = [
     path('network-security/', views.network_Security, name='network_Security'),
 
     path("detect", views.detect_view, name="detect"),
+    path('api/set-sudo/', views.set_sudo_credentials, name='set_sudo'),
 ]
 

@@ -16,6 +16,8 @@ from django.utils import timezone
 import base64
 import traceback
 from asgiref.sync import sync_to_async
+from django.conf import settings
+from importlib import import_module
 
 import os, django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ai_config.settings")
@@ -816,17 +818,25 @@ class ChatConsumer(AsyncWebsocketConsumer):
         
         config = data.get("config", {})
         is_auto_mode = config.get("auto_execute", False)
-        encoded_pass = config.get("sudo_pass", "")
+        # =========================================================
+        # FIX: RELOAD SESSION DARI DATABASE SECARA UTUH DI THREAD SYNC
+        # =========================================================
+        engine = import_module(settings.SESSION_ENGINE)
+        session_key = self.scope["session"].session_key
+        
+        # Bungkus logic init session DAN pengambilan data .get() di sini
+        def get_sudo_pass_sync():
+            s = engine.SessionStore(session_key)
+            # .get() ini memicu query DB, jadi harus di dalam fungsi sync ini
+            return s.get("temp_sudo_pass", None)
+            
+        # Panggil wrapper function di atas menggunakan sync_to_async
+        sudo_password = await sync_to_async(get_sudo_pass_sync)()
+        # =========================================================
 
-        # 2. Decode Password
-        sudo_password = None
-        if encoded_pass:
-            try:
-                sudo_password = base64.b64decode(encoded_pass).decode("utf-8")
-            except:
-                pass 
+        # Debug print
 
-        # 3. Init Agent (THIS IS A LOCAL VARIABLE, NOT SELF.AGENT)
+        print(f"DEBUG SESSION: Key={session_key}, SudoPassFound={bool(sudo_password)}")
         agent = SmartAgent(sudo_password=sudo_password)
 
       # ---------------------------------------------------------
@@ -1244,14 +1254,76 @@ class SecurityConsumer(AsyncWebsocketConsumer):
             }
         }
     
+from dataset.IntrusionDetection.detector import predict_intrusion
 
 class AiIntrusionLogConsumer(AsyncWebsocketConsumer):
     async def connect(self):
+        # Masuk ke group untuk broadcast alert ke dashboard
         await self.channel_layer.group_add("ai_intrusion_logs", self.channel_name)
         await self.accept()
 
     async def disconnect(self, close_code):
         await self.channel_layer.group_discard("ai_intrusion_logs", self.channel_name)
 
+    # MENERIMA DATA DARI AGENT (real_time.py)
+    # 1. MENERIMA DATA DARI SNIFFER (direct_sniffer.py)
+    async def receive(self, text_data):
+        try:
+            data = json.loads(text_data)
+            features = data.get('features')
+            
+            # Ambil Info IP (Biar gak Unknown)
+            src_ip = data.get('src_ip', 'Unknown')
+            dst_ip = data.get('dst_ip', 'Unknown')
+            proto = data.get('proto', 'TCP')
+
+            if features:
+                # Debug Print di Terminal Django (Biar kelihatan kalau data masuk)
+                print(f"[WS RECEIVE] {src_ip} -> {dst_ip} | Features: {features}")
+
+                # Prediksi
+                result = await sync_to_async(predict_intrusion)(features)
+                print(f"[WS DEBUG] Prediction Result: {result}")
+                # Jika BUKAN Benign, Simpan & Broadcast
+                if result.upper() != "BENIGN":
+                    from chatbot.models import AIIntrusionLog
+                    
+                    # Simpan ke Database
+                    intrusion = await sync_to_async(AIIntrusionLog.objects.create)(
+                        result=result,
+                        raw_features=features,
+                        # Pastikan models.py kamu punya field ini, kalau tidak hapus baris src_ip/dest_ip
+                        src_ip=src_ip,       
+                        destination_ip=dst_ip 
+                    )
+
+                    # Struktur Pesan untuk Frontend
+                    response_payload = {
+                        "type": "send_intrusion_log", # <--- PENTING BUAT JS
+                        "data": {
+                            "id": intrusion.id,
+                            "result": intrusion.result,
+                            "timestamp": datetime.now().isoformat(),
+                            "features": features,
+                            "src_ip": src_ip,       # Kirim IP ke Frontend
+                            "destination_ip": dst_ip
+                        }
+                    }
+                    
+                    # Broadcast ke Group
+                    await self.channel_layer.group_send(
+                        "ai_intrusion_logs",
+                        response_payload
+                    )
+                    
+                    # Balas ke Sniffer (Optional)
+                    await self.send(text_data=json.dumps({"status": "ALERT", "label": result}))
+
+        except Exception as e:
+            print(f"WS Error: {e}")
+
+    # 2. MENGIRIM DATA KE FRONTEND (Browser)
     async def send_intrusion_log(self, event):
-        await self.send(text_data=json.dumps(event["data"]))
+        print(f"[WS DEBUG] Sending to Browser: {event}")
+        # PERBAIKAN UTAMA: Kirim seluruh event, JANGAN cuma event["data"]
+        await self.send(text_data=json.dumps(event))

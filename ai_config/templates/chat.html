@@ -10,6 +10,78 @@
 <link href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css">
 <style>
+    /* --- Tambahan CSS untuk Time Badge & Timer --- */
+.time-badge-group {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+    font-size: 11px;
+    flex-wrap: wrap;
+}
+
+.time-badge {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 4px 8px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.time-badge i {
+    font-size: 12px;
+}
+
+/* Timer berdenyut saat running */
+.running-timer {
+    color: #eab308; /* Kuning */
+    font-family: 'Fira Code', monospace;
+    font-weight: bold;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+/* Perbaikan tampilan Workflow Card */
+.workflow-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    margin-bottom: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+}
+.card-header-title {
+    font-weight: bold;
+    color: #1c1c1c;
+}
+.card-header2 {
+    padding: 10px 15px;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    font-weight: 600;
+    font-size: 13px;
+    color: #334155;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.card-body2 {
+    padding: 15px;
+    font-size: 13px;
+    color: #475569;
+}
+
+/* Warna khusus untuk tipe log */
+.log-complete .card-header2 { background: #dcfce7; color: #166534; } /* Hijau Muda */
+.log-error .card-header2 { background: #fee2e2; color: #991b1b; } /* Merah Muda */
+.log-command .card-header2 { background: #e0f2fe; color: #075985; } /* Biru Muda */
+
     body {
         font-family: 'Plus Jakarta Sans', sans-serif;
     }
@@ -308,7 +380,30 @@
                     </div>
                 </div>
                 <div id="recommendation-area" class="mt-4 mb-5">
-                    <p class="mb-3 text-muted" style="font-weight:600; padding-left:5px;">✨ AI Suggested Actions:</p>
+                    <div class="d-flex justify-content-between align-items-center mb-3 px-2">
+                        <span class="text-muted d-flex align-items-center gap-2" style="font-weight:700; font-size: 14px; letter-spacing: -0.3px;">
+                            ✨ AI Suggested Actions
+                        </span>
+                        
+                        <button id="RefreshIdea" onclick="refreshSuggestions(this)" 
+                            class="btn btn-sm btn-white d-flex align-items-center gap-2 shadow-sm border" 
+                            style="border-radius: 50px; padding: 8px 16px; transition: all 0.3s ease; background: white;">
+                            
+                            <div style="display: flex; align-items: center; justify-content: center;">
+                                <lord-icon
+                                    src="https://cdn.lordicon.com/umnbegnd.json"
+                                    state="loop-cycle"
+                                    trigger="hover"
+                                    target="#RefreshIdea"
+                                    colors="primary:#0d6efd"
+                                    style="width:20px; height:20px;">
+                                </lord-icon>
+                            </div>
+                            
+                            <span class="btn-text" style="font-size: 12px; font-weight: 600; color: #475569;">Refresh Ideas</span>
+                        </button>
+                    </div>
+                
                     <div class="row" id="suggestion-cards-container">
                         <div class="col-12 text-center py-4">
                             <div class="spinner-border text-primary" role="status"></div>
@@ -420,7 +515,50 @@
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit"></script> 
 
 <script>
+// --- 0. Helper: Simpan Password ke Session (Aman) ---
+async function saveCredentials(password) {
+        if (!password) return true; 
 
+        try {
+            // ENCODE BASE64 DI SINI SEBELUM DIKIRIM
+            // btoa() adalah fungsi bawaan browser untuk Base64 encode
+            const encodedPassword = btoa(password);
+
+            const response = await fetch('/api/set-sudo/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken') 
+                },
+                // Kirim yang sudah di-encode
+                body: JSON.stringify({ sudo_pass: encodedPassword }) 
+            });
+            const result = await response.json();
+            console.log("Credential Status:", result.message);
+            return result.status === 'success';
+        } catch (error) {
+            console.error("Error saving credentials:", error);
+            return false;
+        }
+    }
+
+    // Helper untuk ambil Cookie Django (standar Django docs)
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    
 function createWorkflowCard(iconClass, title, content, logType, ) {
     const card = document.createElement("div");
     card.className = `workflow-card log-${logType}`;
@@ -512,6 +650,21 @@ function createWorkflowCard(iconClass, title, content, logType, ) {
             console.log("WebSocket connected");
             updateConnectionStatus(true);
         };
+
+        let executionTimer = null;
+        let executionStartTime = 0;
+
+        // Helper untuk format timestamp ke jam:menit:detik
+        function formatTime(timestamp) {
+            if (!timestamp) return "-";
+            const date = new Date(timestamp * 1000);
+            return date.toLocaleTimeString('id-ID', { hour12: false });
+        }
+
+        // Helper untuk format durasi (detik)
+        function formatDuration(seconds) {
+            return parseFloat(seconds).toFixed(3) + "s";
+        }
        
 
         ws.onmessage = async function(event) {
@@ -523,12 +676,12 @@ function createWorkflowCard(iconClass, title, content, logType, ) {
                     break;
 
                 case "step_info":
-                    createWorkflowCard('bi bi-shield-shaded', data.content, '', 'step-info', false);
+                    createWorkflowCard('bi bi-shield-shaded', data.content, '', 'step-info');
                     break;
 
                 case "decision":
                     const decisionText = data.content.replace("AI Decision: ", "");
-                    createWorkflowCard('bi bi-cpu-fill', 'AI Decision', `Executing action based on reasoning: <code>${decisionText}</code>`, 'decision', true);
+                    createWorkflowCard('bi bi-cpu-fill', 'AI Decision', `Executing action based on reasoning: <code>${decisionText}</code>`, 'decision');
                     break;
 
                 case "reasoning":
@@ -537,56 +690,104 @@ function createWorkflowCard(iconClass, title, content, logType, ) {
 
                 case "command":
                     const commandText = data.content.replace("Executing bash command: ", "");
-                    createWorkflowCard('bi bi-terminal-fill', 'Executing Command', `<code>${commandText}</code>`, 'command');
+                    
+                    // 1. Mulai Timer saat command dieksekusi
+                    if (executionTimer) clearInterval(executionTimer); // Reset jika ada timer jalan
+                    executionStartTime = Date.now();
+                    
+                    // Buat ID unik untuk timer element
+                    const timerId = "timer-" + Math.floor(Math.random() * 10000);
+                    
+                    createWorkflowCard('bi bi-terminal-fill', 'Executing Command', 
+                        `<code>${commandText}</code>
+                        <div class="mt-2 text-muted" style="font-size:11px;">
+                            <i class="bi bi-stopwatch"></i> Running: <span id="${timerId}" class="running-timer">0.00s</span>
+                        </div>`, 
+                        'command');
+
+                    // Jalankan interval update
+                    executionTimer = setInterval(() => {
+                        const elapsed = (Date.now() - executionStartTime) / 1000;
+                        const el = document.getElementById(timerId);
+                        if(el) el.innerText = elapsed.toFixed(2) + "s";
+                    }, 100);
                     break;
 
                 case "step":
-                    // Render kartu final
+                    // 2. Hentikan timer saat step selesai
+                    if (executionTimer) clearInterval(executionTimer);
+
                     const step = data.content;
                     const resultCard = document.createElement("div");
                     resultCard.className = "workflow-card workflow-step-final log-complete";
+                    
+                    // Cek output jika kosong
+                    let outputDisplay = step.result.output ? step.result.output : "<span class='text-muted'>(No output)</span>";
+                    
+                    // Render HTML
                     resultCard.innerHTML = `
-                        <div class="card-header">
+                        <div class="card-header2">
                             <i class="bi bi-check-circle-fill"></i>
                             <span class="card-header-title">Step ${step.step}: Execution Complete</span>
                         </div>
-                        <div class="card-body">
-                            <strong>Reasoning:</strong> ${step.reasoning}<br>
-                            <strong>Command:</strong> <code>${step.command}</code><br>
-                            <strong>Result:</strong> <pre>${step.result.output || 'No output'}</pre>
+                        <div class="card-body2">
+                            <div class="mb-2"><strong>Reasoning:</strong> ${step.reasoning}</div>
+                            <div class="mb-2"><strong>Command:</strong> <code style="background:#f1f5f9; padding:2px 5px; border-radius:4px; color:#ef4444;">${step.command}</code></div>
+                            <div class="mb-2"><strong>Result:</strong> <pre style="background:#1e293b; color:#a5b4fc; padding:10px; border-radius:6px; max-height:150px; overflow:auto; margin-top:5px;">${outputDisplay}</pre></div>
                         </div>
                     `;
                     workflowSteps.appendChild(resultCard);
                     workflowSteps.scrollTop = workflowSteps.scrollHeight;
+                    
+                    // Tampilkan di terminal utama juga
                     displayBashOutput(step.result.output, step.result.error, step.command);
                     break;
 
                 case "complete":
-                    createWorkflowCard('bi bi-trophy-fill', 'Workflow Completed', data.content.summary, 'complete');
+                    // Ambil data waktu dari JSON backend
+                    const startTime = data.content.start_time;
+                    const endTime = data.content.end_time;
+                    const duration = data.content.duration;
+
+                    const completeHTML = `
+                        <div>${data.content.summary}</div>
+                        
+                        <div class="time-badge-group">
+                            <div class="time-badge" title="Start Time" style="background:#064e3b; color:#6ee7b7;">
+                                <i class="bi bi-play-circle"></i> Start: ${formatTime(startTime)}
+                            </div>
+                            <div class="time-badge" title="End Time" style="background:#064e3b; color:#6ee7b7;">
+                                <i class="bi bi-stop-circle"></i> End: ${formatTime(endTime)}
+                            </div>
+                            <div class="time-badge" title="Total Duration" style="background:#166534; color:white; font-weight:bold;">
+                                <i class="bi bi-hourglass-split"></i> Duration: ${formatDuration(duration)}
+                            </div>
+                        </div>
+                    `;
+
+                    createWorkflowCard('bi bi-trophy-fill', 'Workflow Completed', completeHTML, 'complete');
                     addChatBubble(data.content.summary, "ai");
                     updateFinalStatus("Completed", "success");
                     break;
 
                 case "error":
+                    if (executionTimer) clearInterval(executionTimer); // Stop timer jika error
                     createWorkflowCard('bi bi-exclamation-triangle-fill', 'Workflow Failed', data.content, 'error');
                     addChatBubble(data.content, "ai");
                     updateFinalStatus("Failed", "danger");
                     break;
 
-                // --- TAMBAHKAN BAGIAN INI ---
                 case "context_update":
                     updateWorkspacePanel(data.content);
                     break;
+
                 case "confirmation_request":
-                    // Tampilkan Bubble khusus dengan tombol Konfirmasi
+                    // ... (Kode konfirmasi tetap sama) ...
+                    const safeCommand = data.command.replace(/'/g, "\\'");
                     const div = document.createElement("div");
                     div.className = "chat-bubble ai-bubble";
                     div.style.border = "1px solid #f59e0b"; 
                     div.style.backgroundColor = "#fffbeb";
-                    
-                    // Escape single quotes pada command agar tidak merusak fungsi onclick
-                    const safeCommand = data.command.replace(/'/g, "\\'");
-
                     div.innerHTML = `
                         <div style="font-weight:bold; color:#b45309; margin-bottom:5px;">
                             <i class="bi bi-shield-lock"></i> Approval Needed
@@ -604,15 +805,12 @@ function createWorkflowCard(iconClass, title, content, logType, ) {
                             </button>
                         </div>
                     `;
-                    
                     bashContainer.appendChild(div);
                     window.scrollTo(0, document.body.scrollHeight);
                     break;
-                // --- AKHIR TAMBAHAN ---
 
                 default:
                     console.log("Unhandled message type:", data.type);
-                    createWorkflowCard('bi bi-question-circle', 'Unknown Event', JSON.stringify(data), 'status');
             }
         };
 
@@ -646,51 +844,56 @@ function createWorkflowCard(iconClass, title, content, logType, ) {
         workflowSteps.appendChild(entry);
         workflowSteps.scrollTop = workflowSteps.scrollHeight; // Auto-scroll
     }
-    function sendMessage() {
+    async function sendMessage() {
         const rawMessage = chatInput.value; 
-        const message = rawMessage.trim(); // Hapus spasi di awal/akhir
+        const message = rawMessage.trim(); 
 
-        // 1. Cek Validasi Ketat: Jika kosong, BERHENTI DI SINI.
         if (message === "") {
-            // Opsional: Jika input hanya spasi/enter, bersihkan sekalian biar rapi
             if (rawMessage.length > 0) chatInput.value = ""; 
             return; 
         }
 
         if (!ws || ws.readyState !== WebSocket.OPEN) {
             console.error("WebSocket belum terkoneksi.");
+            addChatBubble("Error: WebSocket disconnected.", "ai");
             return;
         }
 
-        // Tampilkan bubble user
+        // Tampilkan bubble user dulu biar responsif
         addChatBubble(message, "user");
+        
+        // Reset input chat UI segera
+        chatInput.value = "";
+        chatInput.style.height = 'auto'; 
+        const placeholder = document.querySelector('.placeholder-content');
+        if(placeholder) placeholder.style.display = 'none';
 
-        // --- AMBIL DATA SAKLAR & PASSWORD ---
+        // --- LOGIKA BARU: Handle Password ---
         const isAutoMode = toggleBtn.checked;
         const rawPassword = sudoInput.value;
-        const encodedPassword = rawPassword ? btoa(rawPassword) : "";
 
-        // Buat Payload JSON
+        // Jika user mengisi password, simpan dulu ke session via API
+        if (rawPassword) {
+            const saved = await saveCredentials(rawPassword);
+            if (!saved) {
+                addChatBubble("System: Gagal menyimpan kredensial. Cek koneksi.", "ai");
+                return;
+            }
+            // Opsional: Kosongkan input password agar tidak terlihat terus (lebih aman)
+            // sudoInput.value = ""; 
+        }
+
+        // Buat Payload JSON (TANPA PASSWORD)
         const payload = {
             message: message,
             config: {
-                auto_execute: isAutoMode,
-                sudo_pass: encodedPassword
+                auto_execute: isAutoMode
+                // sudo_pass DIHAPUS dari sini
             }
         };
 
-        console.log("Sending Payload:", payload);
+        console.log("Sending Payload (Secure):", payload);
         ws.send(JSON.stringify(payload));
-
-        // Reset input chat
-        chatInput.value = "";
-        
-        // Kembalikan tinggi textarea ke semula (jika textarea auto-expand)
-        chatInput.style.height = 'auto'; 
-
-        // Sembunyikan placeholder gambar jika ada chat
-        const placeholder = document.querySelector('.placeholder-content');
-        if(placeholder) placeholder.style.display = 'none';
     }
     // --- 4. HANDLE INCOMING MESSAGES ---
     function handleWsMessage(data) {
@@ -843,7 +1046,11 @@ function createWorkflowCard(iconClass, title, content, logType, ) {
         const container = document.getElementById("suggestion-cards-container");
         
         // Tampilkan loading skeleton/spinner
-        container.innerHTML = '<div class="col-12 text-center py-4"><div class="spinner-border text-primary" role="status"></div><p class="mt-2 text-muted">Asking AI for maintenance tips...</p></div>';
+        container.innerHTML = `
+            <div class="col-12 text-center py-4">
+                <div class="spinner-border text-primary" role="status"></div>
+                <p class="mt-2 text-muted">Thinking regarding system logs...</p>
+            </div>`;
 
         fetch('/get_suggestions/') 
             .then(response => response.json())
@@ -852,12 +1059,9 @@ function createWorkflowCard(iconClass, title, content, logType, ) {
 
                 if (data.suggestions && data.suggestions.length > 0) {
                     data.suggestions.forEach(item => {
-                        // Pastikan icon ada defaultnya kalau null
                         let iconClass = item.icon || "bi-terminal-fill";
-                        // Bersihkan string agar aman masuk fungsi onClick
                         let safePrompt = item.prompt.replace(/'/g, "\\'").replace(/"/g, '&quot;');
 
-                        // HTML KARTU KEREN
                         let cardHTML = `
                             <div class="col-lg-4 col-md-6 col-sm-12 ai-card-wrapper">
                                 <div class="card-suggestion" onclick="triggerTask('${safePrompt}')">
@@ -886,6 +1090,39 @@ function createWorkflowCard(iconClass, title, content, logType, ) {
             });
     }
 
+    // Fungsi Wrapper untuk tombol Refresh (agar ada efek animasi putar)
+    function refreshSuggestions(btnElement) {
+        const icon = btnElement.querySelector('lord-icon');
+        const textSpan = btnElement.querySelector('.btn-text');
+        
+        // 1. UI Loading State
+        btnElement.disabled = true;
+        btnElement.style.opacity = "0.7";
+        textSpan.textContent = "Analyzing...";
+        
+        // Opsional: Ganti trigger icon jadi 'loop' biar muter terus saat loading
+        if(icon) {
+            icon.setAttribute('trigger', 'loop'); 
+        }
+
+        // 2. Panggil fungsi load data (pastikan loadAiSuggestions kamu sudah ada)
+        loadAiSuggestions();
+
+        // 3. Kembalikan UI setelah delay (simulasi selesai)
+        setTimeout(() => {
+            btnElement.disabled = false;
+            btnElement.style.opacity = "1";
+            textSpan.textContent = "Refresh Ideas";
+            
+            // Kembalikan trigger icon ke 'hover'
+            if(icon) {
+                icon.setAttribute('trigger', 'hover');
+                // Reset animasi icon ke frame awal biar smooth
+                icon.removeAttribute('state'); 
+            }
+        }, 2000); // Sesuaikan waktu dengan real fetch kamu
+    }
+
     // 2. Fungsi Trigger saat Kartu diklik
     function triggerTask(promptText) {
         const chatInput = document.getElementById('chat-input');
@@ -901,28 +1138,24 @@ function createWorkflowCard(iconClass, title, content, logType, ) {
         sendMessage();
     }
 
-    function confirmExecution(command) {
-        // Saat user klik "Execute", kita kirim pesan lagi ke WebSocket
-        // TAPI kali ini kita paksa config: { auto_execute: true }
-        // agar backend langsung masuk ke blok eksekusi.
-        
-        // Ambil password dari input box (jika ada)
+    async function confirmExecution(command) {
+        // Ambil password dari input box (jika user baru saja mengetik)
         const rawPass = document.getElementById("sudo-input").value;
-        const encodedPass = rawPass ? btoa(rawPass) : "";
+        
+        // Simpan ke session dulu jika ada
+        if (rawPass) {
+            await saveCredentials(rawPass);
+        }
 
         const payload = {
-            message: "Execute: " + command, // Pesan dummy agar log terbaca
+            message: "Execute: " + command, 
             config: {
-                auto_execute: true, // FORCE AUTO KARENA SUDAH DIKONFIRMASI
-                sudo_pass: encodedPass
+                auto_execute: true, // Force Auto
+                // sudo_pass DIHAPUS dari sini
             }
         };
         
-        // Kirim
         ws.send(JSON.stringify(payload));
-        
-        // Opsional: Hapus tombol agar tidak diklik 2x
-        // (Bisa tambahkan logika DOM remove di sini)
     }
 
     function cancelExecution(btnElement) {

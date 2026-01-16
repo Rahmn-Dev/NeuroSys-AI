@@ -14,6 +14,7 @@ import logging
 import json
 from django.core.paginator import Paginator
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 from two_factor.views import LoginView as TwoFactorLoginView
 from two_factor.utils import default_device
 from django_ratelimit.decorators import ratelimit
@@ -36,14 +37,83 @@ from chatbot.models import SystemScan, ConfigurationIssue, AIIntrusionLog
 from .system_analyzer import LinuxConfigAnalyzer
 import asyncio
 from django.utils import timezone
+from typing import Any, List, Optional, Mapping
+from langchain.llms.base import LLM
 # Inisialisasi model AI
 # llm = OllamaLLM(model="qwen2.5-coder:latest")
-llm = OllamaLLM(model="mistral:latest")
+
 OLLAMA_URL = getattr(settings, "OLLAMA_URL")
 OLLAMA_MODEL = getattr(settings, "OLLAMA_MODEL")
+OLLAMA_API_KEY = getattr(settings, "OLLAMA_API_KEY")
 OPENAI_API_KEY = getattr(settings, "OPENAI_KEY")
 GEMINI_API_KEY = getattr(settings, "GEMINI_KEY")
 MISTRAL_API_KEY = getattr(settings, "MISTRAL_API_KEY")
+
+class KantorOllamaLLM(LLM):
+    """
+    Wrapper khusus untuk connect ke FastAPI Kantor.
+    Menggunakan requests biasa agar Header Authorization terjamin terkirim.
+    """
+    api_url: str
+    api_key: str
+    model_name: str
+    
+    @property
+    def _llm_type(self) -> str:
+        return "kantor_ollama_custom"
+
+    def _call(self, prompt: str, stop: Optional[List[str]] = None, **kwargs: Any) -> str:
+        # Header ini PASTI terkirim
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "prompt": prompt,
+            "model": self.model_name
+        }
+
+        try:
+            # Kita paksa URL-nya bersih di sini
+            # Hapus trailing slash jika ada
+            base = self.api_url.rstrip("/")
+            # Pastikan endpointnya benar (sesuai main.py kamu: /api/generate)
+            if not base.endswith("/api/generate"):
+                endpoint = f"{base}/api/generate"
+            else:
+                endpoint = base
+
+            print(f"DEBUG: Sending to {endpoint} with Key prefix: {self.api_key[:2]}***") # Debug Log di Terminal Django
+
+            response = requests.post(
+                endpoint, 
+                json=payload, 
+                headers=headers, 
+                timeout=120
+            )
+            
+            if response.status_code == 401:
+                return "Error 401: Unauthorized. Cek API Key di Django settings."
+            
+            response.raise_for_status()
+            
+            # Ambil jawaban dari JSON response FastAPI
+            data = response.json()
+            return data.get("response", "")
+            
+        except requests.exceptions.RequestException as e:
+            return f"Error connecting to AI Server: {str(e)}"
+
+    @property
+    def _identifying_params(self) -> Mapping[str, Any]:
+        return {"api_url": self.api_url, "model": self.model_name}
+    
+llm = KantorOllamaLLM(
+    api_url=OLLAMA_URL, 
+    api_key=OLLAMA_API_KEY,
+    model_name=OLLAMA_MODEL
+)
 
 @login_required
 def chatAI(request):
@@ -854,9 +924,12 @@ User task: {user_message}
 Assistant:
 """
             ollama_payload = {
-                "model": OLLAMA_MODEL,
                 "prompt": prompt,
-                "stream": False
+                "model": OLLAMA_MODEL,
+            }
+            headers = {
+                "Authorization": f"Bearer {OLLAMA_API_KEY}",
+                "Content-Type": "application/json"
             }
 
             ai_response_text = "Tidak dapat menghubungi AI."
@@ -864,7 +937,7 @@ Assistant:
             ai_explanation = "Terjadi kesalahan saat memproses permintaan AI."
 
             try:
-                response = requests.post(OLLAMA_URL, json=ollama_payload, timeout=60)
+                response = requests.post(OLLAMA_URL, json=ollama_payload,headers=headers, timeout=300)
                 response.raise_for_status()
                 ollama_data = response.json()
                 ai_response_text = ollama_data.get('response', 'AI tidak memberikan respons yang diharapkan.')
@@ -1788,7 +1861,8 @@ from mistralai import Mistral
 class AITools:
     """Collection of tools that AI can use for system administration"""
     
-    def __init__(self):
+    def __init__(self, sudo_password=None):
+        self.sudo_password = sudo_password
         self.tool_registry = {
             "file_read": self.file_read,
             "file_write": self.file_write,
@@ -1985,6 +2059,33 @@ class AITools:
 
         ]
     
+    def _run_shell(self, command, timeout=30):
+        """Helper to run shell commands, handling sudo automatically."""
+        try:
+            if self.sudo_password:
+                # Escape single quotes agar aman di dalam bash -c
+                clean_cmd = command.replace("'", "'\\''")
+                # Gunakan sudo -S untuk pipe password
+                full_cmd = f"echo '{self.sudo_password}' | sudo -S -p '' bash -c '{clean_cmd}'"
+                
+                return subprocess.run(
+                    full_cmd,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout
+                )
+            else:
+                # Fallback tanpa sudo
+                return subprocess.run(
+                    ['bash', '-c', command],
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout
+                )
+        except Exception as e:
+            return subprocess.CompletedProcess(args=command, returncode=1, stdout="", stderr=str(e))
+    
     def network_scan(self, scan_type, target=None):
         """Scan network and connectivity"""
         try:
@@ -2135,82 +2236,94 @@ class AITools:
             return {"success": False, "error": str(e)}
     
     def file_read(self, file_path, lines=None):
-        """Read file contents"""
-        try:
-            with open(file_path, 'r') as f:
-                if lines:
-                    content = ''.join(f.readlines()[:lines])
-                else:
-                    content = f.read()
+        """Read file contents using sudo cat."""
+        # Cek existensi via shell (untuk permission check)
+        if self._run_shell(f"test -f {file_path}").returncode != 0:
+            return {"success": False, "error": f"File not found or inaccessible: {file_path}"}
+
+        cmd = f"cat {file_path}"
+        if lines:
+            # Handle format dict dari AI (hallucination fix)
+            if isinstance(lines, dict):
+                start = lines.get('start', 1)
+                end = lines.get('end', start + 50)
+                cmd = f"sed -n '{start},{end}p' {file_path}"
+            else:
+                cmd = f"head -n {lines} {file_path}"
+
+        res = self._run_shell(cmd)
+        if res.returncode != 0:
+            return {"success": False, "error": res.stderr}
             
-            return {
-                "success": True,
-                "content": content,
-                "file_path": file_path,
-                "size": len(content)
-            }
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+        return {"success": True, "content": res.stdout, "file_path": file_path}
     
-    def file_write(self, file_path, content, mode="w"):
-        """Write to file"""
+    def file_edit(self, file_path, operation, line_number=None, content=None, replacement=None, pattern=None):
+        """Edit file using sudo mechanics to avoid Permission Denied."""
+        # Fix parameter hallucination
+        if operation == "replace_pattern" and content is None and pattern is not None:
+            content = pattern
+
+        # 1. Backup (Pake Sudo)
+        backup_path = f"{file_path}.backup.{int(time.time())}"
+        cp_res = self._run_shell(f"cp {file_path} {backup_path}")
+        if cp_res.returncode != 0:
+            return {"success": False, "error": f"Backup failed (Permission Denied?): {cp_res.stderr}"}
+
+        # 2. Read Content (Pake Sudo)
+        read_res = self._run_shell(f"cat {file_path}")
+        if read_res.returncode != 0:
+            return {"success": False, "error": f"Read failed: {read_res.stderr}"}
+        
+        lines = read_res.stdout.splitlines(keepends=True)
+        if not lines and read_res.stdout: lines = [read_res.stdout]
+
+        # 3. Modify in Memory (Python side)
         try:
-            # Create backup if file exists
-            backup_path = None
-            if os.path.exists(file_path):
-                backup_path = f"{file_path}.backup.{int(time.time())}"
-                subprocess.run(['cp', file_path, backup_path], check=True)
-            
-            with open(file_path, mode) as f:
-                f.write(content)
-            
-            return {
-                "success": True,
-                "file_path": file_path,
-                "backup_path": backup_path,
-                "bytes_written": len(content)
-            }
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-    
-    def file_edit(self, file_path, operation, line_number=None, content=None, replacement=None):
-        """Edit file with specific operations"""
-        try:
-            # Create backup
-            backup_path = f"{file_path}.backup.{int(time.time())}"
-            subprocess.run(['cp', file_path, backup_path], check=True)
-            
-            with open(file_path, 'r') as f:
-                lines = f.readlines()
-            
             if operation == "replace_line":
-                if line_number and 1 <= line_number <= len(lines):
-                    lines[line_number - 1] = content + '\n' if not content.endswith('\n') else content
-                
+                if line_number and 1 <= int(line_number) <= len(lines):
+                    lines[int(line_number) - 1] = content + '\n' if not content.endswith('\n') else content
+                else: return {"success": False, "error": "Line number out of range"}
             elif operation == "insert_line":
-                if line_number and 1 <= line_number <= len(lines) + 1:
-                    lines.insert(line_number - 1, content + '\n' if not content.endswith('\n') else content)
-                
+                if line_number: lines.insert(int(line_number) - 1, content + '\n')
             elif operation == "delete_line":
-                if line_number and 1 <= line_number <= len(lines):
-                    del lines[line_number - 1]
-                    
+                if line_number: del lines[int(line_number) - 1]
             elif operation == "replace_pattern":
-                file_content = ''.join(lines)
-                file_content = re.sub(content, replacement, file_content)
-                lines = file_content.splitlines(keepends=True)
-            
-            with open(file_path, 'w') as f:
+                file_str = "".join(lines)
+                new_str = re.sub(content, replacement if replacement else "", file_str)
+                lines = new_str.splitlines(keepends=True)
+        except Exception as e:
+            return {"success": False, "error": f"Logic error: {str(e)}"}
+
+        # 4. Write Back (Temp file + Sudo MV)
+        temp_path = f"/tmp/edit_{int(time.time())}"
+        try:
+            with open(temp_path, 'w') as f:
                 f.writelines(lines)
             
-            return {
-                "success": True,
-                "operation": operation,
-                "file_path": file_path,
-                "backup_path": backup_path
-            }
+            # Pindahkan temp file ke tujuan menggunakan sudo
+            mv_res = self._run_shell(f"mv {temp_path} {file_path}")
+            if mv_res.returncode != 0:
+                return {"success": False, "error": f"Save failed: {mv_res.stderr}"}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+             return {"success": False, "error": f"Write error: {str(e)}"}
+
+        return {"success": True, "backup": backup_path}
+
+    def file_write(self, file_path, content, mode="w"):
+        # Helper write with sudo
+        cmd = f"tee {file_path}" if mode == 'w' else f"tee -a {file_path}"
+        # Escape content is tricky in shell, better verify usage
+        # Simple implementation using temp file
+        temp_path = f"/tmp/write_{int(time.time())}"
+        with open(temp_path, 'w') as f: f.write(content)
+        
+        # Ensure dir exists
+        dir_name = os.path.dirname(file_path)
+        self._run_shell(f"mkdir -p {dir_name}")
+        
+        # Move
+        res = self._run_shell(f"mv {temp_path} {file_path}")
+        return {"success": res.returncode == 0, "error": res.stderr if res.returncode != 0 else None}
     
     def execute_command(self, command, timeout=30, working_dir=None):
         """Execute shell command safely"""
@@ -2507,6 +2620,7 @@ class SafeCommandExecutor:
         if context_memory and "current_directory" in context_memory:
             cwd_to_use = context_memory["current_directory"]
 
+        interactive_tools = ['nano', 'vi', 'vim', 'pico', 'less', 'more', 'man', 'htop', 'top']
         # Blacklist dangerous commands
         dangerous_patterns = [
             'rm -rf /', 'mkfs', 'fdisk', 'parted', '> /dev/', ':(){ :|:& };:'
@@ -2515,6 +2629,20 @@ class SafeCommandExecutor:
         if any(pattern in command.lower() for pattern in dangerous_patterns):
             return {"output": "", "error": "Dangerous command detected and blocked", "return_code": 1}
         
+        cmd_parts = command.split()
+        for tool in interactive_tools:
+            # Cek jika command dimulai dengan tool, atau ada di dalam sudo (e.g., "sudo nano")
+            if command.strip().startswith(tool + " ") or \
+               command.strip() == tool or \
+               f" {tool} " in f" {command} " or \
+               (command.startswith("sudo") and f" {tool}" in command):
+                
+                return {
+                    "output": "", 
+                    "error": f"Interactive command '{tool}' is NOT supported in this environment. You CANNOT use text editors. You MUST use the 'file_edit' tool to modify files or 'file_read' to view them.", 
+                    "return_code": 1
+                }
+        # ---------------------------------------------
         try:
             # Update 2: Logic Sudo yang Aman
             final_command = command
@@ -2525,11 +2653,20 @@ class SafeCommandExecutor:
                 if self.sudo_password:
                     # Hapus kata 'sudo' manual user jika ada, kita handle via pipe
                     clean_cmd = command.replace("sudo", "").strip()
+
+                    clean_cmd_safe = clean_cmd.replace("'", "'\\''")
                     # Gunakan sudo -S untuk baca password dari stdin
-                    final_command = f"sudo -S -p '' {clean_cmd}" 
+                    final_command = f"sudo -S -p '' bash -c '{clean_cmd_safe}'"
                     input_feed = f"{self.sudo_password}\n"
+
                 elif "sudo" in command and not self.sudo_password:
                     return {"output": "", "error": "Command requires sudo but no password provided.", "return_code": 1}
+
+            # Jika TIDAK butuh SUDO (User biasa)
+            else:
+                # Tetap pakai yes untuk command biasa (misal overwrite file)
+                clean_cmd_safe = command.replace("'", "'\\''")
+                final_command = f"bash -c '{clean_cmd_safe}'"
 
             # Eksekusi
             result = subprocess.run(
@@ -2538,7 +2675,7 @@ class SafeCommandExecutor:
                 capture_output=True,
                 text=True,
                 input=input_feed, # Inject password disini
-                timeout=30,
+                timeout=120,
                 cwd=cwd_to_use
             )
             
@@ -2546,6 +2683,10 @@ class SafeCommandExecutor:
             err_msg = result.stderr
             if "incorrect password" in err_msg.lower():
                  err_msg = "Sudo password incorrect."
+            
+            # 'yes' kadang menyebabkan broken pipe warning (normal), kita abaikan jika sukses
+            if "Broken pipe" in err_msg:
+                err_msg = ""
 
             return {
                 "output": result.stdout,
@@ -2555,7 +2696,7 @@ class SafeCommandExecutor:
             }
             
         except subprocess.TimeoutExpired:
-            return {"output": "", "error": "Command timeout (30s)", "return_code": 124}
+            return {"output": "", "error": "Command timeout (120s)", "return_code": 124}
         except Exception as e:
             return {"output": "", "error": str(e), "return_code": 1}
 
@@ -2565,15 +2706,20 @@ class SmartAgent:
         self.mcp_client = MCPClient()
         # Teruskan password ke executor
         self.executor = SafeCommandExecutor(sudo_password=sudo_password)
-        self.ai_tools = AITools()
+        self.ai_tools = AITools(sudo_password=sudo_password) 
         self.conversation_history = []
         self.current_goal = None
         self.context_memory = {}
         try:
             # Jalankan pwd & whoami di awal agar context tidak kosong
             pwd_res = self.executor.execute_bash_command("pwd")
+            if pwd_res.get("output") and os.path.isdir(pwd_res.get("output").strip()):
+                self.context_memory["current_directory"] = pwd_res.get("output").strip()
+            else:
+                self.context_memory["current_directory"] = os.getcwd()
+
             who_res = self.executor.execute_bash_command("whoami")
-            self.context_memory["current_directory"] = pwd_res.get("output", "").strip()
+           
             self.context_memory["current_user"] = who_res.get("output", "").strip()
         except:
             pass
@@ -2695,17 +2841,41 @@ class SmartAgent:
         
         print(f"🧠 Starting smart workflow for: {user_query}")
         step_count = 0
-        max_steps = 10
+        max_steps = 15
         
         while step_count < max_steps:
             print(f"\n--- Step {step_count + 1} ---")
             next_action = self.get_next_action()
             print(f"AI Decision: {next_action}")
+            action_type = next_action.get("action")
+            
+            # Jika 'action' bukan keyword standar, tapi cocok dengan nama tool di registry
+            if action_type not in ["execute", "tool_call", "complete", "fail"]:
+                if action_type in self.ai_tools.tool_registry:
+                    print(f"[AUTO-FIX] AI format hallucination detected. Converting '{action_type}' to 'tool_call'.")
+                    
+                    # Extract parameters (sisa keys selain action & reasoning)
+                    params = next_action.copy()
+                    params.pop("action", None)
+                    reasoning = params.pop("reasoning", "Auto-corrected format by SmartAgent")
+                    
+                    # Reconstruct valid structure
+                    next_action = {
+                        "action": "tool_call",
+                        "tool_name": action_type,
+                        "parameters": params,
+                        "reasoning": reasoning
+                    }
+                    action_type = "tool_call" # Update local var
+            # ---------------------------------------------------------
             
             if next_action.get("action") == "complete":
                 workflow_result["final_status"] = "completed"
                 workflow_result["summary"] = next_action.get("summary")
-                print("✅ Workflow completed!")
+                workflow_result["end_time"] = time.time()
+                workflow_result["duration"] = workflow_result["end_time"] - workflow_result["start_time"]
+                
+                yield {"type": "complete", "content": workflow_result}
                 break
                 
             elif next_action.get("action") == "execute":
@@ -2713,6 +2883,9 @@ class SmartAgent:
                 reasoning = next_action.get("reasoning")
                 print(f"Reasoning: {reasoning}")
                 print(f"Executing bash command: {command}")
+
+                yield {"type": "reasoning", "content": reasoning}
+                yield {"type": "command", "content": f"Executing bash command: {command}"}
                 
                 execution_result = self.execute_with_context(command)
                 
@@ -2731,8 +2904,10 @@ class SmartAgent:
                 
             elif next_action.get("action") == "tool_call":
                 tool_name = next_action.get("tool_name")
-                parameters = next_action.get("parameters", {})
-                reasoning = next_action.get("reasoning")
+                # Bersihkan parameter (buang key 'action', 'tool_name', 'reasoning' jika ada di dalam parameters)
+                parameters = next_action.get("parameters", {}).copy()
+                for k in ['action', 'tool_name', 'reasoning']:
+                    parameters.pop(k, None)
                 
                 print(f"Reasoning: {reasoning}")
                 print(f"Calling AITool: {tool_name} with parameters: {parameters}")
@@ -2743,49 +2918,19 @@ class SmartAgent:
                     try:
                         tool_result = tool_func(**parameters)
                         
-                        workflow_result["steps"].append({
-                            "step": step_count + 1,
-                            "type": "tool_call",
-                            "reasoning": reasoning,
-                            "tool_name": tool_name,
-                            "parameters": parameters,
-                            "result": tool_result,
-                            "timestamp": time.time()
-                        })
+                        self._record_step(workflow_result, step_count, "tool_call", reasoning, tool_name=tool_name, parameters=parameters, result=tool_result)
+                        self._add_to_history(f"Tool {tool_name} used", tool_result)
                         
-                        self.add_tool_result_to_conversation(tool_name, parameters, tool_result)
-                        print(f"Tool Result: {tool_result}")
-                        
+                        # Update Context Memory for File Reads specifically
+                        # MODIFIED: Increased truncation limit to 4000 characters
+                        if tool_name == "file_read" and tool_result.get("success"):
+                            self.context_memory[f"file_{parameters.get('file_path')}"] = tool_result.get("content")[:20000] + ("..." if len(tool_result.get("content")) > 20000 else "")
+
                     except Exception as e:
-                        error_result = {"success": False, "error": str(e)}
-                        print(f"Error calling tool: {str(e)}")
-                        
-                        workflow_result["steps"].append({
-                            "step": step_count + 1,
-                            "type": "tool_call",
-                            "reasoning": reasoning,
-                            "tool_name": tool_name,
-                            "parameters": parameters,
-                            "result": error_result,
-                            "timestamp": time.time()
-                        })
-                        
-                        self.add_tool_result_to_conversation(tool_name, parameters, error_result)
+                        print(f"Error executing tool: {e}")
+                        self._record_step(workflow_result, step_count, "tool_error", reasoning, result={"error": str(e)})
                 else:
-                    error_result = {"success": False, "error": f"Unknown tool: {tool_name}"}
                     print(f"Unknown tool: {tool_name}")
-                    
-                    workflow_result["steps"].append({
-                        "step": step_count + 1,
-                        "type": "tool_call",
-                        "reasoning": reasoning,
-                        "tool_name": tool_name,
-                        "parameters": parameters,
-                        "result": error_result,
-                        "timestamp": time.time()
-                    })
-                    
-                    self.add_tool_result_to_conversation(tool_name, parameters, error_result)
                 
                 step_count += 1
                 
@@ -2799,6 +2944,27 @@ class SmartAgent:
         workflow_result["duration"] = workflow_result["end_time"] - workflow_result["start_time"]
         return workflow_result
     
+    def _record_step(self, workflow, count, type, reasoning, **kwargs):
+        step_data = {
+            "step": count + 1,
+            "type": type,
+            "reasoning": reasoning,
+            "timestamp": time.time(),
+            **kwargs
+        }
+        workflow["steps"].append(step_data)
+
+    def _add_to_history(self, assistant_text, result_obj):
+        self.conversation_history.append({"role": "assistant", "content": assistant_text})
+        # Truncate result to save tokens
+        result_str = str(result_obj)
+        if len(result_str) > 500: result_str = result_str[:500] + "...(truncated)"
+        self.conversation_history.append({"role": "user", "content": f"Result: {result_str}"})
+        
+        # Keep history short
+        if len(self.conversation_history) > 10:
+             self.conversation_history = [self.conversation_history[0]] + self.conversation_history[-8:]
+             
     def add_tool_result_to_conversation(self, tool_name, parameters, result):
         """Add tool call result to conversation history"""
         self.conversation_history.append({
@@ -3078,36 +3244,48 @@ class SmartAgent:
             
     def get_next_action(self):
         """Ask AI what to do next based on conversation history"""
+        
+        # Improved Prompt to reduce hallucinations and encourage full file reads
         system_prompt = f"""
-        You are a smart Linux system administrator AI agent. 
-        Your goal: {self.current_goal}
+        You are a generic Linux System Administrator Agent.
+        Goal: {self.current_goal}
         
-        Based on the conversation history, decide the next action:
+        Decide the NEXT step. Return ONLY a single JSON object.
         
-        1. If goal is achieved → return {{"action": "complete", "summary": "description"}}
-        2. If need to execute command → return {{"action": "execute", "command": "command", "reasoning": "why"}}
-        3. If failed → return {{"action": "fail", "error": "reason"}}
+        AVAILABLE ACTIONS (Choose one):
         
-         Available AITools functions:
-        - file_read: file_read(file_path, lines=None)
-        - file_write: file_write(file_path, content, mode="w")
-        - file_edit: file_edit(file_path, operation, line_number=None, content=None, replacement=None)
-        - execute_command: execute_command(command, timeout=30, working_dir=None)
-        - service_control: service_control(service_name, action)
-        - config_validate: config_validate(service_type, config_path=None)
-        - security_scan: security_scan(scan_type, target=None)
-        - log_analyze: log_analyze(log_file, pattern=None, lines=100)
-        
-        
-         Examples:
-        - To check Apache status: {{"action": "tool_call", "tool_name": "service_control", "parameters": {{"service_name": "apache2", "action": "status"}}, "reasoning": "Check Apache service status"}}
-        - To read a file: {{"action": "tool_call", "tool_name": "file_read", "parameters": {{"file_path": "/etc/apache2/apache2.conf"}}, "reasoning": "Read Apache config file"}}
-        - To run bash command: {{"action": "execute", "command": "ls -la /var/log", "reasoning": "List log files"}}
+        1. CALL A TOOL (Preferred for file/system ops):
+           {{
+             "action": "tool_call",
+             "tool_name": "EXACT_TOOL_NAME_FROM_LIST",
+             "parameters": {{ "param1": "value" }},
+             "reasoning": "why you use this"
+           }}
+           
+        2. EXECUTE BASH (Only for general shell commands not covered by tools):
+           {{
+             "action": "execute",
+             "command": "ls -la",
+             "reasoning": "checking files"
+           }}
+           
+        3. COMPLETE TASK:
+           {{
+             "action": "complete",
+             "summary": "Task done successfully."
+           }}
 
-        Be specific with parameters and paths. 
-        Context memory: {json.dumps(self.context_memory)}
+        AVAILABLE TOOLS:
+        - file_read(file_path): Reads the ENTIRE file. Use this to check configs.
+        - file_write(file_path, content, mode='w')
+        - file_edit(file_path, operation, line_number=None, content=None, replacement=None)
+          * ops: replace_line, insert_line, delete_line, replace_pattern
+        - service_control(service_name, action)
+        - config_validate(service_type)
         
-        IMPORTANT: Return only valid JSON format. No additional text.
+        Current Context: {json.dumps(self.context_memory)}
+        
+        Do not output markdown code blocks. Just the JSON string.
         """
         
         messages = [
@@ -3116,17 +3294,16 @@ class SmartAgent:
         
         try:
             response = self.mcp_client.client.chat.complete(
-                model=self.mcp_client.model,  # Use GPT-3.5 for cost efficiency
+                model=self.mcp_client.model,
                 messages=messages,
                 temperature=0.1,
-                max_tokens=200
+                max_tokens=300
             )
             
             ai_response = response.choices[0].message.content.strip()
             
-            # Try to extract JSON if response has extra text
+            # Clean JSON
             if not ai_response.startswith('{'):
-                # Look for JSON in the response
                 start = ai_response.find('{')
                 end = ai_response.rfind('}') + 1
                 if start >= 0 and end > start:
@@ -3134,10 +3311,6 @@ class SmartAgent:
             
             return json.loads(ai_response)
             
-        except json.JSONDecodeError as e:
-            print(f"JSON decode error: {e}")
-            print(f"AI Response: {ai_response}")
-            return {"action": "fail", "error": f"Invalid JSON response: {str(e)}"}
         except Exception as e:
             return {"action": "fail", "error": str(e)}
     
@@ -3363,7 +3536,8 @@ def process_smart_chat(request):
         if not user_message:
             return JsonResponse({'error': 'Message is required'}, status=400)
         # Initialize smart agent
-        agent = SmartAgent()
+        sudo_pass = request.session.get('temp_sudo_pass')
+        agent = SmartAgent(sudo_password=sudo_pass)
         print(agent)
         # Process with smart workflow
         workflow_result = agent.process_smart_workflow(user_message)
@@ -4228,11 +4402,16 @@ def detect_view(request):
             features = body.get("features")
             if not features:
                 return JsonResponse({"error": "Missing features"}, status=400)
+            
+            print(f"DEBUG: Menerima Fitur: {features}")
 
             result = predict_intrusion(features)
 
+            print(f"DEBUG: Hasil Prediksi Model: {result}")
+
             # Simpan ke DB hanya jika bukan BENIGN
             if result.upper() != "BENIGN":
+                print("DEBUG: Mengirim Alert ke WebSocket...")
                 intrusion = AIIntrusionLog.objects.create(
                     result=result,
                     raw_features=features,
@@ -4241,7 +4420,7 @@ def detect_view(request):
                 # Kirim ke WebSocket
                 channel_layer = get_channel_layer()
                 async_to_sync(channel_layer.group_send)(
-                    "intrusion_logs",
+                    "ai_intrusion_logs",
                     {
                         "type": "send_intrusion_log",
                         "data": {
@@ -4252,10 +4431,12 @@ def detect_view(request):
                         }
                     }
                 )
-
+            else:
+                print("DEBUG: Traffic aman (BENIGN), tidak dikirim ke WS.")
             return JsonResponse({"result": result})
 
         except Exception as e:
+            print(f"DEBUG ERROR: {e}")
             return JsonResponse({"error": str(e)}, status=500)
 
     return JsonResponse({"error": "Invalid method"}, status=405)
@@ -4299,3 +4480,28 @@ def get_ai_suggestions(request):
             {"title": "Disk Usage", "prompt": "Tampilkan penggunaan disk space (df -h)", "icon": "bi-hdd-network"}
         ]
         return JsonResponse({"suggestions": fallback, "status": "success"}) #
+
+
+@require_POST
+def set_sudo_credentials(request):
+    try:
+        data = json.loads(request.body)
+        encoded_pass = data.get('sudo_pass') # Ini masih format Base64
+        
+        if encoded_pass:
+            try:
+                # DECODE BASE64 MENJADI TEXT ASLI
+                # Agent butuh password asli untuk mengetik di terminal
+                password = base64.b64decode(encoded_pass).decode("utf-8")
+                
+                # Simpan password ASLI ke dalam Session Django (Aman karena Session Django itu terenkripsi di sisi server)
+                request.session['temp_sudo_pass'] = password
+                request.session.set_expiry(3600) 
+                
+                return JsonResponse({'status': 'success', 'message': 'Credentials secured in session.'})
+            except Exception as e:
+                return JsonResponse({'status': 'error', 'message': 'Failed to decode password'}, status=400)
+        
+        return JsonResponse({'status': 'ignore', 'message': 'No password provided.'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)

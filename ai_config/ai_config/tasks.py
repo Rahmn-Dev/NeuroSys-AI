@@ -4,10 +4,82 @@ from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
 import subprocess
 import os
-
+from langchain.llms.base import LLM
+from django.conf import settings
+from typing import Dict, List, Optional, Any, Mapping
+import requests
 
 # Inisialisasi model AI
-llm = OllamaLLM(model="qwen2.5-coder:latest")
+# llm = OllamaLLM(model="qwen2.5-coder:latest")
+
+OLLAMA_URL = getattr(settings, "OLLAMA_URL")
+OLLAMA_MODEL = getattr(settings, "OLLAMA_MODEL")
+OLLAMA_API_KEY = getattr(settings, "OLLAMA_API_KEY")
+class KantorOllamaLLM(LLM):
+    """
+    Wrapper khusus untuk connect ke FastAPI Kantor.
+    Menggunakan requests biasa agar Header Authorization terjamin terkirim.
+    """
+    api_url: str
+    api_key: str
+    model_name: str
+    
+    @property
+    def _llm_type(self) -> str:
+        return "kantor_ollama_custom"
+
+    def _call(self, prompt: str, stop: Optional[List[str]] = None, **kwargs: Any) -> str:
+        # Header ini PASTI terkirim
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "prompt": prompt,
+            "model": self.model_name
+        }
+
+        try:
+            # Kita paksa URL-nya bersih di sini
+            # Hapus trailing slash jika ada
+            base = self.api_url.rstrip("/")
+            # Pastikan endpointnya benar (sesuai main.py kamu: /api/generate)
+            if not base.endswith("/api/generate"):
+                endpoint = f"{base}/api/generate"
+            else:
+                endpoint = base
+
+            print(f"DEBUG: Sending to {endpoint} with Key prefix: {self.api_key[:2]}***") # Debug Log di Terminal Django
+
+            response = requests.post(
+                endpoint, 
+                json=payload, 
+                headers=headers, 
+                timeout=120
+            )
+            
+            if response.status_code == 401:
+                return "Error 401: Unauthorized. Cek API Key di Django settings."
+            
+            response.raise_for_status()
+            
+            # Ambil jawaban dari JSON response FastAPI
+            data = response.json()
+            return data.get("response", "")
+            
+        except requests.exceptions.RequestException as e:
+            return f"Error connecting to AI Server: {str(e)}"
+
+    @property
+    def _identifying_params(self) -> Mapping[str, Any]:
+        return {"api_url": self.api_url, "model": self.model_name}
+    
+llm = KantorOllamaLLM(
+    api_url=OLLAMA_URL, 
+    api_key=OLLAMA_API_KEY,
+    model_name=OLLAMA_MODEL
+)
 
 
 # Template general security analyzer
