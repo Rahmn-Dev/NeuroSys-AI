@@ -9,6 +9,8 @@
 
 <link href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css">
+<script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <style>
     /* --- Tambahan CSS untuk Time Badge & Timer --- */
 .time-badge-group {
@@ -300,6 +302,43 @@
     background-color: #ccc;
     color: black;
 }
+.ai-bubble {
+    background-color: white;
+    color: #1f2937;
+    border: 1px solid #e5e7eb;
+    border-top-left-radius: 8px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    font-size: 14px;
+    line-height: 1.6;
+    word-wrap: break-word;
+}
+.ai-bubble p {
+    margin-bottom: 0.5rem;
+}
+.ai-bubble p:last-child {
+    margin-bottom: 0;
+}
+.ai-bubble ul, .ai-bubble ol {
+    margin-bottom: 0.5rem;
+    padding-left: 1.5rem;
+}
+.ai-bubble li {
+    margin-bottom: 0.25rem;
+}
+.ai-bubble h1, .ai-bubble h2, .ai-bubble h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+.ai-bubble code {
+    background-color: #f1f5f9;
+    padding: 0.1rem 0.3rem;
+    border-radius: 4px;
+    font-family: 'Fira Code', monospace;
+    font-size: 0.9em;
+}
+
 .chat-bubble {
     max-width: 70%;
     margin: 8px 0;
@@ -318,13 +357,7 @@
     border-top-right-radius: 8px;
 }
 
-.ai-bubble {
-    background-color: #f1f1f1;
-    color: #333;
-    align-self: flex-start;
-    margin-right: auto;
-    border-top-left-radius: 8px;
-}
+/* Removed old .ai-bubble */
 
 /* Untuk chat history */
 #chat-history .chat-bubble {
@@ -440,63 +473,20 @@
             <div class="right-side-top">
                 <div class="card-header" style="border-top-left-radius: 10px; border-top-right-radius: 10px; background: #0f172a; color: #38bdf8; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155;">
                     <span style="font-family: 'Fira Code', monospace; font-size: 14px;">
-                        <i class="bi bi-terminal-split me-2"></i>AI WORKSPACE STATE
+                        <i class="bi bi-clock-history me-2"></i>CHAT HISTORY
                     </span>
-                    <span class="badge bg-primary" style="font-size: 10px;">ACTIVE</span>
+                    <button onclick="createNewSession()" class="btn btn-sm btn-primary" style="font-size: 10px;"><i class="bi bi-plus"></i> NEW</button>
                 </div>
             
-                <div class="card-body" style="background: #1e293b; padding: 15px; max-height: 300px; overflow-y: auto; color: #cbd5e1;">
-                    
-                    <div class="mb-3">
-                        <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; font-weight: bold;">Current Directory</label>
-                        <div class="d-flex align-items-center mt-1 p-2 rounded" style="background: #0f172a; border: 1px solid #334155;">
-                            <i class="bi bi-folder2-open me-2 text-warning"></i>
-                            <span id="ctx-cwd" style="font-family: 'Fira Code', monospace; font-size: 13px; color: #fbbf24;">/home/user</span>
-                        </div>
-                    </div>
-            
-                    <div class="row g-2 mb-3">
-                        <div class="col-6">
-                            <div class="p-2 rounded text-center" style="background: #0f172a; border: 1px solid #334155;">
-                                <div style="font-size: 10px; color: #64748b;">USER</div>
-                                <div id="ctx-user" style="font-family: 'Fira Code', monospace; font-weight: bold; color: #a5b4fc;">root</div>
-                            </div>
-                        </div>
-                        <div class="col-6">
-                            <div class="p-2 rounded text-center" style="background: #0f172a; border: 1px solid #334155;">
-                                <div style="font-size: 10px; color: #64748b;">LAST STATUS</div>
-                                <div id="ctx-status" style="font-family: 'Fira Code', monospace; font-weight: bold; color: #4ade80;">0 (Success)</div>
-                            </div>
-                        </div>
-                    </div>
-            
-                    <div class="mb-3">
-                        <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; font-weight: bold;">
-                            <i class="bi bi-memory me-1"></i> Context Memory
-                        </label>
-                        <div id="ctx-memory-list" class="mt-1 d-flex flex-column gap-2">
-                            <div class="memory-item p-2 rounded" style="background: rgba(56, 189, 248, 0.1); border-left: 3px solid #38bdf8; font-size: 12px;">
-                                <span class="d-block text-info" style="font-size: 10px;">LAST_ACTION</span>
-                                <span style="font-family: 'Fira Code';">analyzing_disk</span>
-                            </div>
-                        </div>
-                    </div>
-            
-                    <div class="d-grid gap-2">
-                        <button onclick="sendQuickCommand('clear')" class="btn btn-sm btn-outline-secondary" style="font-size: 11px; text-align: left;">
-                            <i class="bi bi-eraser me-2"></i>Clear Terminal View
-                        </button>
-                        <button onclick="sendQuickCommand('ls -la')" class="btn btn-sm btn-outline-secondary" style="font-size: 11px; text-align: left;">
-                            <i class="bi bi-list-ul me-2"></i>List Files (ls -la)
-                        </button>
-                    </div>
-            
+                <div class="card-body" style="background: #1e293b; padding: 0; max-height: 300px; overflow-y: auto; color: #cbd5e1;">
+                    <ul class="list-group list-group-flush" id="chat-history-list" style="margin:0; border-radius: 0;">
+                        <li class="list-group-item text-center" style="background: transparent; color: #64748b; font-size: 12px; border: none; padding: 15px;">Loading history...</li>
+                    </ul>
                 </div>
             </div>
             <div class="right-side-bottom">
-                <div class="card-header" style="display: flex;border-top-left-radius: 10px;border-top-right-radius: 10px;background: linear-gradient(90deg, rgb(18, 181, 222) -30%, rgb(48, 123, 195) 30%, rgb(59, 186, 255) 90%);color: white;justify-content: space-between;">Workflow Step-by-Step <button class="btn " id="status-final"></button></div>
-                <div class="chat-history-section" id="workflow-steps">
-                </div>
+                <div class="card-header" style="display: flex;border-top-left-radius: 10px;border-top-right-radius: 10px;background: linear-gradient(90deg, rgb(18, 181, 222) -30%, rgb(48, 123, 195) 30%, rgb(59, 186, 255) 90%);color: white;justify-content: space-between;">System Console <button class="btn " id="status-final"></button></div>
+                <div class="chat-history-section" id="terminal-container" style="flex: 1; padding: 5px; background: #000; overflow: hidden; position: relative; min-height: 400px; max-height: calc(100vh - 100px);"></div>
             </div>
         </div>
         
@@ -600,6 +590,91 @@ function createWorkflowCard(iconClass, title, content, logType, ) {
     const sudoInput = document.getElementById('sudo-input');
 
     let ws;
+    let currentSessionId = "null";
+    const term = new Terminal({
+        theme: { background: '#000' },
+        fontFamily: "'Fira Code', monospace",
+        fontSize: 12,
+        cursorBlink: true
+    });
+    
+    let termWs;
+    
+    document.addEventListener('DOMContentLoaded', () => {
+        term.open(document.getElementById('terminal-container'));
+        
+        // Connect to Interactive Terminal WebSocket
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const wsHost = window.location.host;
+        termWs = new WebSocket(`${wsProtocol}://${wsHost}/ws/terminal/`);
+        
+        termWs.onopen = () => {
+            term.write('\x1b[1;32mInteractive Terminal Connected...\x1b[0m\r\n');
+        };
+        
+        termWs.onmessage = (event) => {
+            term.write(event.data);
+        };
+        
+        termWs.onclose = () => {
+            term.write('\r\n\x1b[1;31mTerminal Disconnected\x1b[0m\r\n');
+        };
+        
+        term.onData((data) => {
+            if (termWs && termWs.readyState === WebSocket.OPEN) {
+                termWs.send(JSON.stringify({ type: "input", data: data }));
+            }
+        });
+
+        loadChatSessions();
+    });
+
+    async function loadChatSessions() {
+        try {
+            const response = await fetch('/api/v1/chat-sessions/');
+            const sessions = await response.json();
+            const list = document.getElementById('chat-history-list');
+            list.innerHTML = '';
+            if(sessions.length === 0) {
+                list.innerHTML = '<li class="list-group-item text-center" style="background: transparent; color: #64748b; font-size: 12px; border: none; padding: 15px;">No history yet.</li>';
+            }
+            sessions.forEach(session => {
+                const li = document.createElement('li');
+                li.className = 'list-group-item';
+                li.style = 'background: transparent; border-bottom: 1px solid #334155; padding: 10px 15px; cursor: pointer; transition: background 0.2s;';
+                li.innerHTML = `<div style="font-size: 13px; font-weight: bold; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${session.title || 'New Chat'}</div>
+                                <div style="font-size: 10px; color: #64748b; margin-top: 4px;">${new Date(session.created_at).toLocaleString()}</div>`;
+                li.onmouseover = () => li.style.background = 'rgba(255,255,255,0.05)';
+                li.onmouseout = () => li.style.background = 'transparent';
+                li.onclick = () => loadChatSession(session.id);
+                list.appendChild(li);
+            });
+        } catch(e) {
+            console.error("Failed to load history", e);
+        }
+    }
+
+    async function loadChatSession(id) {
+        currentSessionId = id;
+        document.getElementById('chat-history').innerHTML = '';
+        term.write(`\x1b[1;36mLoading Session Context [${id}]...\x1b[0m\r\n`);
+        
+        try {
+            const response = await fetch(`/api/v1/chat-sessions/${id}/messages/`);
+            const messages = await response.json();
+            messages.forEach(msg => {
+                addChatBubble(msg.message, msg.sender);
+            });
+        } catch (e) {
+            console.error("Failed to load messages", e);
+        }
+    }
+
+    function createNewSession() {
+        currentSessionId = "null";
+        document.getElementById('chat-history').innerHTML = '';
+        term.write(`\x1b[1;36mStarted New Session\x1b[0m\r\n`);
+    }
 
     // --- 1. LOGIC SAKLAR (TOGGLE) ---
     toggleBtn.addEventListener('change', function() {
@@ -670,119 +745,57 @@ function createWorkflowCard(iconClass, title, content, logType, ) {
         ws.onmessage = async function(event) {
             const data = JSON.parse(event.data);
 
+            
             switch (data.type) {
+                case "session_id":
+                    currentSessionId = data.content;
+                    loadChatSessions();
+                    break;
                 case "status":
-                    createWorkflowCard('bi bi-activity', 'Status', data.content, 'status');
-                    break;
-
                 case "step_info":
-                    createWorkflowCard('bi bi-shield-shaded', data.content, '', 'step-info');
-                    break;
-
-                case "decision":
-                    const decisionText = data.content.replace("AI Decision: ", "");
-                    createWorkflowCard('bi bi-cpu-fill', 'AI Decision', `Executing action based on reasoning: <code>${decisionText}</code>`, 'decision');
+                    // Optionally show a subtle status update, but for now we ignore or print to console
+                    console.log("Status:", data.content);
                     break;
 
                 case "reasoning":
-                    createWorkflowCard('bi bi-lightbulb-fill', 'Reasoning', `<em>${data.content}</em>`, 'reasoning');
+                    updateThinkingBubble(data.content);
                     break;
 
-                case "command":
-                    const commandText = data.content.replace("Executing bash command: ", "");
-                    
-                    // 1. Mulai Timer saat command dieksekusi
-                    if (executionTimer) clearInterval(executionTimer); // Reset jika ada timer jalan
-                    executionStartTime = Date.now();
-                    
-                    // Buat ID unik untuk timer element
-                    const timerId = "timer-" + Math.floor(Math.random() * 10000);
-                    
-                    createWorkflowCard('bi bi-terminal-fill', 'Executing Command', 
-                        `<code>${commandText}</code>
-                        <div class="mt-2 text-muted" style="font-size:11px;">
-                            <i class="bi bi-stopwatch"></i> Running: <span id="${timerId}" class="running-timer">0.00s</span>
-                        </div>`, 
-                        'command');
-
-                    // Jalankan interval update
-                    executionTimer = setInterval(() => {
-                        const elapsed = (Date.now() - executionStartTime) / 1000;
-                        const el = document.getElementById(timerId);
-                        if(el) el.innerText = elapsed.toFixed(2) + "s";
-                    }, 100);
+                case "tool_start":
+                    finishThinkingSpinner();
+                    // Tambahkan bubble ke chat history
+                    addChatBubble(`🛠️ <b>${data.title}</b><br><pre style="background:#f1f5f9; padding:5px; margin-top:5px; border-radius:4px; font-size:0.85em;">${data.command}</pre>`, "ai");
                     break;
 
-                case "step":
-                    // 2. Hentikan timer saat step selesai
-                    if (executionTimer) clearInterval(executionTimer);
-
-                    const step = data.content;
-                    const resultCard = document.createElement("div");
-                    resultCard.className = "workflow-card workflow-step-final log-complete";
-                    
-                    // Cek output jika kosong
-                    let outputDisplay = step.result.output ? step.result.output : "<span class='text-muted'>(No output)</span>";
-                    
-                    // Render HTML
-                    resultCard.innerHTML = `
-                        <div class="card-header2">
-                            <i class="bi bi-check-circle-fill"></i>
-                            <span class="card-header-title">Step ${step.step}: Execution Complete</span>
-                        </div>
-                        <div class="card-body2">
-                            <div class="mb-2"><strong>Reasoning:</strong> ${step.reasoning}</div>
-                            <div class="mb-2"><strong>Command:</strong> <code style="background:#f1f5f9; padding:2px 5px; border-radius:4px; color:#ef4444;">${step.command}</code></div>
-                            <div class="mb-2"><strong>Result:</strong> <pre style="background:#1e293b; color:#a5b4fc; padding:10px; border-radius:6px; max-height:150px; overflow:auto; margin-top:5px;">${outputDisplay}</pre></div>
-                        </div>
-                    `;
-                    workflowSteps.appendChild(resultCard);
-                    workflowSteps.scrollTop = workflowSteps.scrollHeight;
-                    
-                    // Tampilkan di terminal utama juga
-                    displayBashOutput(step.result.output, step.result.error, step.command);
+                case "tool_end":
+                    let shortOut = (data.result || "");
+                    if (shortOut.length > 300) {
+                        shortOut = shortOut.substring(0, 300) + "... (truncated)";
+                    }
+                    // Tambahkan output ke chat history
+                    addChatBubble(`✅ <b>Tool Finished</b><br><pre style="background:#f0fdf4; padding:5px; margin-top:5px; border-radius:4px; font-size:0.85em; color:#166534; white-space:pre-wrap;">${shortOut}</pre>`, "ai");
                     break;
 
-                case "complete":
-                    // Ambil data waktu dari JSON backend
-                    const startTime = data.content.start_time;
-                    const endTime = data.content.end_time;
-                    const duration = data.content.duration;
+                case "message":
+                    finishThinkingSpinner();
+                    addChatBubble(data.content, "ai");
+                    break;
 
-                    const completeHTML = `
-                        <div>${data.content.summary}</div>
-                        
-                        <div class="time-badge-group">
-                            <div class="time-badge" title="Start Time" style="background:#064e3b; color:#6ee7b7;">
-                                <i class="bi bi-play-circle"></i> Start: ${formatTime(startTime)}
-                            </div>
-                            <div class="time-badge" title="End Time" style="background:#064e3b; color:#6ee7b7;">
-                                <i class="bi bi-stop-circle"></i> End: ${formatTime(endTime)}
-                            </div>
-                            <div class="time-badge" title="Total Duration" style="background:#166534; color:white; font-weight:bold;">
-                                <i class="bi bi-hourglass-split"></i> Duration: ${formatDuration(duration)}
-                            </div>
-                        </div>
-                    `;
-
-                    createWorkflowCard('bi bi-trophy-fill', 'Workflow Completed', completeHTML, 'complete');
-                    addChatBubble(data.content.summary, "ai");
-                    updateFinalStatus("Completed", "success");
+                case "message_chunk":
+                    finishThinkingSpinner();
+                    updateLastAIBubble(data.content);
                     break;
 
                 case "error":
-                    if (executionTimer) clearInterval(executionTimer); // Stop timer jika error
-                    createWorkflowCard('bi bi-exclamation-triangle-fill', 'Workflow Failed', data.content, 'error');
-                    addChatBubble(data.content, "ai");
-                    updateFinalStatus("Failed", "danger");
+                    addChatBubble(`❌ Error: ${data.content}`, "ai");
                     break;
-
-                case "context_update":
-                    updateWorkspacePanel(data.content);
+                    
+                case "complete":
+                    finishThinkingSpinner();
+                    updateFinalStatus("Completed", "success");
                     break;
 
                 case "confirmation_request":
-                    // ... (Kode konfirmasi tetap sama) ...
                     const safeCommand = data.command.replace(/'/g, "\\'");
                     const div = document.createElement("div");
                     div.className = "chat-bubble ai-bubble";
@@ -800,18 +813,16 @@ function createWorkflowCard(iconClass, title, content, logType, ) {
                             <button onclick="confirmExecution('${safeCommand}')" class="btn btn-sm btn-success">
                                 <i class="bi bi-check-lg"></i> Execute
                             </button>
-                            <button onclick="cancelExecution(this)" class="btn btn-sm btn-secondary">
+                            <button onclick="cancelExecution()" class="btn btn-sm btn-danger">
                                 <i class="bi bi-x-lg"></i> Cancel
                             </button>
                         </div>
                     `;
-                    bashContainer.appendChild(div);
-                    window.scrollTo(0, document.body.scrollHeight);
+                    document.getElementById('chat-history').appendChild(div);
+                    scrollToBottom();
                     break;
-
-                default:
-                    console.log("Unhandled message type:", data.type);
             }
+
         };
 
         ws.onclose = () => {
@@ -870,6 +881,7 @@ function createWorkflowCard(iconClass, title, content, logType, ) {
 
         // --- LOGIKA BARU: Handle Password ---
         const isAutoMode = toggleBtn.checked;
+        const aiProvider = document.getElementById('ai-provider-select').value;
         const rawPassword = sudoInput.value;
 
         // Jika user mengisi password, simpan dulu ke session via API
@@ -886,9 +898,10 @@ function createWorkflowCard(iconClass, title, content, logType, ) {
         // Buat Payload JSON (TANPA PASSWORD)
         const payload = {
             message: message,
+            session_id: currentSessionId,
+            provider: aiProvider,
             config: {
                 auto_execute: isAutoMode
-                // sudo_pass DIHAPUS dari sini
             }
         };
 
@@ -899,6 +912,10 @@ function createWorkflowCard(iconClass, title, content, logType, ) {
     function handleWsMessage(data) {
         // Handle berbagai tipe pesan dari backend
         switch (data.type) {
+            case "session_id":
+                currentSessionId = data.content;
+                loadChatSessions(); // Refresh list to show new chat
+                break;
             case "status":
             case "step_info":
                 createWorkflowCard('bi bi-info-circle', 'Info', data.content, 'status');
@@ -980,15 +997,21 @@ function createWorkflowCard(iconClass, title, content, logType, ) {
         }
     }
 
-    function addChatBubble(text, sender) {
+    function addChatBubble(text, sender, isRawHtml=false) {
         const div = document.createElement("div");
         div.className = `chat-bubble ${sender === "user" ? "user-bubble" : "ai-bubble"}`;
         
-        // Jika text berisi kode, format dengan pre/code
-        if(text.includes('\n') || text.length > 50) {
-            div.innerHTML = `<pre style="background:transparent; padding:0; margin:0; white-space: pre-wrap; font-family:inherit;">${text}</pre>`;
+        if (isRawHtml) {
+            div.innerHTML = text;
+        } else if (sender === "ai" && typeof marked !== 'undefined') {
+            div.innerHTML = marked.parse(text);
         } else {
-            div.textContent = text;
+            // Jika text berisi kode, format dengan pre/code (untuk fallback atau user)
+            if(text.includes('\n') || text.length > 50) {
+                div.innerHTML = `<pre style="background:transparent; padding:0; margin:0; white-space: pre-wrap; font-family:inherit;">${text}</pre>`;
+            } else {
+                div.textContent = text;
+            }
         }
 
         bashContainer.appendChild(div);
@@ -997,6 +1020,50 @@ function createWorkflowCard(iconClass, title, content, logType, ) {
         window.scrollTo(0, document.body.scrollHeight);
     }
     
+    function updateLastAIBubble(text) {
+        const lastBubble = bashContainer.lastElementChild;
+        if (lastBubble && lastBubble.classList.contains("ai-bubble") && !lastBubble.querySelector('.thinking-content')) {
+            if (typeof marked !== 'undefined') {
+                lastBubble.innerHTML = marked.parse(text);
+            } else {
+                if (text.includes('\n') || text.length > 50) {
+                    lastBubble.innerHTML = `<pre style="background:transparent; padding:0; margin:0; white-space: pre-wrap; font-family:inherit;">${text}</pre>`;
+                } else {
+                    lastBubble.textContent = text;
+                }
+            }
+            window.scrollTo(0, document.body.scrollHeight);
+        } else {
+            addChatBubble(text, "ai");
+        }
+    }
+    
+    function updateThinkingBubble(text) {
+        const lastBubble = bashContainer.lastElementChild;
+        if (lastBubble && lastBubble.classList.contains("ai-bubble") && lastBubble.querySelector('.thinking-content')) {
+            const thinkContent = lastBubble.querySelector('.thinking-content');
+            thinkContent.textContent = text;
+            window.scrollTo(0, document.body.scrollHeight);
+        } else {
+            const div = document.createElement("div");
+            div.className = "chat-bubble ai-bubble";
+            div.innerHTML = `<div style="display:flex; align-items:center; gap:8px; color:#6b7280; font-style:italic;">
+                <div class="spinner-border spinner-border-sm text-secondary" role="status"></div>
+                <span class="thinking-content">${text}</span>
+            </div>`;
+            bashContainer.appendChild(div);
+            window.scrollTo(0, document.body.scrollHeight);
+        }
+    }
+    
+    function finishThinkingSpinner() {
+        const thinkSpinners = bashContainer.querySelectorAll('.spinner-border');
+        thinkSpinners.forEach(spinner => {
+            spinner.classList.remove('spinner-border', 'spinner-border-sm', 'text-secondary');
+            spinner.classList.add('bi', 'bi-check2-circle', 'text-success');
+            spinner.removeAttribute('role');
+        });
+    }
 
     function displayBashOutput(stdout, stderr, command = "") {
         const pre = document.createElement("pre");

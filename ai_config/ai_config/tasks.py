@@ -1,7 +1,7 @@
 from chatbot.models import AIRecommendation
 from langchain_ollama import OllamaLLM
-from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
+from langchain_core.prompts import PromptTemplate
+from langchain_core.output_parsers import StrOutputParser
 import subprocess
 import os
 from langchain.llms.base import LLM
@@ -105,8 +105,8 @@ Recommend one specific action to prevent or resolve the issue.
 
 
 # Buat chains
-security_chain = LLMChain(llm=llm, prompt=security_prompt)
-maintenance_chain = LLMChain(llm=llm, prompt=maintenance_prompt)
+security_chain = security_prompt | llm | StrOutputParser()
+maintenance_chain = maintenance_prompt | llm | StrOutputParser()
 
 
 # Fungsi baca file log dengan aman
@@ -153,7 +153,7 @@ def analyze_general_and_save():
     for filename, content in logs.items():
         if content and "[not found]" not in content.lower() and "[empty]" not in content.lower():
             print(f"\n📄 Analisis log: {filename}")
-            result = security_chain.run(content)
+            result = security_chain.invoke({"log_data": content})
             print(result)
 
             # Simpan ke database
@@ -167,7 +167,7 @@ def analyze_general_and_save():
     print("\n--- Maintenance Analysis ---")
     print("\n📊 Memeriksa penggunaan disk...")
     disk_usage = get_system_info("df -h")
-    result = maintenance_chain.run(disk_usage)
+    result = maintenance_chain.invoke({"input_data": disk_usage})
     print(result)
     AIRecommendation.objects.create(
         category="maintenance",
@@ -178,7 +178,7 @@ def analyze_general_and_save():
 
     print("\n📊 Memeriksa status service yang gagal...")
     failed_services = get_system_info("systemctl list-units --failed")
-    result = maintenance_chain.run(failed_services)
+    result = maintenance_chain.invoke({"input_data": failed_services})
     print(result)
     AIRecommendation.objects.create(
         category="maintenance",
@@ -189,7 +189,7 @@ def analyze_general_and_save():
 
     print("\n📊 Memeriksa penggunaan CPU & RAM...")
     cpu_mem = get_system_info("top -n 1 -b")
-    result = maintenance_chain.run(cpu_mem)
+    result = maintenance_chain.invoke({"input_data": cpu_mem})
     print(result)
     AIRecommendation.objects.create(
         category="maintenance",

@@ -25,13 +25,13 @@ from langchain_ollama import OllamaLLM
 from django.conf import settings
 import shlex
 from langchain_community.llms import Ollama
-from langchain_experimental.agents.agent_toolkits import create_pandas_dataframe_agent # Contoh, kita tidak pakai ini
-from langchain.agents import AgentExecutor, create_react_agent
+# from langchain_experimental.agents.agent_toolkits import create_pandas_dataframe_agent # Contoh, kita tidak pakai ini
+# from langchain.agents import AgentExecutor, create_react_agent
 from langchain_core.prompts import PromptTemplate
 from .tools import ALL_TOOLS
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Any
-from langchain.agents import initialize_agent
+# from langchain.agents import initialize_agent
 import time
 from chatbot.models import SystemScan, ConfigurationIssue, AIIntrusionLog
 from .system_analyzer import LinuxConfigAnalyzer
@@ -124,6 +124,9 @@ def chatAI2(request):
     # return render(request,"generator/textGenerator.html",{'headTitle' : 'Chat AI','toggle' : "true"})
     # testing
     return render(request,"chat.html",{'headTitle' : 'Chat AI','toggle' : "true"})
+@login_required
+def chat3(request):
+    return render(request, "chat3.html", {'headTitle': 'NeuroSysAI SRE Agent', 'toggle': "true"})
 # config detector
 @login_required
 def config_detector(request):
@@ -1142,18 +1145,9 @@ react_prompt = PromptTemplate.from_template(REACT_PROMPT_TEMPLATE_STR)
 # Buat Agen ReAct
 # Fungsi create_react_agent mungkin memerlukan llm, tools, dan prompt
 try:
-    react_agent = create_react_agent(llm=llm, tools=ALL_TOOLS, prompt=react_prompt)
-    # AGENT_EXECUTOR = AgentExecutor(
-    AGENT_EXECUTOR = initialize_agent(
-        # agent=react_agent,
-        agent="zero-shot-react-description",
-        llm=llm,
-        tools=ALL_TOOLS,
-        verbose=True, # Sangat berguna untuk debugging, tampilkan proses berpikir agen
-        handle_parsing_errors=True, # Mencoba memperbaiki error parsing output LLM
-        max_iterations=30, # Mencegah loop tak terbatas
-        # early_stopping_method="generate", # Opsional, untuk menghentikan jika LLM menghasilkan Final Answer
-    )
+    # react_agent = create_react_agent(llm=llm, tools=ALL_TOOLS, prompt=react_prompt)
+    from langgraph.prebuilt import create_react_agent
+    AGENT_EXECUTOR = create_react_agent(llm, tools=ALL_TOOLS)
     print("LangChain ReAct AgentExecutor berhasil diinisialisasi.")
 except Exception as e:
     print(f"GAGAL menginisialisasi LangChain AgentExecutor: {e}")

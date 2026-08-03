@@ -3,26 +3,35 @@ from django.db import models
 
 class ChatSession(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)  # UUID sebagai primary key
+    title = models.CharField(max_length=255, default="New Chat")
+    workspace = models.ForeignKey('WorkspaceInfo', null=True, blank=True, on_delete=models.SET_NULL, related_name='sessions')
     created_at = models.DateTimeField(auto_now_add=True)  # Waktu sesi chat dibuat
     updated_at = models.DateTimeField(auto_now=True)  # Waktu sesi chat terakhir diupdate
 
     def __str__(self):
-        return f"ChatSession {self.id}"
+        return f"{self.title} - {self.id}"
 
 class ChatMessage(models.Model):
     SENDER_CHOICES = [
         ('user', 'User'),
         ('ai', 'AI'),
     ]
+    ROLE_CHOICES = [
+        ('user', 'User'),
+        ('assistant', 'Assistant'),
+        ('tool', 'Tool'),
+    ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)  # UUID sebagai primary key
     session = models.ForeignKey(ChatSession, related_name='messages', on_delete=models.CASCADE)  # Relasi ke ChatSession
-    sender = models.CharField(max_length=10, choices=SENDER_CHOICES)  # Sender: user atau AI
+    sender = models.CharField(max_length=10, choices=SENDER_CHOICES)  # Legacy
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='user')
     message = models.TextField()  # Isi pesan
+    metadata = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)  # Waktu pesan dikirim
 
     def __str__(self):
-        return f"{self.sender}: {self.message[:50]}..."
+        return f"{self.role}: {self.message[:50]}..."
     
 
 from django.db import models
@@ -178,3 +187,156 @@ class AIIntrusionLog(models.Model):
 
     def __str__(self):
         return f"[{self.timestamp}] {self.result}"
+
+
+# ---------------------------------------------------------------------------
+# SRE Agent Memory Models
+# ---------------------------------------------------------------------------
+
+class WorkspaceInfo(models.Model):
+    """Persistent workspace analysis results — framework, language, etc."""
+    workspace_path = models.CharField(max_length=512, unique=True)
+    framework = models.CharField(max_length=100, default="unknown")
+    language = models.CharField(max_length=100, default="unknown")
+    database = models.CharField(max_length=100, default="unknown")
+    web_server = models.CharField(max_length=100, default="unknown")
+    dependencies_json = models.TextField(default="[]")
+    deployment_json = models.TextField(default="[]")
+    has_docker = models.BooleanField(default=False)
+    has_nginx = models.BooleanField(default=False)
+    context_json = models.TextField(default="{}")
+    last_scanned = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Workspace: {self.workspace_path} ({self.framework})"
+
+    class Meta:
+        verbose_name = "Workspace Info"
+        verbose_name_plural = "Workspace Info"
+
+
+class AgentIncident(models.Model):
+    """Past incidents and solutions — long-term memory for the SRE agent."""
+    problem = models.TextField()
+    solution = models.TextField()
+    tools_used_json = models.TextField(default="[]")
+    category = models.CharField(max_length=100, default="general")
+    session_id = models.CharField(max_length=255, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"[{self.category}] {self.problem[:60]}..."
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Agent Incident"
+        verbose_name_plural = "Agent Incidents"
+# ---------------------------------------------------------------------------
+# NeuroSysAI v4 New Models
+# ---------------------------------------------------------------------------
+
+class ToolExecutionLog(models.Model):
+    conversation = models.ForeignKey(ChatSession, related_name='tool_logs', on_delete=models.CASCADE)
+    tool_name = models.CharField(max_length=100)
+    input_parameters = models.TextField(blank=True)
+    output_result = models.TextField(blank=True)
+    status = models.CharField(max_length=50) # success, error, blocked
+    execution_time = models.FloatField(default=0.0) # in seconds
+    risk_level = models.CharField(max_length=20, default="LOW")
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"{self.tool_name} [{self.status}]"
+
+class AgentArtifact(models.Model):
+    workspace = models.ForeignKey(WorkspaceInfo, related_name='artifacts', on_delete=models.CASCADE)
+    session_id = models.CharField(max_length=255, blank=True, null=True)
+    file_path = models.CharField(max_length=1024)
+    action_type = models.CharField(max_length=50) # create, edit, delete, rename
+    old_content = models.TextField(blank=True, null=True)
+    new_content = models.TextField(blank=True, null=True)
+    diff = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"{self.action_type}: {self.file_path}"
+
+class AgentEventLog(models.Model):
+    conversation = models.ForeignKey(ChatSession, related_name='events', on_delete=models.CASCADE)
+    event_type = models.CharField(max_length=100)
+    message = models.TextField()
+    metadata = models.JSONField(default=dict, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Event {self.event_type} at {self.timestamp}"
+
+class ServerProfile(models.Model):
+    name = models.CharField(max_length=255)
+    hostname = models.CharField(max_length=255)
+    ip = models.GenericIPAddressField()
+    os = models.CharField(max_length=100)
+    ssh_credential_ref = models.CharField(max_length=255, blank=True)
+    last_health_check = models.DateTimeField(auto_now=True)
+    services = models.JSONField(default=list, blank=True)
+
+    def __str__(self):
+        return self.name
+
+class InfrastructureNode(models.Model):
+    NODE_TYPES = [
+        ('server', 'Server'),
+        ('service', 'Service'),
+        ('application', 'Application'),
+        ('container', 'Container'),
+        ('database', 'Database'),
+    ]
+    name = models.CharField(max_length=255)
+    node_type = models.CharField(max_length=50, choices=NODE_TYPES)
+    properties = models.JSONField(default=dict, blank=True)
+
+    def __str__(self):
+        return f"[{self.node_type}] {self.name}"
+
+class InfrastructureEdge(models.Model):
+    source = models.ForeignKey(InfrastructureNode, related_name='outgoing_edges', on_delete=models.CASCADE)
+    target = models.ForeignKey(InfrastructureNode, related_name='incoming_edges', on_delete=models.CASCADE)
+    relation_type = models.CharField(max_length=100)
+    
+    def __str__(self):
+        return f"{self.source.name} --{self.relation_type}--> {self.target.name}"
+
+
+class Investigation(models.Model):
+    id = models.CharField(primary_key=True, max_length=50) # e.g. inv_abcdef12
+    session = models.ForeignKey(ChatSession, on_delete=models.CASCADE, related_name='investigations')
+    title = models.CharField(max_length=255)
+    status = models.CharField(max_length=20, default='active') # active, completed, failed
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.title} - {self.status}"
+
+class InvestigationTask(models.Model):
+    investigation = models.ForeignKey(Investigation, on_delete=models.CASCADE, related_name='tasks')
+    title = models.CharField(max_length=255)
+    status = models.CharField(max_length=20, default='pending') # pending, completed
+    task_order = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ['task_order']
+
+    def __str__(self):
+        return f"{self.title} ({self.status})"
+
+class InvestigationFinding(models.Model):
+    investigation = models.ForeignKey(Investigation, on_delete=models.CASCADE, related_name='findings')
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"Finding for {self.investigation.id}"

@@ -1,0 +1,1510 @@
+{% extends 'layout/layout1.html' %}
+{% load static %}
+
+{% block title %}NeuroSysAI SRE Agent{% endblock %}
+
+{% block content %}
+
+<style id="chat-theme-styles">
+  :root {
+    --bg-main: #0d1117;
+    --bg-panel: #161b22;
+    --border-color: #21262d;
+    --border-input: #30363d;
+    --text-primary: #c9d1d9;
+    --text-secondary: #8b949e;
+    --text-strong: #f0f6fc;
+    --accent: #1f6feb;
+    --accent-hover: #388bfd;
+    --success: #238636;
+    --success-text: #3fb950;
+    --error: #f85149;
+    --warning: #d29922;
+    --purple: #8957e5;
+  }
+
+  body.active-light-mode {
+    --bg-main: #f6f8fa;
+    --bg-panel: #ffffff;
+    --border-color: #d0d7de;
+    --border-input: #d0d7de;
+    --text-primary: #24292f;
+    --text-secondary: #57606a;
+    --text-strong: #0969da;
+    --accent: #0969da;
+    --accent-hover: #0349b4;
+    --success: #2da44e;
+    --success-text: #1a7f37;
+    --error: #cf222e;
+    --warning: #9a6700;
+    --purple: #8250df;
+  }
+
+  .sre-layout {
+    background: linear-gradient(135deg, #0a0c10 0%, #161b22 50%, #0a0c10 100%);
+    color: var(--text-primary);
+    font-family: 'Inter', 'Segoe UI', sans-serif;
+  }
+
+  .sre-panel {
+    background: rgba(22, 27, 34, 0.5);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 16px;
+  }
+
+  .sre-input {
+    background: var(--bg-main) !important;
+    border: 1px solid var(--border-input) !important;
+    color: var(--text-primary) !important;
+  }
+
+  .sre-input:focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.3);
+  }
+
+
+
+
+
+  .sre-border {
+    border-color: var(--border-color) !important;
+  }
+
+  .sre-text-strong {
+    color: var(--text-strong) !important;
+  }
+
+  .sre-text-secondary {
+    color: var(--text-secondary) !important;
+  }
+
+  /* Message specific styles */
+  .sre-msg-user {
+    background: var(--accent) !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 14px 0 rgba(0, 118, 255, 0.2);
+  }
+
+  .sre-msg-ai {
+    background: var(--bg-panel) !important;
+    border: 1px solid var(--border-color) !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  }
+
+
+
+  /* Icons */
+  .lucide {
+    width: 16px;
+    height: 16px;
+    display: inline-block;
+    vertical-align: middle;
+  }
+
+  /* Phase 6: Aesthetic Buttons & Collapsibles */
+  .sre-btn-primary {
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%) !important;
+    color: #ffffff !important;
+    border-radius: 9999px !important;
+    box-shadow: 0 4px 12px rgba(9, 105, 218, 0.2);
+    transition: all 0.2s ease;
+  }
+
+  .sre-btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(9, 105, 218, 0.3);
+  }
+
+  .sre-btn-success {
+    background: linear-gradient(135deg, var(--success) 0%, #2ea043 100%) !important;
+    color: #ffffff !important;
+    border-radius: 9999px !important;
+    box-shadow: 0 4px 12px rgba(45, 164, 78, 0.2);
+    transition: all 0.2s ease;
+  }
+
+  .sre-btn-success:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(45, 164, 78, 0.3);
+  }
+
+  .sre-agent-step {
+    background: var(--bg-panel);
+    opacity: 0.95;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    max-width: 85%;
+    width: 100%;
+    flex-shrink: 0;
+  }
+
+  .sre-step-header {
+    background: rgba(0, 0, 0, 0.02);
+  }
+
+  @keyframes spin-anim {
+    from {
+      transform: rotate(0deg);
+    }
+
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .spin-anim {
+    animation: spin-anim 1s linear infinite;
+  }
+
+  .sre-step-content {
+    padding: 0 14px 10px 14px;
+    border-top: 1px solid var(--border-color);
+    margin-top: 4px;
+    padding-top: 10px;
+  }
+
+  .sre-timer {
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-family: monospace;
+    background: var(--bg-main);
+    padding: 2px 6px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+  }
+
+  .sre-history-item {
+    padding: 12px;
+    background: var(--bg-main);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .sre-history-item:hover {
+    border-color: var(--accent);
+    background: var(--bg-panel);
+  }
+
+  .sre-history-item.active {
+    border-color: var(--accent);
+    background: var(--bg-panel);
+    border-left: 3px solid var(--accent);
+  }
+
+  .sre-history-title {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sre-history-date {
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+</style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+<script src="https://unpkg.com/lucide@latest"></script>
+
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" />
+<script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+
+
+<div class="rbt-main-content area-left-expanded area-right-expanded"
+  style="backdrop-filter: blur(20px);     background: rgba(255, 255, 255, 0); display: block;margin-right: 1px; margin-bottom: 1px; margin-left: 100px; margin-top: 65px;">
+
+  <div id="sre-agent-app" class="sre-layout"
+    style="backdrop-filter: blur(20px);     background: rgba(255, 255, 255, 0); display:flex; flex-direction:column; height:calc(100vh - 80px);">
+    <!-- Header bar -->
+    <div class="sre-panel"
+      style="background: var(--bg-main); display:flex; align-items:center; justify-content:space-between; padding:12px 20px; border-bottom:1px solid var(--border-color);">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <button id="toggle-sidebar-btn"
+          onclick="document.getElementById('history-sidebar').style.display='flex'; this.style.display='none';"
+          title="Open History"
+          style="background:transparent; border:none; color:var(--text-secondary); cursor:pointer; padding:6px; display:none; align-items:center; justify-content:center; border-radius:8px; transition:all 0.2s;"
+          onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='transparent'">
+          <i class="fa-solid fa-bars" style="font-size:16px;"></i>
+        </button>
+
+        <h2 class="sre-text-strong" style="margin:0; font-size:16px; font-weight:600;">NeuroSysAI SRE Workspace</h2>
+        <span id="connection-badge"
+          style="font-size:11px; padding:2px 8px; border-radius:10px; background:#1f6feb33; color:#58a6ff;">Connecting...</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span class="sre-text-secondary" style="font-size:11px;">Powered by Mistral</span>
+        <span style="width:8px;height:8px;border-radius:50%;background:#3fb950;" id="status-dot"></span>
+      </div>
+    </div>
+
+    <!-- Main split container -->
+    <div style="display:flex; flex:1; overflow-x:auto; overflow-y:hidden;">
+
+      <!-- 1. History Sidebar -->
+      <div id="history-sidebar" class="sre-panel"
+        style="    backdrop-filter: blur(20px);
+    background: rgba(255, 255, 255, 0);width: 250px; border-right:1px solid rgba(255,255,255,0.08); display:flex; flex-direction:column; margin: 8px; margin-right: 0;">
+        <div
+          style="    border: 1px solid rgb(132 132 132 / 16%);
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+    padding:12px; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center;">
+          <button onclick="startNewChat()" title="New Chat"
+            style="background: var(--bg-main); color:var(--text-primary); padding:8px; border:1px solid rgba(255,255,255,0.1); border-radius:10px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s;"
+            onmouseover="this.style.background='rgba(255,255,255,0.1)'"
+            onmouseout="this.style.background='var(--bg-main)'">
+            <i class="fa-solid fa-plus" style="font-size:14px; padding:2px;"></i>
+          </button>
+          <button
+            onclick="document.getElementById('history-sidebar').style.display='none'; document.getElementById('toggle-sidebar-btn').style.display='flex';"
+            title="Close History"
+            style="background: var(--bg-main);     color: var(--text-secondary);     padding: 8px;     border-radius: 10px;     cursor: pointer;     display: flex;     align-items: center;     justify-content: center;     transition: 0.2s;     border: 1px solid rgba(255, 255, 255, 0.1);"
+            onmouseover="this.style.background='rgba(255,255,255,0.05)'"
+            onmouseout="this.style.background='var(--bg-main)'">
+            <i class="fa-solid fa-chevron-left" style="font-size:14px; padding:2px;"></i>
+          </button>
+        </div>
+        <div id="history-list" style="    border: 1px solid rgb(132 132 132 / 16%);
+    flex:1; overflow-y:auto; padding:8px; display:flex; flex-direction:column; gap:6px;">
+          <!-- history items populated by JS -->
+        </div>
+      </div>
+
+      <!-- 2. Chat Column -->
+      <div class="sre-layout"
+        style="backdrop-filter: blur(20px);     background: rgba(255, 255, 255, 0);flex: 1; display:flex; flex-direction:column; border: none; min-width: 400px; position: relative;">
+        <div id="chat-messages"
+          style="flex:1; overflow-y:auto; padding:20px; padding-bottom: 140px; display:flex; flex-direction:column; gap:12px;">
+          <div class="agent-msg sre-panel"
+            style="background: var(--bg-main);border:1px solid var(--border-color); border-radius:12px; padding:16px; max-width:80%;">
+            <div class="sre-text-secondary" style="font-size:13px; margin-bottom:6px;">NeuroSysAI SRE Agent</div>
+            <div class="sre-text-primary" style="line-height:1.6;">
+              Hello! I am the NeuroSysAI SRE Workspace.
+            </div>
+          </div>
+        </div>
+
+        <!-- Floating Input Bar -->
+        <div
+          style="position: absolute; bottom: 0; left: 0; right: 0; padding: 24px; pointer-events: none; background: linear-gradient(to top, var(--bg-main) 30%, transparent);">
+          <form id="chat-form"
+            style="pointer-events: auto; display:flex; align-items:flex-end; gap:12px; background: rgb(255 255 255 / 0%); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border:1px solid rgba(255,255,255,0.15); box-shadow: 0 12px 40px rgba(0,0,0,0.4); border-radius:28px; padding:8px 12px; transition:border-color 0.2s; max-width: 800px; margin: 0 auto;"
+            tabindex="0" onfocusin="this.style.borderColor='var(--accent)'"
+            onfocusout="this.style.borderColor='rgba(255,255,255,0.15)'">
+            <textarea id="chat-input" placeholder="Ask anything" class="sre-input sre-text-strong"
+              style="flex:1; background:transparent; border:none; font-size:15px; outline:none; resize:none; overflow-y:auto; padding:12px 12px; line-height:1.5; min-height:46px; max-height:200px; box-sizing:border-box;"
+              rows="1"></textarea>
+            <button type="submit" id="send-btn" title="Kirim"
+              style="background:var(--accent); color:#ffffff; border:none; border-radius:50%; width:44px; height:44px; display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; transition:all 0.2s; margin-bottom: 2px;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" style="margin-left: -2px;">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Right Panel Resizer -->
+      <div id="panel-resizer" style="width:4px; cursor:col-resize; background:rgba(255,255,255,0.05); margin:8px 4px 8px 0; border-radius:4px; transition:background 0.2s; z-index:10;"
+        onmouseover="this.style.background='var(--accent)'"
+        onmouseout="this.style.background='rgba(255,255,255,0.05)'">
+      </div>
+
+      <!-- 3. Right Column: Tabs (Terminal, Explorer, Artifacts) -->
+      <div class="sre-panel" id="right-panel"
+        style="backdrop-filter: blur(20px);     background: rgba(255, 255, 255, 0); width: 35%; display:flex; flex-direction:column; min-width: 300px; max-width: 80vw; margin: 8px; margin-left: 0;">
+        <div class="sre-layout"
+          style="      border: 1px solid rgb(132 132 132 / 16%);  backdrop-filter: blur(20px);
+    background: rgba(255, 255, 255, 0);display:flex; border-bottom:1px solid rgba(255,255,255,0.08); border-top-left-radius: 16px; border-top-right-radius: 16px; overflow:hidden;">
+          <div class="tab-btn active sre-text-primary" onclick="switchTab('investigation')"
+            style="flex:1; display:flex; align-items:center; justify-content:center; gap:6px; text-align:center; padding:12px 10px; font-size:13px; cursor:pointer; border-bottom:2px solid var(--accent); transition: background 0.2s;">
+            <i class="fa-solid fa-microscope" style="font-size:14px;"></i> Investigation
+          </div>
+          <div class="tab-btn sre-text-secondary" onclick="switchTab('terminal')"
+            style="flex:1; display:flex; align-items:center; justify-content:center; gap:6px; text-align:center; padding:12px 10px; font-size:13px; cursor:pointer; transition: background 0.2s;">
+            <i class="fa-solid fa-terminal" style="font-size:14px;"></i> Terminal
+          </div>
+          <div class="tab-btn sre-text-secondary" onclick="switchTab('explorer')"
+            style="flex:1; display:flex; align-items:center; justify-content:center; gap:6px; text-align:center; padding:12px 10px; font-size:13px; cursor:pointer; transition: background 0.2s;">
+            <i class="fa-solid fa-folder" style="font-size:14px;"></i> File
+          </div>
+          <div class="tab-btn sre-text-secondary" onclick="switchTab('artifacts')"
+            style="flex:1; display:flex; align-items:center; justify-content:center; gap:6px; text-align:center; padding:12px 10px; font-size:13px; cursor:pointer; transition: background 0.2s;">
+            <i class="fa-solid fa-box" style="font-size:14px;"></i> Artifacts
+          </div>
+        </div>
+
+        <!-- Investigation Tab -->
+        <div id="tab-investigation" class="tab-content"
+          style="flex:1; display:flex; flex-direction:column; padding:0; overflow-y:auto; font-size:13px; background:var(--bg-main);">
+          <div id="investigation-timeline-container" style="display:flex; flex-direction:column;">
+            <div style="    background: var(--bg-main); padding:16px; color:var(--text-secondary); font-style:italic;">
+              No investigations yet.</div>
+          </div>
+        </div>
+
+        <!-- Terminal Tab -->
+        <div id="tab-terminal" class="tab-content"
+          style="flex:1; display:none; flex-direction:column; background:#000; position:relative; padding:10px;">
+          <!-- <button onclick="if(window.fitTerminal) window.fitTerminal();" title="Fit Terminal Size"
+            style="position:absolute; top:8px; right:16px; z-index:10; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:#ccc; cursor:pointer; font-size:11px; display:flex; align-items:center; gap:4px; padding:4px 8px; border-radius:4px; transition:0.2s; backdrop-filter:blur(4px);"
+            onmouseover="this.style.background='rgba(255,255,255,0.2)'" onmouseout="this.style.background='rgba(255,255,255,0.1)'">
+            <i class="fa-solid fa-expand"></i> Fit Size
+          </button> -->
+          <div id="terminal-container" style="flex:1; overflow:hidden;"></div>
+        </div>
+
+        <!-- Explorer Tab -->
+        <div id="tab-explorer" class="tab-content"
+          style=" background: var(--bg-main); flex:1; display:none; flex-direction:column; padding:10px; overflow-y:auto; font-size:13px;">
+          <div id="explorer-tree" class="sre-text-primary">Loading workspace...</div>
+        </div>
+
+        <!-- Artifacts Tab -->
+        <div id="tab-artifacts" class="tab-content"
+          style="    background: var(--bg-main); flex:1; display:none; flex-direction:column; padding:10px; overflow-y:auto; font-size:13px;">
+          <div id="artifacts-list" class="sre-text-primary">Loading artifacts...</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+  (function () {
+    const messagesDiv = document.getElementById('chat-messages');
+    const form = document.getElementById('chat-form');
+    const input = document.getElementById('chat-input');
+    const sendBtn = document.getElementById('send-btn');
+    const badge = document.getElementById('connection-badge');
+    const dot = document.getElementById('status-dot');
+
+    let ws = null;
+    let sessionId = null;
+    let currentAIMsg = null;
+    let isProcessing = false;
+
+    // --- WebSocket ---
+    function connect() {
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${protocol}//${location.host}/ws/sre-agent/`);
+
+      ws.onopen = () => {
+        badge.textContent = 'Connected';
+        badge.style.background = '#23863633';
+        badge.style.color = '#3fb950';
+        dot.style.background = '#3fb950';
+      };
+
+      ws.onclose = () => {
+        badge.textContent = 'Disconnected';
+        badge.style.background = '#da363333';
+        badge.style.color = '#f85149';
+        dot.style.background = '#f85149';
+        setTimeout(connect, 3000);
+      };
+
+      ws.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+        handleEvent(data);
+      };
+    }
+
+    // --- Event handler ---
+    function handleEvent(data) {
+      const type = data.type;
+
+      switch (type) {
+        case 'session_id':
+          sessionId = data.content;
+          break;
+
+        case 'session_title':
+          // Update the UI title
+          const titleContent = data.content;
+          document.title = titleContent;
+          // Update sidebar if the history item exists
+          const historyItem = document.getElementById('history-item-' + sessionId);
+          if (historyItem) {
+            const titleEl = historyItem.querySelector('.sre-history-title');
+            if (titleEl) titleEl.textContent = titleContent;
+          }
+          break;
+
+        case 'status':
+          addSystemMsg(data.content, 'check');
+          break;
+
+        case 'exploring':
+          addAgentStep('Exploring', data.content, 'var(--accent)', 'search');
+          break;
+
+        case 'discovering_tools':
+          let toolsHtml = data.content;
+          if (data.tools && data.tools.length) {
+            toolsHtml += '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">';
+            data.tools.forEach(t => {
+              toolsHtml += `<span style="font-size:11px;background:#21262d;padding:2px 8px;border-radius:4px;color:#79c0ff;">${t}</span>`;
+            });
+            toolsHtml += '</div>';
+          }
+          addAgentStep('Discovering Tools', toolsHtml, 'var(--purple)', 'wrench');
+          break;
+
+        case 'planning':
+          addAgentStep('Planning', data.content, 'var(--purple)', 'list-todo');
+          break;
+
+        case 'thinking':
+          if (currentAIMsg) {
+            currentAIMsg.remove();
+            currentAIMsg = null;
+          }
+          addAgentStep('Thinking', data.content, 'var(--text-secondary)', 'brain');
+          break;
+
+        case 'tool_start':
+          addAgentStep('Executing', `<code>${data.tool || ''}</code> ${data.command || ''}`, 'var(--warning)', 'zap', data.step_id, false);
+          break;
+
+        case 'tool_end':
+          const result = (data.result || '').substring(0, 1000);
+          addAgentStep('Result', `<pre class="sre-layout" style="padding:8px;border-radius:6px;overflow-x:auto;font-size:12px;max-height:200px;overflow-y:auto;margin:4px 0;border:1px solid var(--border-color);">${escapeHtml(result)}</pre>`, 'var(--success)', 'check-circle', data.step_id, true);
+          break;
+
+        case 'safety_blocked':
+          addAgentStep('Blocked', data.content, 'var(--error)', 'shield-alert');
+          break;
+
+        case 'safety_warn':
+          addAgentStep('Warning', data.content, 'var(--warning)', 'alert-triangle');
+          break;
+
+
+        case 'creating_artifact':
+          addAgentStep('Creating Artifact', data.content, 'var(--success)', 'file-code-2');
+          break;
+        case 'restoring_artifact':
+          addAgentStep('Restoring Artifact', data.content, 'var(--warning)', 'history');
+          break;
+        case 'security_scan':
+          addAgentStep('Security Scan', data.content, 'var(--purple)', 'shield-check');
+          break;
+
+        case 'investigation_started':
+          if (activeInvestigationId && investigations[activeInvestigationId]) {
+            investigations[activeInvestigationId].status = 'completed';
+          }
+          const invId = data.metadata ? data.metadata.investigation_id : null;
+          if (invId) {
+            investigations[invId] = {
+              id: invId,
+              title: data.content || 'Investigation',
+              status: 'active',
+              plan: [],
+              findings: []
+            };
+            activeInvestigationId = invId;
+            renderInvestigationTimeline();
+          }
+          break;
+
+        case 'task_plan':
+          const planData = data.plan || (data.metadata && data.metadata.plan);
+          if (planData && planData.investigation_id) {
+            if (!investigations[planData.investigation_id]) {
+              investigations[planData.investigation_id] = {
+                id: planData.investigation_id,
+                title: planData.title || 'Investigation',
+                status: 'active',
+                plan: [],
+                findings: []
+              };
+            }
+            investigations[planData.investigation_id].plan = Array.isArray(planData) ? planData : (planData.tasks || []);
+            renderInvestigationTimeline();
+          }
+          break;
+
+        case 'task_updated':
+          const taskData = data.task || (data.metadata && data.metadata.task);
+          if (taskData) {
+            const p = taskData;
+            if (p.new_status === 'completed') {
+              addAgentStep('Task Completed', p.task, 'var(--success)', 'check-circle');
+            }
+          }
+          break;
+
+        case 'findings':
+          const findingsData = data.findings || (data.metadata && data.metadata.findings);
+          if (findingsData && findingsData.investigation_id) {
+            if (!investigations[findingsData.investigation_id]) {
+              investigations[findingsData.investigation_id] = {
+                id: findingsData.investigation_id,
+                title: findingsData.title || 'Investigation',
+                status: 'active',
+                plan: [],
+                findings: []
+              };
+            }
+            investigations[findingsData.investigation_id].findings = Array.isArray(findingsData) ? findingsData : (findingsData.findings || []);
+            renderInvestigationTimeline();
+          }
+          break;
+
+        case 'message_chunk':
+          if (!currentAIMsg) {
+            currentAIMsg = addAIMessage('');
+          }
+
+          let rawData = data.content;
+          if (typeof rawData !== 'string') {
+            try { rawData = JSON.stringify(rawData); } catch (e) { rawData = String(rawData); }
+          }
+          const fullText = rawData || '';
+
+          const contentDiv = currentAIMsg.querySelector('.ai-content');
+          try {
+            contentDiv.innerHTML = marked.parse(fullText);
+          } catch (e) {
+            contentDiv.innerHTML = fullText;
+          }
+          scrollToBottom();
+          break;
+
+        case 'completed':
+          if (lastGenericStepId) { stopStep(lastGenericStepId); lastGenericStepId = null; }
+          const activeDash = document.getElementById('active-dashboard');
+          if (activeDash) { activeDash.removeAttribute('id'); }
+
+          const endTime = new Date();
+          // Find start time of the session (using the first message or rough estimate)
+          const startTime = window.sessionStartTime || new Date(Date.now() - (data.duration || 0) * 1000);
+          const dur = data.duration ? data.duration.toFixed(1) : ((endTime - startTime) / 1000).toFixed(1);
+
+          const auditHtml = `
+            <div class="sre-agent-step accordion-item mb-3 mt-3" style="border:1px solid var(--border-color); border-radius:8px; overflow:hidden;">
+              <h2 class="accordion-header" style="margin:0;">
+                <button class="accordion-button" type="button" style="padding:12px 16px; background:rgba(46,160,67,0.1); border:none; box-shadow:none; width:100%; display:flex; align-items:center;">
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="color:var(--success);">${getIcon('check-all')}</span>
+                    <strong style="color:var(--success);">Task Execution Completed</strong>
+                  </div>
+                </button>
+              </h2>
+              <div class="accordion-collapse collapse show">
+                <div class="accordion-body" style="padding:16px; font-size:13px; background:var(--bg-panel);">
+                   <p style="margin-top:0; margin-bottom:12px;">${data.content}</p>
+                   <table style="width:100%; border-collapse:collapse; font-size:12px; border:1px solid var(--border-color);">
+                     <tr style="background:#21262d;"><th style="padding:6px; border:1px solid var(--border-color); text-align:left;">Audit Trail</th><th style="padding:6px; border:1px solid var(--border-color); text-align:left;">Details</th></tr>
+                     <tr><td style="padding:6px; border:1px solid var(--border-color);">Status</td><td style="padding:6px; border:1px solid var(--border-color); color:var(--success);"><strong>COMPLETED</strong></td></tr>
+                     <tr><td style="padding:6px; border:1px solid var(--border-color);">Start Time</td><td style="padding:6px; border:1px solid var(--border-color);">${startTime.toLocaleTimeString()}</td></tr>
+                     <tr><td style="padding:6px; border:1px solid var(--border-color);">End Time</td><td style="padding:6px; border:1px solid var(--border-color);">${endTime.toLocaleTimeString()}</td></tr>
+                     <tr><td style="padding:6px; border:1px solid var(--border-color);">Total Execution Time</td><td style="padding:6px; border:1px solid var(--border-color);">${dur} seconds</td></tr>
+                   </table>
+                </div>
+              </div>
+            </div>
+          `;
+          messagesDiv.innerHTML += auditHtml;
+
+          currentAIMsg = null;
+          isProcessing = false;
+          sendBtn.disabled = false;
+          sendBtn.style.opacity = '1';
+          sendBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:-2px;"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`;
+          break;
+
+        case 'error':
+          if (lastGenericStepId) { stopStep(lastGenericStepId); lastGenericStepId = null; }
+          addAgentStep('Error', data.content, 'var(--error)', 'x-circle');
+          isProcessing = false;
+          sendBtn.disabled = false;
+          sendBtn.style.opacity = '1';
+          sendBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:-2px;"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`;
+          currentAIMsg = null;
+          break;
+      }
+
+      scrollToBottom();
+    }
+
+
+    // --- UI helpers ---
+    function getIcon(name) {
+      if (window.lucide && window.lucide.icons[name]) {
+        return window.lucide.icons[name].toSvg({ width: 14, height: 14 });
+      }
+      return '';
+    }
+
+    function addUserMessage(text) {
+      const div = document.createElement('div');
+      div.className = 'sre-msg-user';
+      div.style.cssText = 'align-self:flex-end;border-radius:12px;padding:12px 16px;max-width:70%;font-size:14px;line-height:1.5;margin-bottom:8px;';
+      div.textContent = text;
+      messagesDiv.appendChild(div);
+      scrollToBottom();
+    }
+
+    function addAIMessage(content) {
+      const div = document.createElement('div');
+      div.className = 'agent-msg sre-msg-ai';
+      div.style.cssText = 'border-radius:12px;padding:16px;max-width:85%;margin-bottom:8px;';
+      div.innerHTML = `
+      <div style="font-size:12px;margin-bottom:8px;display:flex;align-items:center;gap:6px;" class="sre-text-secondary">
+         <span>NeuroSysAI</span>
+      </div>
+      <div class="ai-content sre-text-primary" style="line-height:1.6;font-size:14px;">${marked.parse(content || '')}</div>
+      `;
+      messagesDiv.appendChild(div);
+      scrollToBottom();
+      return div;
+    }
+
+
+    // --- Timers and UI ---
+    let stepTimers = {};
+    let lastGenericStepId = null;
+
+    function stopStep(stepId, forceSuccess = true) {
+      if (!stepTimers[stepId]) return;
+      clearInterval(stepTimers[stepId].interval);
+
+      const el = document.getElementById('timer-' + stepId);
+      if (el) {
+        const elapsed = ((Date.now() - stepTimers[stepId].startTime) / 1000).toFixed(1);
+        el.textContent = `✓ ${elapsed}s`;
+        el.style.color = 'var(--success-text)';
+      }
+
+      const iconContainer = document.getElementById('icon-' + stepId);
+      if (iconContainer && forceSuccess) {
+        iconContainer.innerHTML = getIcon('check-circle');
+        iconContainer.style.color = 'var(--success-text)';
+        // Remove spinner class if any
+        const svg = iconContainer.querySelector('svg');
+        if (svg) svg.classList.remove('fa-spin');
+      }
+
+      delete stepTimers[stepId];
+    }
+
+    function addAgentStep(label, contentHtml, color, iconName = 'terminal', stepId = null, isEnd = false) {
+      if (!window.sessionStartTime) window.sessionStartTime = new Date();
+
+      let isGeneric = false;
+      if (!stepId) {
+        stepId = 'step-' + Math.random().toString(36).substr(2, 9);
+        isGeneric = true;
+      }
+
+      // If a new step starts, complete the previous generic step
+      if (lastGenericStepId && lastGenericStepId !== stepId && !isEnd) {
+        stopStep(lastGenericStepId);
+        lastGenericStepId = null;
+      }
+
+      if (isGeneric) {
+        lastGenericStepId = stepId;
+      }
+
+      let stepDiv = document.getElementById('step-' + stepId);
+
+      if (!stepDiv) {
+        stepDiv = document.createElement('div');
+        stepDiv.id = 'step-' + stepId;
+        stepDiv.className = 'accordion-item mb-2 sre-agent-step';
+        stepDiv.style.borderLeft = `3px solid ${color}`;
+        stepDiv.style.borderRadius = '8px';
+        stepDiv.style.overflow = 'hidden';
+
+        let timerHtml = `<span id="timer-${stepId}" class="sre-timer ms-2" style="min-width:45px; text-align:right;">0.0s</span>`;
+
+        stepDiv.innerHTML = `
+            <h2 class="accordion-header" id="heading-${stepId}" style="margin:0;">
+                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${stepId}" aria-expanded="true" aria-controls="collapse-${stepId}" style="padding:10px 14px; background:rgba(0,0,0,0.02); border:none; box-shadow:none; width:100%; display:flex; align-items:center; justify-content:space-between;">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span id="icon-${stepId}" style="color:${color};display:flex;align-items:center;">
+                           <div class="spinner-border spinner-border-sm" role="status" style="width:14px;height:14px;border-width:2px;"></div>
+                        </span>
+                        <span style="color:${color};font-weight:600;">${label}</span>
+                    </div>
+                    ${timerHtml}
+                </button>
+            </h2>
+            <div id="collapse-${stepId}" class="accordion-collapse collapse show" aria-labelledby="heading-${stepId}">
+                <div id="step-content-${stepId}" class="accordion-body sre-text-secondary" style="padding:10px 14px; border-top:1px solid var(--border-color); font-size:13px;">
+                    ${contentHtml}
+                </div>
+            </div>
+          `;
+        messagesDiv.appendChild(stepDiv);
+
+        // Start timer for all newly created steps
+        if (!isEnd) {
+          stepTimers[stepId] = {
+            startTime: Date.now(),
+            interval: setInterval(() => {
+              const el = document.getElementById('timer-' + stepId);
+              if (el) {
+                const elapsed = ((Date.now() - stepTimers[stepId].startTime) / 1000).toFixed(1);
+                el.textContent = `${elapsed}s...`;
+              }
+            }, 100)
+          };
+        }
+      } else {
+        // Update existing step (e.g. tool_end)
+        const contentDiv = document.getElementById('step-content-' + stepId);
+        if (contentDiv) {
+          contentDiv.innerHTML += `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border-color);">${contentHtml}</div>`;
+        }
+
+        if (isEnd) {
+          stopStep(stepId, false);
+          const iconContainer = document.getElementById('icon-' + stepId);
+          if (iconContainer) {
+            iconContainer.innerHTML = getIcon('check-circle');
+            iconContainer.style.color = 'var(--success-text)';
+          }
+        }
+      }
+
+      scrollToBottom();
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    // Override old addAgentStep logic inside handleEvent to use step_id
+
+
+    function addSystemMsg(text, iconName = 'info') {
+      const div = document.createElement('div');
+      div.className = 'sre-text-secondary';
+      div.style.cssText = 'text-align:center;font-size:12px;padding:8px;display:flex;justify-content:center;align-items:center;gap:6px;';
+      div.innerHTML = `<span style="opacity:0.7">${getIcon(iconName)}</span> <span>${text}</span>`;
+      messagesDiv.appendChild(div);
+      scrollToBottom();
+    }
+
+    // -- Investigation Timeline State --
+    let investigations = {};
+    let activeInvestigationId = null;
+
+    function renderInvestigationTimeline() {
+      const container = document.getElementById('investigation-timeline-container');
+      if (!container) return;
+
+      const invKeys = Object.keys(investigations);
+      if (invKeys.length === 0) {
+        container.innerHTML = `<div style="padding:16px; color:var(--text-secondary); font-style:italic;">No investigations yet.</div>`;
+        return;
+      }
+
+      let html = '';
+      invKeys.forEach(key => {
+        const inv = investigations[key];
+        const isOpen = inv.id === activeInvestigationId;
+        const badgeColor = inv.status === 'completed' ? 'var(--success)' : 'var(--accent)';
+
+        let planHtml = '';
+        if (inv.plan && inv.plan.length > 0) {
+          planHtml = inv.plan.map(p => {
+            const icon = p.status === 'completed' ? `<span style="color:var(--success)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg></span>` : `<span style="color:var(--text-secondary)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle></svg></span>`;
+            return `<div style="display:flex;align-items:start;gap:8px;">${icon} <span style="${p.status === 'completed' ? 'text-decoration:line-through;opacity:0.6;' : ''}">${escapeHtml(p.task)}</span></div>`;
+          }).join('');
+        } else {
+          planHtml = `<div class="sre-text-secondary" style="font-style:italic;">No tasks yet</div>`;
+        }
+
+        let findingsHtml = '';
+        if (inv.findings && inv.findings.length > 0) {
+          findingsHtml = inv.findings.map(f => {
+            return `<div style="display:flex;align-items:start;gap:8px;"><span style="color:var(--success);margin-top:2px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span> <span>${escapeHtml(f)}</span></div>`;
+          }).join('');
+        } else {
+          findingsHtml = `<div class="sre-text-secondary" style="font-style:italic;">No findings yet</div>`;
+        }
+
+        html += `
+            <div style="border-bottom:1px solid var(--border-color);">
+              <details ${isOpen ? 'open' : ''} style="cursor:default;">
+                <summary style="cursor:pointer; font-weight:600; padding:12px 16px; display:flex; gap:8px; align-items:center; user-select:none; background:var(--bg-panel);">
+                   <span style="flex:1;">${escapeHtml(inv.title)}</span>
+                   <span style="font-size:10px; padding:2px 6px; border-radius:10px; background:${badgeColor}22; color:${badgeColor}; text-transform:uppercase;">${inv.status}</span>
+                </summary>
+                <div style="padding: 16px; background:var(--bg-main);">
+                   <div style="font-weight:600; margin-bottom:12px; color:var(--text-primary); display:flex; align-items:center; gap:6px;">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+                      Task Plan
+                   </div>
+                   <div style="display:flex; flex-direction:column; gap:8px;">${planHtml}</div>
+                   
+                   <div style="font-weight:600; margin-bottom:12px; margin-top:20px; color:var(--text-primary); display:flex; align-items:center; gap:6px;">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                      Findings
+                   </div>
+                   <div style="display:flex; flex-direction:column; gap:8px;">${findingsHtml}</div>
+                </div>
+              </details>
+            </div>
+            `;
+      });
+
+      container.innerHTML = html;
+
+      // Auto-switch to Investigation tab if hidden
+      const invTab = document.getElementById('tab-investigation');
+      if (invTab && invTab.style.display === 'none') {
+        switchTab('investigation');
+      }
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function scrollToBottom() {
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+    // --- Form submit ---
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const msg = input.value.trim();
+      if (!msg || isProcessing) return;
+
+      addUserMessage(msg);
+      input.value = '';
+      input.style.height = 'auto'; // Reset height
+      isProcessing = true;
+      currentAIMsg = null;
+      sendBtn.disabled = true;
+      sendBtn.style.opacity = '0.5';
+      sendBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spin-anim"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>`;
+
+      ws.send(JSON.stringify({
+        type: 'message',
+        message: msg,
+        session_id: sessionId || '',
+        terminal_cwd: window.currentTerminalCwd || ''
+      }));
+    });
+
+    // Auto-resize textarea and Enter key submit
+    input.addEventListener('input', function () {
+      this.style.height = 'auto';
+      this.style.height = (this.scrollHeight) + 'px';
+    });
+
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        form.dispatchEvent(new Event('submit'));
+      }
+    });
+
+    // --- Terminal ---
+
+    // --- Tabs ---
+    window.switchTab = function (tabName, el) {
+      document.querySelectorAll('.tab-btn').forEach(b => {
+        b.style.color = '#8b949e';
+        b.style.borderBottom = 'none';
+      });
+      document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
+
+      let targetEl = el;
+      if (!targetEl && typeof event !== 'undefined' && event && event.currentTarget) {
+        targetEl = event.currentTarget;
+      }
+
+      if (targetEl) {
+        targetEl.style.color = '#c9d1d9';
+        targetEl.style.borderBottom = '2px solid #58a6ff';
+      } else {
+        // Fallback: try to find the button
+        document.querySelectorAll('.tab-btn').forEach(b => {
+          if (b.getAttribute('onclick') && b.getAttribute('onclick').includes("'" + tabName + "'")) {
+            b.style.color = '#c9d1d9';
+            b.style.borderBottom = '2px solid #58a6ff';
+          }
+        });
+      }
+
+      const tabContent = document.getElementById('tab-' + tabName);
+      if (tabContent) {
+        tabContent.style.display = 'flex';
+      }
+
+      if (tabName === 'explorer') loadExplorer();
+      if (tabName === 'artifacts') loadArtifacts();
+      if (tabName === 'terminal' && window.fitTerminal) {
+        setTimeout(window.fitTerminal, 50); // Ensure size fits when tab becomes visible
+      }
+    }
+
+    // --- History ---
+    async function loadHistory() {
+      try {
+        const res = await fetch('/api/v1/chat-sessions/');
+        const data = await res.json();
+        const list = document.getElementById('history-list');
+        list.innerHTML = '';
+        let sessions = data.results || data;
+        sessions.forEach(sess => {
+          let el = document.createElement('div');
+          el.className = 'sre-history-item' + (sess.id === sessionId ? ' active' : '');
+          el.id = 'history-item-' + sess.id;
+
+          const dateStr = new Date(sess.created_at).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+          el.innerHTML = `
+            <div class="sre-history-title">${sess.title || 'Sesi Obrolan'}</div>
+            <div class="sre-history-date">${dateStr}</div>
+          `;
+          el.onclick = () => {
+            document.querySelectorAll('.sre-history-item').forEach(i => i.classList.remove('active'));
+            el.classList.add('active');
+            loadSession(sess.id);
+          };
+          list.appendChild(el);
+        });
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlSessionId = urlParams.get('session');
+        if (urlSessionId) {
+          sessionId = urlSessionId;
+          const el = document.getElementById('history-item-' + sessionId);
+          if (el) el.classList.add('active');
+          loadSession(sessionId);
+        } else {
+          // New chat
+          sessionId = null;
+          window.startNewChat();
+        }
+      } catch (e) {
+        console.error('Failed to load history', e);
+      }
+    }
+
+    window.startNewChat = function () {
+      sessionId = null;
+      document.querySelectorAll('.sre-history-item').forEach(i => i.classList.remove('active'));
+      messagesDiv.innerHTML = `
+          <div class="agent-msg sre-panel"
+            style="background: var(--bg-main);border:1px solid var(--border-color); border-radius:12px; padding:16px; max-width:80%;">
+            <div class="sre-text-secondary" style="font-size:13px; margin-bottom:6px;"> NeuroSysAI SRE Agent</div>
+            <div class="sre-text-primary" style="line-height:1.6;">
+              Hello! Please start a new chat session.
+            </div>
+          </div>
+        `;
+      investigations = {};
+      activeInvestigationId = null;
+      renderInvestigationTimeline();
+      document.getElementById('artifacts-list').innerHTML = '<div class="sre-text-secondary" style="font-style:italic;padding:16px;">No artifacts for this session</div>';
+      window.history.pushState({}, '', window.location.pathname);
+    }
+
+    async function loadSession(id) {
+      sessionId = id;
+      window.history.pushState({}, '', window.location.pathname + '?session=' + id);
+      try {
+        const res = await fetch(`/api/v1/chat-sessions/${id}/messages/`);
+        const data = await res.json();
+        messagesDiv.innerHTML = '';
+        investigations = {};
+        activeInvestigationId = null;
+
+        // Fetch DB-backed investigations timeline
+        const invRes = await fetch(`/api/v1/chat-sessions/${id}/investigations/`);
+        if (invRes.ok) {
+          const invData = await invRes.json();
+          invData.forEach(inv => {
+            investigations[inv.id] = {
+              id: inv.id,
+              title: inv.title,
+              status: inv.status,
+              plan: inv.tasks || [],
+              findings: inv.findings ? inv.findings.map(f => f.content) : []
+            };
+            if (inv.status === 'active') {
+              activeInvestigationId = inv.id;
+            }
+          });
+          renderInvestigationTimeline();
+        }
+
+        (data.results || data).forEach(msg => {
+          if (msg.role === 'user') {
+            addUserMessage(msg.message);
+          } else if (msg.role === 'assistant' || msg.sender === 'ai') {
+            if (msg.metadata && msg.metadata.events && Array.isArray(msg.metadata.events)) {
+              msg.metadata.events.forEach(evt => {
+                if (evt.type === 'investigation_started') {
+                  addSystemMsg('Investigation started: ' + (evt.data?.title || 'Unknown'), 'search');
+                }
+                if (evt.type === 'task_updated') {
+                  const taskData = evt.data?.task || (evt.data?.metadata && evt.data?.metadata?.task);
+                  if (taskData && taskData.new_status === 'completed') {
+                    addAgentStep('Task Completed', taskData.task, 'var(--success)', 'check-circle');
+                  }
+                }
+              });
+            }
+            if (msg.message && msg.message.trim() !== "") {
+              addAIMessage(msg.message);
+            }
+          }
+        });
+        lucide.createIcons();
+      } catch (e) {
+        console.error('Failed to load session', e);
+      }
+    }
+
+    // --- Explorer ---
+    async function loadExplorer() {
+      try {
+        const cwdParam = window.currentTerminalCwd ? `?path=${encodeURIComponent(window.currentTerminalCwd)}` : '';
+        const res = await fetch(`/api/v1/workspace/tree/${cwdParam}`);
+        const data = await res.json();
+        const container = document.getElementById('explorer-tree');
+        container.innerHTML = '';
+
+        // Render CWD header
+        if (window.currentTerminalCwd) {
+          let header = document.createElement('div');
+          header.style.padding = '8px 4px';
+          header.style.marginBottom = '8px';
+          header.style.borderBottom = '1px solid var(--border-color)';
+          header.style.fontWeight = 'bold';
+          header.style.wordBreak = 'break-all';
+          header.innerHTML = `<span style="color:var(--accent)">CWD:</span> ${window.currentTerminalCwd}`;
+          container.appendChild(header);
+        }
+
+        function renderTree(nodes, parentEl) {
+          nodes.forEach(node => {
+            let el = document.createElement('div');
+            el.style.paddingLeft = '12px';
+            el.style.paddingTop = '4px';
+
+            if (node.type === 'directory') {
+              let details = document.createElement('details');
+              let summary = document.createElement('summary');
+              summary.style.cursor = 'pointer';
+              summary.style.userSelect = 'none';
+              summary.innerHTML = `📁 ${node.name}`;
+              details.appendChild(summary);
+
+              if (node.children && node.children.length > 0) {
+                let childContainer = document.createElement('div');
+                renderTree(node.children, childContainer);
+                details.appendChild(childContainer);
+              } else if (node.has_children) {
+                // Lazy load stub
+                details.addEventListener('toggle', async function (e) {
+                  if (details.open && !details.dataset.loaded) {
+                    details.dataset.loaded = 'true';
+                    let loading = document.createElement('div');
+                    loading.style.paddingLeft = '12px';
+                    loading.innerText = 'Loading...';
+                    details.appendChild(loading);
+
+                    try {
+                      const subRes = await fetch(`/api/v1/workspace/tree/?path=${encodeURIComponent(node.path)}`);
+                      const subData = await subRes.json();
+                      details.removeChild(loading);
+                      let childContainer = document.createElement('div');
+                      renderTree(subData, childContainer);
+                      details.appendChild(childContainer);
+                    } catch (err) {
+                      loading.innerText = 'Error loading';
+                    }
+                  }
+                });
+              }
+              el.appendChild(details);
+            } else {
+              let fileDiv = document.createElement('div');
+              fileDiv.style.cursor = 'pointer';
+              fileDiv.innerHTML = `<span>📄 ${node.name}</span>`;
+              fileDiv.onclick = (e) => {
+                e.stopPropagation();
+                const inp = document.getElementById('chat-input');
+                inp.value = `Lihat file ${node.path}`;
+              };
+              el.appendChild(fileDiv);
+            }
+            parentEl.appendChild(el);
+          });
+        }
+
+        renderTree(data, container);
+      } catch (e) {
+        document.getElementById('explorer-tree').innerHTML = 'Error loading workspace.';
+      }
+    }
+
+    // --- Artifacts ---
+    async function loadArtifacts() {
+      try {
+        if (!sessionId) {
+          document.getElementById('artifacts-list').innerHTML = '<div class="sre-text-secondary" style="font-style:italic;padding:16px;">No artifacts for this session</div>';
+          return;
+        }
+        const res = await fetch(`/api/v1/workspace/artifacts/?session_id=${sessionId}`);
+        const data = await res.json();
+        const container = document.getElementById('artifacts-list');
+        container.innerHTML = '';
+
+        data.forEach(art => {
+          let el = document.createElement('div');
+          el.style.cssText = 'padding:10px; class="sre-layout" border:1px solid #30363d; border-radius:6px; margin-bottom:8px;';
+          el.innerHTML = `
+            <div style="font-weight:bold; margin-bottom:4px; color:#58a6ff;">${art.action_type.toUpperCase()}: ${art.file_path}</div>
+            <pre style="background:#000; padding:4px; border-radius:4px; overflow-x:auto; font-size:11px; max-height:100px;">${escapeHtml(art.diff || 'No diff available')}</pre>
+            <div style="margin-top:8px; display:flex; gap:8px;">
+                <button onclick="rollbackArtifact(${art.id})" style="background:#da3633; color:white; border:none; border-radius:4px; padding:4px 8px; cursor:pointer;">Rollback</button>
+            </div>
+          `;
+          container.appendChild(el);
+        });
+      } catch (e) {
+        document.getElementById('artifacts-list').innerHTML = 'Error loading artifacts.';
+      }
+    }
+
+    window.rollbackArtifact = async function (id) {
+      try {
+        const res = await fetch(`/api/v1/workspace/artifacts/${id}/rollback/`, { method: 'POST' });
+        if (res.ok) {
+          alert('Rollback sukses!');
+          loadArtifacts();
+        } else {
+          alert('Rollback gagal.');
+        }
+      } catch (e) {
+        alert('Error rollback');
+      }
+    }
+
+    // --- Terminal ---
+    function initTerminal() {
+      if (typeof Terminal === 'undefined') {
+        document.getElementById('terminal-container').innerHTML = '<div style="color:#f85149; padding:20px;">Tidak dapat membuka terminal karena dependency xterm.js belum tersedia.</div>';
+        return;
+      }
+
+      const termContainer = document.getElementById('terminal-container');
+      if (!termContainer) return;
+
+      const term = new Terminal({
+        cursorBlink: true,
+        theme: { background: '#000000', foreground: '#f0f6fc' },
+        fontFamily: 'Menlo, Monaco, monospace',
+        fontSize: 13
+      });
+
+      const fitAddon = new FitAddon.FitAddon();
+      term.loadAddon(fitAddon);
+      term.open(termContainer);
+      window.fitTerminal = () => {
+        fitAddon.fit();
+        if (termWs.readyState === WebSocket.OPEN) {
+          termWs.send(JSON.stringify({
+            type: 'resize',
+            cols: term.cols,
+            rows: term.rows
+          }));
+        }
+      };
+
+      window.addEventListener('resize', () => {
+        if (document.getElementById('tab-terminal').style.display !== 'none') {
+          window.fitTerminal();
+        }
+      });
+
+      term.writeln('Welcome to NeuroSysAI Interactive Terminal\nConnecting...');
+
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const termWs = new WebSocket(`${protocol}//${location.host}/ws/terminal/`);
+
+      termWs.onopen = () => {
+        term.writeln('\r\n[Connected]');
+        setTimeout(window.fitTerminal, 500);
+      };
+
+      window.currentTerminalCwd = null;
+
+      termWs.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data);
+          if (msg.type === 'output') {
+            term.write(msg.data);
+          } else if (msg.type === 'cwd') {
+            if (window.currentTerminalCwd !== msg.cwd) {
+              window.currentTerminalCwd = msg.cwd;
+              loadExplorer(); // dynamically fetch tree for new cwd
+            }
+          }
+        } catch (err) {
+          term.write(e.data); // Fallback for raw text
+        }
+      };
+
+      term.onData((data) => {
+        if (termWs && termWs.readyState === WebSocket.OPEN) {
+          termWs.send(JSON.stringify({ type: 'input', data: data }));
+        }
+      });
+
+      termWs.onclose = () => {
+        term.writeln('\r\n[Disconnected]');
+      };
+    }
+
+    // --- Init ---
+    loadHistory();
+    connect();
+    initTerminal();
+
+    // --- Resizer Logic ---
+    const panelResizer = document.getElementById('panel-resizer');
+    const rightPanel = document.getElementById('right-panel');
+    let isResizing = false;
+
+    if (panelResizer && rightPanel) {
+      panelResizer.addEventListener('mousedown', (e) => {
+        isResizing = true;
+        document.body.style.cursor = 'col-resize';
+        panelResizer.style.background = 'var(--accent)';
+        e.preventDefault(); // Prevent text selection
+      });
+
+      document.addEventListener('mousemove', (e) => {
+        if (!isResizing) return;
+        
+        const containerRect = rightPanel.parentElement.getBoundingClientRect();
+        const newWidth = containerRect.right - e.clientX - 12; // 12px for margins
+
+        if (newWidth > 300 && newWidth < containerRect.width * 0.8) {
+          rightPanel.style.width = newWidth + 'px';
+          rightPanel.style.flex = 'none'; // Ensure flex:1 on chat column handles the rest
+          if (window.fitTerminal) {
+            window.fitTerminal();
+          }
+        }
+      });
+
+      document.addEventListener('mouseup', () => {
+        if (isResizing) {
+          isResizing = false;
+          document.body.style.cursor = 'default';
+          panelResizer.style.background = 'rgba(255,255,255,0.05)';
+          if (window.fitTerminal) {
+            window.fitTerminal();
+          }
+        }
+      });
+    }
+  })();
+</script>
+
+<style>
+  #sre-agent-app pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+
+  #sre-agent-app code {
+    background: #21262d;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 13px;
+    color: #79c0ff;
+  }
+
+  #sre-agent-app ul,
+  #sre-agent-app ol {
+    padding-left: 20px;
+  }
+
+  #sre-agent-app a {
+    color: #58a6ff;
+  }
+
+  #sre-agent-app .ai-content h1,
+  #sre-agent-app .ai-content h2,
+  #sre-agent-app .ai-content h3 {
+    color: #f0f6fc;
+    margin: 12px 0 6px 0;
+  }
+
+  #sre-agent-app .ai-content p {
+    margin: 6px 0;
+  }
+
+  #sre-agent-app .ai-content table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 8px 0;
+  }
+
+  #sre-agent-app .ai-content th,
+  #sre-agent-app .ai-content td {
+    border: 1px solid #30363d;
+    padding: 6px 10px;
+    text-align: left;
+    font-size: 13px;
+  }
+
+  #sre-agent-app .ai-content th {
+    background: #21262d;
+    color: #f0f6fc;
+  }
+
+  #chat-messages::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  #chat-messages::-webkit-scrollbar-thumb {
+    background: #30363d;
+    border-radius: 3px;
+  }
+
+  #chat-messages::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  /* Phase 6: Aesthetic Buttons & Collapsibles */
+  .sre-btn-primary {
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%) !important;
+    color: #ffffff !important;
+    border-radius: 9999px !important;
+    box-shadow: 0 4px 12px rgba(9, 105, 218, 0.2);
+    transition: all 0.2s ease;
+  }
+
+  .sre-btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(9, 105, 218, 0.3);
+  }
+
+  .sre-btn-success {
+    background: linear-gradient(135deg, var(--success) 0%, #2ea043 100%) !important;
+    color: #ffffff !important;
+    border-radius: 9999px !important;
+    box-shadow: 0 4px 12px rgba(45, 164, 78, 0.2);
+    transition: all 0.2s ease;
+  }
+
+  .sre-btn-success:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(45, 164, 78, 0.3);
+  }
+
+  .sre-agent-step {
+    background: var(--bg-panel);
+    opacity: 0.95;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    overflow: hidden;
+  }
+
+  .sre-step-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    cursor: pointer;
+    background: rgba(0, 0, 0, 0.02);
+  }
+
+  .sre-step-header:hover {
+    background: rgba(0, 0, 0, 0.04);
+  }
+
+  .sre-step-content {
+    padding: 0 14px 10px 14px;
+    display: none;
+    border-top: 1px solid var(--border-color);
+    margin-top: 4px;
+    padding-top: 10px;
+  }
+
+  .sre-step-content.open {
+    display: block;
+  }
+
+  .sre-timer {
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-family: monospace;
+    background: var(--bg-main);
+    padding: 2px 6px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+  }
+
+  .sre-history-item {
+    padding: 12px;
+    background: var(--bg-main);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .sre-history-item:hover {
+    border-color: var(--accent);
+    background: var(--bg-panel);
+  }
+
+  .sre-history-item.active {
+    border-color: var(--accent);
+    background: var(--bg-panel);
+    border-left: 3px solid var(--accent);
+  }
+
+  .sre-history-title {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sre-history-date {
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+</style>
+{% endblock %}

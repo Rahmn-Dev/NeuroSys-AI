@@ -5,9 +5,9 @@ from . import models
 from .serializers import ChatSessionSerializer, ChatMessageSerializer
 from . import serializers
 class ChatSessionViewSet(viewsets.ModelViewSet):
-    queryset = models.ChatSession.objects.all()
+    queryset = models.ChatSession.objects.all().order_by('-updated_at')
     serializer_class = ChatSessionSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     # Custom action untuk mengirim pesan ke sesi tertentu
     @action(detail=True, methods=['post'])
@@ -40,11 +40,18 @@ class ChatSessionViewSet(viewsets.ModelViewSet):
         session.delete()
         return Response({'status': 'Chat session deleted'}, status=status.HTTP_204_NO_CONTENT)
 
+    @action(detail=True, methods=['get'])
+    def investigations(self, request, pk=None):
+        session = self.get_object()
+        investigations = models.Investigation.objects.filter(session=session).order_by('created_at')
+        serializer = serializers.InvestigationSerializer(investigations, many=True)
+        return Response(serializer.data)
+
 
 class ChatMessageViewSet(viewsets.ModelViewSet):
     queryset = models.ChatMessage.objects.all()
     serializer_class = ChatMessageSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     # Override get_queryset untuk filter pesan berdasarkan sesi
     def get_queryset(self):

@@ -564,3 +564,105 @@ def chat_with_ai(request):
             logger.error(f"Error processing request: {e}")
             return Response({"error": f"Gagal memproses permintaan: {str(e)}"}, status=500)
 
+# --- Workspace & Artifacts APIs ---
+
+@api_view(['GET'])
+def workspace_tree_api(request):
+    """Returns a basic file tree. If path is provided, loads that directory's children (depth=1)."""
+    import os
+    base_dir = os.path.dirname(os.path.abspath(__file__)) 
+    project_dir = os.path.dirname(base_dir)
+    
+    target_path = request.GET.get('path')
+    if not target_path or not os.path.isdir(target_path):
+        target_path = project_dir
+
+    def get_tree_depth1(path):
+        tree = []
+        try:
+            for item in os.listdir(path):
+                if item in ['.git', '__pycache__', 'logs', 'db.sqlite3', '.env']:
+                    continue
+                item_path = os.path.join(path, item)
+                is_dir = os.path.isdir(item_path)
+                
+                # Check if directory has children for lazy loading indicator
+                has_children = False
+                if is_dir:
+                    try:
+                        has_children = len(os.listdir(item_path)) > 0
+                    except:
+                        pass
+                        
+                tree.append({
+                    "name": item,
+                    "path": item_path,
+                    "type": "directory" if is_dir else "file",
+                    "has_children": has_children,
+                    "children": [] # Lazy loaded by UI
+                })
+        except Exception:
+            pass
+        return sorted(tree, key=lambda x: (x['type'] != 'directory', x['name']))
+        
+    return Response(get_tree_depth1(target_path))
+
+@api_view(['GET'])
+def workspace_file_api(request):
+    """Returns the content of a file."""
+    import os
+    file_path = request.GET.get('path', '')
+    if not file_path:
+        return Response({"error": "Path required"}, status=400)
+        
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    full_path = os.path.abspath(os.path.join(base_dir, file_path))
+    
+    if not full_path.startswith(base_dir):
+        return Response({"error": "Invalid path"}, status=403)
+        
+    try:
+        with open(full_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        return Response({"content": content})
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+@api_view(['GET'])
+def artifact_list_api(request):
+    """Returns a list of artifacts."""
+    from chatbot.models import AgentArtifact
+    
+    session_id = request.GET.get('session_id')
+    if not session_id:
+        return Response([])
+        
+    artifacts = AgentArtifact.objects.filter(session_id=session_id).exclude(action_type="active_state").order_by('-created_at')[:50]
+    data = []
+    for a in artifacts:
+        data.append({
+            "id": a.id,
+            "file_path": a.file_path,
+            "action_type": a.action_type,
+            "diff": a.diff,
+            "created_at": a.created_at.isoformat()
+        })
+    return Response(data)
+
+@api_view(['POST'])
+def artifact_rollback_api(request, artifact_id):
+    """Rollbacks an artifact."""
+    from sre_agent.artifacts import ArtifactManager
+    from chatbot.models import WorkspaceInfo
+    
+    try:
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        # Needs to be async compatible or use async_to_sync
+        from asgiref.sync import async_to_sync
+        manager = ArtifactManager(workspace_path=base_dir)
+        success = async_to_sync(manager.rollback)(artifact_id)
+        if success:
+            return Response({"status": "success"})
+        return Response({"error": "Rollback failed"}, status=500)
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)

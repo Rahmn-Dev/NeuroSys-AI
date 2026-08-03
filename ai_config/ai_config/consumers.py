@@ -796,187 +796,86 @@ async def broadcast_to_mcp_agents(message, user_id=None):
 class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         await self.accept()
+        import json
         await self.send(text_data=json.dumps({
             "type": "status",
-            "content": "✅ Connected to AI SysAdmin Agent."
+            "content": "✅ Connected to Antigravity AI Agent."
         }))
 
     async def disconnect(self, close_code):
         pass
 
     async def receive(self, text_data):
-        from chatbot.models import ExecutionLog
-        from .views import SmartAgent
+        import json
+        from .agent_core import AntigravitySysAdmin
         
-        # 1. Parsing Data JSON
         try:
             data = json.loads(text_data)
         except json.JSONDecodeError:
             return 
 
         user_message = data.get("message")
-        
-        config = data.get("config", {})
-        is_auto_mode = config.get("auto_execute", False)
-        # =========================================================
-        # FIX: RELOAD SESSION DARI DATABASE SECARA UTUH DI THREAD SYNC
-        # =========================================================
-        engine = import_module(settings.SESSION_ENGINE)
-        session_key = self.scope["session"].session_key
-        
-        # Bungkus logic init session DAN pengambilan data .get() di sini
-        def get_sudo_pass_sync():
-            s = engine.SessionStore(session_key)
-            # .get() ini memicu query DB, jadi harus di dalam fungsi sync ini
-            return s.get("temp_sudo_pass", None)
+        if not user_message:
+            return
             
-        # Panggil wrapper function di atas menggunakan sync_to_async
-        sudo_password = await sync_to_async(get_sudo_pass_sync)()
-        # =========================================================
-
-        # Debug print
-
-        print(f"DEBUG SESSION: Key={session_key}, SudoPassFound={bool(sudo_password)}")
-        agent = SmartAgent(sudo_password=sudo_password)
-
-      # ---------------------------------------------------------
-        # SKENARIO 1: MODE AUTO (Langsung Jalan) - VERSI FIXED STOP ITERATION
-        # ---------------------------------------------------------
-        if is_auto_mode:
-            await self.send(json.dumps({"type": "status", "content": "⚡ Auto-Execution Mode Active"}))
+        session_id = data.get("session_id")
+        if not session_id:
+            session_id = self.scope["session"].session_key or "default_session"
             
-            execution_log = await sync_to_async(ExecutionLog.objects.create)(
-                user_query=user_message,
-                goal=user_message,
-                start_time=time.time(),
-            )
+        agent = AntigravitySysAdmin(session_id)
+        provider = data.get("provider", "gemini")
 
-            steps = []
-            
-            try:
-                # 1. Inisialisasi Generator
-                workflow_iterator = agent.stream_process_smart_workflow(user_message)
+        try:
+            # Stream dari agent (di mana agent akan me-yield token/progress)
+            async for step in agent.stream_workflow(user_message, provider=provider):
+                await self.send(text_data=json.dumps(step))
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            await self.send(text_data=json.dumps({
+                "type": "error",
+                "content": f"Workflow Error: {str(e)}"
+            }))
 
-                # 2. Fungsi Helper untuk 'Next' yang Aman
-                # Fungsi ini akan berjalan di thread sync. 
-                # Jika generator habis, dia return None, BUKAN raise Error.
-                def safe_next_step():
-                    try:
-                        return next(workflow_iterator)
-                    except StopIteration:
-                        return None
-
-                # 3. Iterasi Manual
-                while True:
-                    # Panggil safe_next_step via sync_to_async
-                    result = await sync_to_async(safe_next_step, thread_sensitive=False)()
-                    
-                    # Jika result None, berarti generator sudah selesai (habis)
-                    if result is None:
-                        break
-                    
-                    # Kirim data ke WebSocket
-                    await self.send(text_data=json.dumps(result))
-                    
-                    # Simpan steps untuk log DB
-                    if result.get("type") == "step":
-                        steps.append(result.get("content", {}))
-
-            except Exception as e:
-                # Tangkap error lain (bukan StopIteration)
-                error_msg = f"Workflow Error: {str(e)}"
-                print(error_msg)
-                traceback.print_exc()
-                await self.send(json.dumps({"type": "error", "content": error_msg}))
-                await sync_to_async(self._finalize_execution_log)(execution_log, steps, "failed", error=str(e))
-                return
-
-            # Finalisasi sukses
-            # Cek status terakhir dari step terakhir untuk menentukan status log
-            final_status = "completed"
-            if steps and steps[-1].get('result', {}).get('status') == 'max_steps_reached':
-                 final_status = "max_steps_reached"
-            
-            await sync_to_async(self._finalize_execution_log)(execution_log, steps, final_status)
-        # ---------------------------------------------------------
-        # SKENARIO 2: MODE MANUAL (Human-in-the-Loop)
-        # ---------------------------------------------------------
-        else:
-            await self.send(json.dumps({"type": "status", "content": "🛡️ Analyzing request (Safety Mode)..."}))
-            
-            # Minta AI merencanakan langkah pertama saja (tanpa eksekusi)
-            # Kita panggil fungsi sync di dalam async wrapper
-            plan = await sync_to_async(agent.get_initial_plan)(user_message)
-            
-            action_type = plan.get("action")
-            
-            if action_type == "execute":
-                # AI ingin menjalankan perintah -> TAHAN dan minta konfirmasi
-                command = plan.get("command")
-                reasoning = plan.get("reasoning")
-                
-                # Kirim Reasoning
-                await self.send(json.dumps({"type": "reasoning", "content": reasoning}))
-                
-                # Kirim Request Konfirmasi ke Frontend
-                await self.send(json.dumps({
-                    "type": "confirmation_request", # Trigger tombol Y/N di frontend
-                    "command": command,
-                    "reasoning": reasoning
-                }))
-                
-                # Feedback visual step
-                await self.send(json.dumps({
-                    "type": "step", 
-                    "content": {
-                        "step": 1, 
-                        "reasoning": reasoning, 
-                        "command": command, 
-                        "result": {"output": "Waiting for user approval..."}
-                    }
-                }))
-
-            elif action_type == "complete":
-                # AI hanya ngobrol/selesai
-                 await self.send(json.dumps({
-                    "type": "complete", 
-                    "content": {"summary": plan.get("summary")}
-                }))
-                 
-            else:
-                 # Kasus lain (fail/tool_call), jalankan standard flow saja
-                 # (Atau kamu bisa implementasi konfirmasi per tool call jika mau lebih detail)
-                 for result in agent.stream_process_smart_workflow(user_message):
-                    await self.send(json.dumps(result))
-
-
-    def _finalize_execution_log(self, execution_log, steps, status, error=None):
-        execution_log.final_status = status
-        execution_log.end_time = time.time()
-        execution_log.duration = execution_log.end_time - execution_log.start_time
-        execution_log.steps = steps
-        if error:
-            execution_log.error = error
-        execution_log.save()
 
 import threading
 class TerminalConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         await self.accept()
         loop = asyncio.get_event_loop()
+        self.polling_task = None
+        self.last_cwd = None
 
         def handle_output(output):
             asyncio.run_coroutine_threadsafe(
-                self.send(text_data=output),
+                self.send(text_data=json.dumps({"type": "output", "data": output})),
                 loop
             )
 
         from .terminal_utils import start_shell
-        self.shell_writer, self.shell_process = start_shell(handle_output)
+        self.shell_writer, self.shell_process, self.shell_pid = start_shell(handle_output)
         self.handle_input = lambda data: self.shell_writer(data)
+
+        # Start CWD polling task
+        self.polling_task = asyncio.create_task(self.poll_cwd())
+
+    async def poll_cwd(self):
+        import os
+        while True:
+            try:
+                # Read CWD of the bash shell process
+                cwd = os.readlink(f"/proc/{self.shell_pid}/cwd")
+                if cwd != self.last_cwd:
+                    self.last_cwd = cwd
+                    await self.send(text_data=json.dumps({"type": "cwd", "cwd": cwd}))
+            except Exception:
+                pass
+            await asyncio.sleep(1)
 
     async def disconnect(self, close_code):
         print("WebSocket disconnected")
+        if self.polling_task:
+            self.polling_task.cancel()
         try:
             if hasattr(self, 'shell_process'):
                 self.shell_process.terminate()
@@ -988,6 +887,14 @@ class TerminalConsumer(AsyncWebsocketConsumer):
             data = json.loads(text_data)
             if data.get("type") == "input":
                 self.handle_input(data.get("data", ""))
+            elif data.get("type") == "resize":
+                try:
+                    cols = data.get("cols", 80)
+                    rows = data.get("rows", 24)
+                    if hasattr(self, 'shell_process'):
+                        self.shell_process.setwinsize(rows, cols)
+                except Exception as e:
+                    print(f"Resize error: {e}")
         except json.JSONDecodeError:
             print("Invalid JSON")
 
@@ -1327,3 +1234,82 @@ class AiIntrusionLogConsumer(AsyncWebsocketConsumer):
         print(f"[WS DEBUG] Sending to Browser: {event}")
         # PERBAIKAN UTAMA: Kirim seluruh event, JANGAN cuma event["data"]
         await self.send(text_data=json.dumps(event))
+
+
+# ---------------------------------------------------------------------------
+# SRE Agent Consumer — WebSocket for the new agent framework
+# ---------------------------------------------------------------------------
+
+class SREAgentConsumer(AsyncWebsocketConsumer):
+    """
+    WebSocket consumer for the NeuroSysAI SRE Agent.
+    Connects to /ws/sre-agent/ and streams structured agent events.
+    """
+
+    async def connect(self):
+        await self.accept()
+        await self.send(text_data=json.dumps({
+            "type": "status",
+            "content": "🚀 Connected to NeuroSysAI SRE Agent."
+        }))
+
+    async def disconnect(self, close_code):
+        pass
+
+    async def receive(self, text_data):
+        try:
+            data = json.loads(text_data)
+        except json.JSONDecodeError:
+            await self.send(text_data=json.dumps({
+                "type": "error",
+                "content": "Invalid JSON payload."
+            }))
+            return
+
+        msg_type = data.get("type", "message")
+
+        if msg_type == "message":
+            await self._handle_message(data)
+        elif msg_type == "approval":
+            await self._handle_approval(data)
+        else:
+            await self.send(text_data=json.dumps({
+                "type": "error",
+                "content": f"Unknown message type: {msg_type}"
+            }))
+
+    async def _handle_message(self, data):
+        """Handle a user chat message — run the SRE agent loop."""
+        user_message = data.get("message", "").strip()
+        if not user_message:
+            return
+
+        session_id = data.get("session_id", "")
+        terminal_cwd = data.get("terminal_cwd", None)
+
+        try:
+            from sre_agent.engine import SREAgentEngine
+
+            engine = SREAgentEngine(session_id=session_id)
+
+            async for event in engine.run(user_message, terminal_cwd=terminal_cwd):
+                await self.send(text_data=json.dumps(event.to_dict()))
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            await self.send(text_data=json.dumps({
+                "type": "error",
+                "content": f"Agent Error: {str(e)}"
+            }))
+
+    async def _handle_approval(self, data):
+        """Handle user approval for HIGH-risk tool execution."""
+        # For now, acknowledge the approval — full approval flow can be
+        # implemented when the frontend supports it.
+        approved = data.get("approved", False)
+        tool_name = data.get("tool", "unknown")
+        await self.send(text_data=json.dumps({
+            "type": "status",
+            "content": f"{'✅ Approved' if approved else '❌ Rejected'}: {tool_name}"
+        }))
