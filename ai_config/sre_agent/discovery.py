@@ -80,7 +80,7 @@ _INTENT_MAP: Dict[str, Dict] = {
 
 # Keyword → intent mapping for fast classification
 _KEYWORD_INTENT: List[Tuple[List[str], str]] = [
-    (["502", "503", "504", "nginx", "web server", "website", "reverse proxy", "upstream"], "troubleshooting_web"),
+    (["502", "503", "504", "nginx", "web server", "reverse proxy", "upstream"], "troubleshooting_web"),
     (["service", "systemctl", "daemon", "failed service", "unit"], "troubleshooting_service"),
     (["ping", "dns", "port", "firewall", "connection refused", "timeout", "unreachable"], "troubleshooting_network"),
     (["cpu", "memory", "ram", "disk", "load average", "uptime", "status", "health"], "system_monitoring"),
@@ -89,6 +89,7 @@ _KEYWORD_INTENT: List[Tuple[List[str], str]] = [
     (["security", "auth", "login", "ssh", "firewall", "permission", "audit", "intrusion"], "security_audit"),
     (["deploy", "deployment", "release", "update service"], "deployment"),
     (["log", "error log", "syslog", "journal", "tail", "grep log"], "log_analysis"),
+    (["browser", "search", "google", "documentation", "lookup", "url", "webpage", "website"], "browser_tools"),
 ]
 
 

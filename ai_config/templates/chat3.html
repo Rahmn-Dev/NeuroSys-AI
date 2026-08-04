@@ -230,7 +230,7 @@
     style="backdrop-filter: blur(20px);     background: rgba(255, 255, 255, 0); display:flex; flex-direction:column; height:calc(100vh - 80px);">
     <!-- Header bar -->
     <div class="sre-panel"
-      style="background: var(--bg-main); display:flex; align-items:center; justify-content:space-between; padding:12px 20px; border-bottom:1px solid var(--border-color);">
+      style="background: var(--bg-main); display:flex; align-items:center; justify-content:space-between; padding:12px 20px; border-bottom:1px solid var(--border-color); position:relative; z-index:50;">
       <div style="display:flex; align-items:center; gap:10px;">
         <button id="toggle-sidebar-btn"
           onclick="document.getElementById('history-sidebar').style.display='flex'; this.style.display='none';"
@@ -245,7 +245,14 @@
           style="font-size:11px; padding:2px 8px; border-radius:10px; background:#1f6feb33; color:#58a6ff;">Connecting...</span>
       </div>
       <div style="display:flex; align-items:center; gap:8px;">
-        <span class="sre-text-secondary" style="font-size:11px;">Powered by Mistral</span>
+        <select id="model-selector" class="sre-input"
+          style="font-size: 11px; padding: 2px 6px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text-secondary); border-radius: 4px; cursor: pointer;">
+          <option value="mistral-large-latest">Mistral Large</option>
+          <option value="deepseek-ai/deepseek-v4-flash">NVIDIA DeepSeek (deepseek-v4-pro)</option>
+          <option value="openai/gpt-oss-120b">GPT OSS 120B (NVIDIA)</option>
+          <option value="mistral:latest">Local Mistral (Ollama)</option>
+          <option value="qwen2.5-coder:latest">Local Qwen2.5 Coder (Ollama)</option>
+        </select>
         <span style="width:8px;height:8px;border-radius:50%;background:#3fb950;" id="status-dot"></span>
       </div>
     </div>
@@ -299,9 +306,13 @@
 
         <!-- Floating Input Bar -->
         <div
-          style="position: absolute; bottom: 0; left: 0; right: 0; padding: 24px; pointer-events: none; background: linear-gradient(to top, var(--bg-main) 30%, transparent);">
+          style="position: absolute; bottom: 0; left: 0; right: 0; padding: 24px; pointer-events: none; background: linear-gradient(to top, var(--bg-main) 30%, transparent); display:flex; flex-direction:column; align-items:center;">
+          <div id="context-attachments"
+            style="pointer-events: auto; display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px; width:100%; max-width:800px; min-height: 0;">
+            <!-- Chips injected by JS -->
+          </div>
           <form id="chat-form"
-            style="pointer-events: auto; display:flex; align-items:flex-end; gap:12px; background: rgb(255 255 255 / 0%); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border:1px solid rgba(255,255,255,0.15); box-shadow: 0 12px 40px rgba(0,0,0,0.4); border-radius:28px; padding:8px 12px; transition:border-color 0.2s; max-width: 800px; margin: 0 auto;"
+            style="pointer-events: auto; display:flex; align-items:flex-end; gap:12px; background: rgb(255 255 255 / 0%); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border:1px solid rgba(255,255,255,0.15); box-shadow: 0 12px 40px rgba(0,0,0,0.4); border-radius:28px; padding:8px 12px; transition:border-color 0.2s; width: 100%; max-width: 800px; margin: 0 auto;"
             tabindex="0" onfocusin="this.style.borderColor='var(--accent)'"
             onfocusout="this.style.borderColor='rgba(255,255,255,0.15)'">
             <textarea id="chat-input" placeholder="Ask anything" class="sre-input sre-text-strong"
@@ -320,9 +331,9 @@
       </div>
 
       <!-- Right Panel Resizer -->
-      <div id="panel-resizer" style="width:4px; cursor:col-resize; background:rgba(255,255,255,0.05); margin:8px 4px 8px 0; border-radius:4px; transition:background 0.2s; z-index:10;"
-        onmouseover="this.style.background='var(--accent)'"
-        onmouseout="this.style.background='rgba(255,255,255,0.05)'">
+      <div id="panel-resizer"
+        style="width:4px; cursor:col-resize; background:rgba(255,255,255,0.05); margin:8px 4px 8px 0; border-radius:4px; transition:background 0.2s; z-index:10;"
+        onmouseover="this.style.background='var(--accent)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'">
       </div>
 
       <!-- 3. Right Column: Tabs (Terminal, Explorer, Artifacts) -->
@@ -341,7 +352,7 @@
           </div>
           <div class="tab-btn sre-text-secondary" onclick="switchTab('explorer')"
             style="flex:1; display:flex; align-items:center; justify-content:center; gap:6px; text-align:center; padding:12px 10px; font-size:13px; cursor:pointer; transition: background 0.2s;">
-            <i class="fa-solid fa-folder" style="font-size:14px;"></i> File
+            <i class="fa-solid fa-folder" style="font-size:14px;"></i> Explorer
           </div>
           <div class="tab-btn sre-text-secondary" onclick="switchTab('artifacts')"
             style="flex:1; display:flex; align-items:center; justify-content:center; gap:6px; text-align:center; padding:12px 10px; font-size:13px; cursor:pointer; transition: background 0.2s;">
@@ -370,9 +381,22 @@
         </div>
 
         <!-- Explorer Tab -->
-        <div id="tab-explorer" class="tab-content"
-          style=" background: var(--bg-main); flex:1; display:none; flex-direction:column; padding:10px; overflow-y:auto; font-size:13px;">
-          <div id="explorer-tree" class="sre-text-primary">Loading workspace...</div>
+        <div id="tab-explorer" class="sre-panel tab-content"
+          style="backdrop-filter: blur(20px);     background: rgba(255, 255, 255, 0); display:none; flex-direction:column; overflow-y:auto; flex:1;">
+          <div style="padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); ">
+            <div style="font-size: 12px; opacity: 0.7; margin-bottom: 4px; font-weight: 600;">Workspace Context</div>
+            <select id="workspace-selector" class="sre-input"
+              style="width: 100%; font-size: 12px; padding: 6px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text-primary); border-radius: 4px;"
+              onchange="onWorkspaceSelectorChange()">
+              <option value="auto">Auto (Follow Terminal CWD)</option>
+              <option value="/home/paul/project-ai/NeuroSys-AI">NeuroSysAI Project</option>
+              <option value="/">Root (/) </option>
+              <option value="custom">Custom Path...</option>
+            </select>
+          </div>
+          <div id="explorer-tree" style="padding: 16px; font-family: monospace; font-size:13px; line-height:1.6;">
+            Membangun struktur direktori...
+          </div>
         </div>
 
         <!-- Artifacts Tab -->
@@ -400,6 +424,39 @@
     let sessionId = null;
     let currentAIMsg = null;
     let isProcessing = false;
+
+    // --- IDE Context State ---
+    window.currentTerminalCwd = localStorage.getItem('sre_terminal_cwd') || null;
+    window.selectedFile = localStorage.getItem('sre_selected_file') || null;
+
+    function updateContextAttachments() {
+      const container = document.getElementById('context-attachments');
+      if (!container) return;
+
+      container.innerHTML = '';
+      if (window.selectedFile) {
+        const fileName = window.selectedFile.split('/').pop();
+        const chip = document.createElement('div');
+        chip.style.cssText = 'background: rgb(30 41 59 / 3%); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px; padding: 8px 12px; font-size: 13px; color: var(--text-primary); display: flex; align-items: flex-start; gap: 12px; cursor: default; box-shadow: 0 4px 12px rgba(0,0,0,0.2);';
+
+        chip.innerHTML = `
+          <div style="display:flex; flex-direction:column; gap:2px;">
+            <div style="font-weight: 600; display:flex; align-items:center; gap:6px;">
+              <i class="fas fa-file-alt" style="color:var(--accent);"></i> ${fileName}
+            </div>
+            <div style="font-size: 11px; opacity: 0.6; font-family: monospace;">${window.selectedFile}</div>
+          </div>
+          <span style="cursor: pointer; opacity: 0.7; font-size: 16px; margin-top: -2px;" onclick="clearSelectedFile()" title="Remove file context">&times;</span>
+        `;
+        container.appendChild(chip);
+      }
+    }
+
+    window.clearSelectedFile = function () {
+      window.selectedFile = null;
+      localStorage.removeItem('sre_selected_file');
+      updateContextAttachments();
+    };
 
     // --- WebSocket ---
     function connect() {
@@ -469,7 +526,7 @@
           break;
 
         case 'planning':
-          addAgentStep('Planning', data.content, 'var(--purple)', 'list-todo');
+          addAgentStep('Planning', data.content, '#dac654', 'list-todo');
           break;
 
         case 'thinking':
@@ -477,7 +534,7 @@
             currentAIMsg.remove();
             currentAIMsg = null;
           }
-          addAgentStep('Thinking', data.content, 'var(--text-secondary)', 'brain');
+          addAgentStep('Thinking', data.content, '#ff69b4', 'brain');
           break;
 
         case 'tool_start':
@@ -523,6 +580,7 @@
             };
             activeInvestigationId = invId;
             renderInvestigationTimeline();
+            addAgentStep('Investigation Started', data.content || 'Starting new investigation...', 'var(--accent)', 'search');
           }
           break;
 
@@ -540,6 +598,7 @@
             }
             investigations[planData.investigation_id].plan = Array.isArray(planData) ? planData : (planData.tasks || []);
             renderInvestigationTimeline();
+            addAgentStep('Task Plan Updated', 'A new task plan has been generated for the investigation.', '#dac654', 'list-todo');
           }
           break;
 
@@ -567,6 +626,7 @@
             }
             investigations[findingsData.investigation_id].findings = Array.isArray(findingsData) ? findingsData : (findingsData.findings || []);
             renderInvestigationTimeline();
+            addAgentStep('Findings Recorded', 'New findings have been added to the investigation timeline.', 'var(--success)', 'check-square');
           }
           break;
 
@@ -656,11 +716,36 @@
       return '';
     }
 
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
     function addUserMessage(text) {
       const div = document.createElement('div');
       div.className = 'sre-msg-user';
       div.style.cssText = 'align-self:flex-end;border-radius:12px;padding:12px 16px;max-width:70%;font-size:14px;line-height:1.5;margin-bottom:8px;';
-      div.textContent = text;
+      
+      const contextRegex = /\n\n\[Context Attached: (file:\/\/[^\]]+)\]/g;
+      const matches = [...text.matchAll(contextRegex)];
+      
+      let html = escapeHtml(text.replace(contextRegex, '')).replace(/\n/g, '<br>');
+      
+      if (matches.length > 0) {
+        matches.forEach(match => {
+           const fileUrl = match[1];
+           const fileName = fileUrl.split('/').pop();
+           html += `<div style="margin-top: 8px; display: inline-flex; flex-direction: column; background: rgba(0,0,0,0.15); padding: 6px 10px; border-radius: 8px; font-size: 11px; border: 1px solid rgba(0,0,0,0.1);">
+              <div style="font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                 <i class="fas fa-file-alt" style="color: #fff;"></i> ${escapeHtml(fileName)}
+              </div>
+              <div style="opacity: 0.7; font-family: monospace; margin-top: 2px;">${escapeHtml(fileUrl)}</div>
+           </div>`;
+        });
+      }
+      
+      div.innerHTML = html;
       messagesDiv.appendChild(div);
       scrollToBottom();
     }
@@ -713,8 +798,12 @@
 
       let isGeneric = false;
       if (!stepId) {
-        stepId = 'step-' + Math.random().toString(36).substr(2, 9);
-        isGeneric = true;
+        if (isEnd && lastGenericStepId) {
+          stepId = lastGenericStepId;
+        } else {
+          stepId = 'step-' + Math.random().toString(36).substr(2, 9);
+          isGeneric = true;
+        }
       }
 
       // If a new step starts, complete the previous generic step
@@ -725,6 +814,10 @@
 
       if (isGeneric) {
         lastGenericStepId = stepId;
+      }
+      
+      if (isEnd && stepId === lastGenericStepId) {
+        lastGenericStepId = null;
       }
 
       let stepDiv = document.getElementById('step-' + stepId);
@@ -878,11 +971,7 @@
       }
     }
 
-    function escapeHtml(text) {
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
-    }
+
 
     function scrollToBottom() {
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
@@ -890,8 +979,12 @@
     // --- Form submit ---
     form.addEventListener('submit', (e) => {
       e.preventDefault();
-      const msg = input.value.trim();
+      let msg = input.value.trim();
       if (!msg || isProcessing) return;
+
+      if (window.selectedFile) {
+        msg = msg + `\n\n[Context Attached: file://${window.selectedFile}]`;
+      }
 
       addUserMessage(msg);
       input.value = '';
@@ -906,7 +999,11 @@
         type: 'message',
         message: msg,
         session_id: sessionId || '',
-        terminal_cwd: window.currentTerminalCwd || ''
+        terminal_cwd: window.currentTerminalCwd || '',
+        active_workspace: window.customWorkspaceOverride || window.currentTerminalCwd || '',
+        selected_file: window.selectedFile || '',
+        selected_file_name: window.selectedFile ? window.selectedFile.split('/').pop() : '',
+        model: document.getElementById('model-selector').value
       }));
     });
 
@@ -1082,25 +1179,52 @@
         console.error('Failed to load session', e);
       }
     }
+    // --- Explorer Logic ---
+    window.customWorkspaceOverride = null;
 
-    // --- Explorer ---
+    window.onWorkspaceSelectorChange = function () {
+      const selector = document.getElementById('workspace-selector');
+      if (selector.value === 'auto') {
+        window.customWorkspaceOverride = null;
+      } else if (selector.value === 'custom') {
+        const customPath = prompt("Enter absolute path for workspace:");
+        if (customPath) {
+          const opt = document.createElement('option');
+          opt.value = customPath;
+          opt.text = customPath;
+          selector.add(opt, selector.options[1]);
+          selector.value = customPath;
+          window.customWorkspaceOverride = customPath;
+        } else {
+          selector.value = 'auto';
+          window.customWorkspaceOverride = null;
+        }
+      } else {
+        window.customWorkspaceOverride = selector.value;
+      }
+      loadExplorer();
+    };
+
     async function loadExplorer() {
       try {
-        const cwdParam = window.currentTerminalCwd ? `?path=${encodeURIComponent(window.currentTerminalCwd)}` : '';
+        const targetPath = window.customWorkspaceOverride || window.currentTerminalCwd;
+        if (!targetPath) return; // Wait until CWD is known
+
+        const cwdParam = `?path=${encodeURIComponent(targetPath)}`;
         const res = await fetch(`/api/v1/workspace/tree/${cwdParam}`);
         const data = await res.json();
         const container = document.getElementById('explorer-tree');
         container.innerHTML = '';
 
         // Render CWD header
-        if (window.currentTerminalCwd) {
+        if (targetPath) {
           let header = document.createElement('div');
           header.style.padding = '8px 4px';
           header.style.marginBottom = '8px';
           header.style.borderBottom = '1px solid var(--border-color)';
           header.style.fontWeight = 'bold';
           header.style.wordBreak = 'break-all';
-          header.innerHTML = `<span style="color:var(--accent)">CWD:</span> ${window.currentTerminalCwd}`;
+          header.innerHTML = `<span style="color:var(--accent)">Workspace:</span> ${targetPath}`;
           container.appendChild(header);
         }
 
@@ -1152,8 +1276,9 @@
               fileDiv.innerHTML = `<span>📄 ${node.name}</span>`;
               fileDiv.onclick = (e) => {
                 e.stopPropagation();
-                const inp = document.getElementById('chat-input');
-                inp.value = `Lihat file ${node.path}`;
+                window.selectedFile = node.path;
+                localStorage.setItem('sre_selected_file', node.path);
+                updateContextAttachments();
               };
               el.appendChild(fileDiv);
             }
@@ -1179,12 +1304,24 @@
         const container = document.getElementById('artifacts-list');
         container.innerHTML = '';
 
+        if (data.length === 0) {
+          container.innerHTML = '<div class="sre-text-secondary" style="font-style:italic;padding:16px;">No artifacts generated yet.</div>';
+          return;
+        }
+
         data.forEach(art => {
           let el = document.createElement('div');
           el.style.cssText = 'padding:10px; class="sre-layout" border:1px solid #30363d; border-radius:6px; margin-bottom:8px;';
+          let contentToShow = art.diff;
+          if (!contentToShow) {
+             contentToShow = art.new_content;
+          }
+          if (!contentToShow) {
+             contentToShow = 'No diff available';
+          }
           el.innerHTML = `
             <div style="font-weight:bold; margin-bottom:4px; color:#58a6ff;">${art.action_type.toUpperCase()}: ${art.file_path}</div>
-            <pre style="background:#000; padding:4px; border-radius:4px; overflow-x:auto; font-size:11px; max-height:100px;">${escapeHtml(art.diff || 'No diff available')}</pre>
+            <pre style="background:#000; padding:4px; border-radius:4px; overflow-x:auto; font-size:11px; max-height:100px;">${escapeHtml(contentToShow)}</pre>
             <div style="margin-top:8px; display:flex; gap:8px;">
                 <button onclick="rollbackArtifact(${art.id})" style="background:#da3633; color:white; border:none; border-radius:4px; padding:4px 8px; cursor:pointer;">Rollback</button>
             </div>
@@ -1267,6 +1404,7 @@
           } else if (msg.type === 'cwd') {
             if (window.currentTerminalCwd !== msg.cwd) {
               window.currentTerminalCwd = msg.cwd;
+              localStorage.setItem('sre_terminal_cwd', msg.cwd);
               loadExplorer(); // dynamically fetch tree for new cwd
             }
           }
@@ -1290,6 +1428,7 @@
     loadHistory();
     connect();
     initTerminal();
+    updateContextAttachments();
 
     // --- Resizer Logic ---
     const panelResizer = document.getElementById('panel-resizer');
@@ -1306,7 +1445,7 @@
 
       document.addEventListener('mousemove', (e) => {
         if (!isResizing) return;
-        
+
         const containerRect = rightPanel.parentElement.getBoundingClientRect();
         const newWidth = containerRect.right - e.clientX - 12; // 12px for margins
 

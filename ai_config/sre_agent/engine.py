@@ -33,7 +33,8 @@ from .events import (
     evt_thinking, evt_tool_start, evt_tool_end, evt_message_chunk,
     evt_completed, evt_error, evt_session_id, evt_session_title, evt_observing,
     evt_safety_blocked, evt_safety_warn, evt_analyzing,
-    evt_creating_artifact, evt_restoring_artifact, evt_security_scan
+    evt_creating_artifact, evt_restoring_artifact, evt_security_scan,
+    evt_hypothesis, evt_resolution_plan,
 )
 from .memory import LongTermMemory, ShortTermMemory, WorkspaceMemory
 from .safety import SafetyLayer, SafetyVerdict
@@ -72,30 +73,37 @@ def _ensure_tools_registered():
 # System prompt
 # ---------------------------------------------------------------------------
 
-_SYSTEM_PROMPT = """You are NeuroSysAI — an advanced AI SRE (Site Reliability Engineer) agent.
+_SYSTEM_PROMPT = """You are an autonomous SRE execution agent.
+Your responsibility is to investigate and resolve infrastructure problems.
 
-## Your Capabilities
-You are a multi-step reasoning agent that can diagnose, troubleshoot, and resolve
-infrastructure issues on Linux servers. You have access to a dynamically-selected
-set of tools based on the current task.
+Do not only explain what should be done.
 
-## Your Approach
-1. UNDERSTAND the user's goal before taking action
-2. EXPLORE the system to gather context
-3. PLAN your approach — think step by step
-4. EXECUTE tools one at a time, observing results
-5. ANALYZE results before deciding the next step
-6. NEVER guess — always verify with tools
-7. SUMMARIZE your findings clearly when done
+When tools are available:
+- execute actions
+- verify results
+- collect evidence
+- update investigation state
 
-## Environment Context
-{workspace_context}
+Never stop after creating a plan.
+A plan is not progress.
+Execution and verification are progress.
 
-## Current System User
-{system_user}
+## Current Environment
 
-## Working Directory
-{working_dir}
+System:
+{system_context}
+
+Current Terminal Directory:
+{terminal_cwd}
+
+Active Workspace:
+{active_workspace}
+
+Project Workspace:
+{project_workspace}
+
+Selected File:
+{selected_file}
 
 ## Available Tools
 You have {tool_count} tools loaded for this task:
@@ -105,12 +113,16 @@ You have {tool_count} tools loaded for this task:
 {past_incidents}
 
 ## Rules
-- Be precise and technical in your analysis
-- Always show relevant command outputs to support your conclusions
-- If a tool fails, try an alternative approach
-- For destructive operations, explain what you will do BEFORE doing it
-- Format your responses clearly with sections and bullet points
-- If you are unsure, say so — do not fabricate information
+- CRITICAL: The underlying tools execute in a different background directory. You MUST NEVER use relative paths (like '.' or './') in your tool arguments.
+- CRITICAL: Always construct FULL ABSOLUTE PATHS by prepending the 'Current Terminal Directory' to your paths before calling any file or directory tools (e.g. read_file, list_directory).
+- Terminal directory has highest priority for all path resolution.
+- Selected file has highest priority for "this file" references.
+- Never assume the user is working inside the project workspace.
+- Be precise and technical in your analysis.
+- Always show relevant command outputs to support your conclusions.
+- If a tool fails, try an alternative approach.
+- For destructive operations, explain what you will do BEFORE doing it.
+- Format your responses clearly with sections and bullet points.
 """
 
 
@@ -130,8 +142,9 @@ class SREAgentEngine:
 
     MAX_ITERATIONS = 15
 
-    def __init__(self, session_id: str = ""):
+    def __init__(self, session_id: str = "", model_name: str = "mistral-large-latest"):
         self.session_id = session_id or str(uuid.uuid4())
+        self.model_name = model_name
         self.short_memory = ShortTermMemory()
         self.safety = SafetyLayer()
         self.discovery = ToolDiscoveryAgent()
@@ -140,17 +153,49 @@ class SREAgentEngine:
         _ensure_tools_registered()
 
     def _get_llm(self):
-        """Get the Mistral LLM instance."""
-        from langchain_mistralai import ChatMistralAI
-        api_key = getattr(settings, "MISTRAL_API_KEY", os.environ.get("MISTRAL_API_KEY", ""))
-        return ChatMistralAI(
-            model="mistral-large-latest",
-            mistral_api_key=api_key,
-            temperature=0.1,
-            max_tokens=4096,
-        )
+        """Get the selected LLM instance."""
+        if "deepseek" in self.model_name.lower():
+            from langchain_nvidia_ai_endpoints import ChatNVIDIA
+            api_key = getattr(settings, "NVIDIA_API_KEY", os.environ.get("NVIDIA_API_KEY", ""))
+            return ChatNVIDIA(
+                model=self.model_name,
+                api_key=api_key,
+                temperature=0.1,
+                top_p=0.95,
+                max_tokens=4096,
+                extra_body={"chat_template_kwargs":{"thinking":False}},
+            )
+        elif "gpt-oss-120b" in self.model_name.lower():
+            from langchain_nvidia_ai_endpoints import ChatNVIDIA
+            api_key = getattr(settings, "NVIDIA_API_KEY", os.environ.get("NVIDIA_API_KEY", ""))
+            return ChatNVIDIA(
+                model=self.model_name,
+                api_key=api_key,
+                temperature=0.1,
+                top_p=0.9,
+                max_tokens=4096,
+                extra_body={"chat_template_kwargs":{"thinking":False}},
+            )
+        elif self.model_name in ["mistral:latest", "qwen2.5-coder:latest"]:
+            from langchain_ollama import ChatOllama
+            ollama_url = getattr(settings, "OLLAMA_URL", os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434"))
+            return ChatOllama(
+                model=self.model_name,
+                base_url=ollama_url,
+                temperature=0.1,
+                num_ctx=8192
+            )
+        else:
+            from langchain_mistralai import ChatMistralAI
+            api_key = getattr(settings, "MISTRAL_API_KEY", os.environ.get("MISTRAL_API_KEY", ""))
+            return ChatMistralAI(
+                model=self.model_name,
+                mistral_api_key=api_key,
+                temperature=0.1,
+                max_tokens=2048,
+            )
 
-    async def _run_internal(self, user_message: str, terminal_cwd: Optional[str] = None) -> AsyncGenerator[AgentEvent, None]:
+    async def _run_internal(self, user_message: str, terminal_cwd: Optional[str] = None, active_workspace: Optional[str] = None, selected_file: Optional[str] = None, selected_file_name: Optional[str] = None) -> AsyncGenerator[AgentEvent, None]:
         """
         Internal loop — runs the full agent loop and yields events.
         """
@@ -185,6 +230,7 @@ Rules:
 - Identity questions ("siapa saya", "siapa kamu", "what are you", "who am I") are ALWAYS 'conversation'. DO NOT interpret natural language identity questions as infrastructure tasks.
 - 'simple_action' requires real-time tools for one-off lookup (e.g. "what time now", "jam berapa sekarang").
 - 'investigation' requires complex tool usage.
+- Questions about files (e.g., "jelaskan file ini", "explain this file", "fix this file", "analyze this") MUST be classified as 'investigation', NEVER 'conversation'.
 User message: {user_message}
 Output strictly the category name."""
         resp_intent = await llm.ainvoke([HumanMessage(content=intent_prompt)])
@@ -193,7 +239,16 @@ Output strictly the category name."""
         if intent == "conversation" or any(ci in intent for ci in ["greeting", "thanks", "casual", "identity", "capability"]):
             # Bypass all heavy tooling and respond directly
             history = await self._fetch_history(db_session_id)
-            messages = [SystemMessage(content="You are NeuroSys AI SRE. Respond kindly and briefly.")]
+            conv_sys_prompt = "You are NeuroSys AI SRE. Respond kindly and briefly."
+            
+            # Inject IDE Context even for simple conversations
+            if active_workspace or terminal_cwd or selected_file:
+                conv_sys_prompt += f"\n\n## Current Environment\n\n"
+                conv_sys_prompt += f"Current Terminal Directory:\n{terminal_cwd or 'Not provided'}\n\n"
+                conv_sys_prompt += f"Active Workspace:\n{active_workspace or terminal_cwd or 'Not provided'}\n\n"
+                conv_sys_prompt += f"Selected File:\n{selected_file if selected_file else 'None'}\n"
+
+            messages = [SystemMessage(content=conv_sys_prompt)]
             for msg in history[-20:-1]:
                 if msg.sender.lower() == "user":
                     messages.append(HumanMessage(content=msg.message))
@@ -210,7 +265,7 @@ Output strictly the category name."""
 
         # --- Phase 3: Explore workspace ---
         yield evt_exploring("Scanning workspace and system environment...")
-        workspace_ctx = await sync_to_async(self._analyze_workspace)(terminal_cwd=terminal_cwd)
+        workspace_ctx = await sync_to_async(self._analyze_workspace)(terminal_cwd=active_workspace or terminal_cwd)
         workspace_text = workspace_ctx.to_prompt_context() if workspace_ctx else "No workspace context available"
 
         # Save workspace info
@@ -251,21 +306,25 @@ Output strictly the category name."""
         import subprocess
         try:
             whoami = subprocess.run("whoami", shell=True, capture_output=True, text=True, timeout=5).stdout.strip()
-            pwd = subprocess.run("pwd", shell=True, capture_output=True, text=True, timeout=5).stdout.strip()
         except Exception:
-            whoami, pwd = "unknown", "/home"
+            whoami = "unknown"
+            
+        system_context_str = f"User: {whoami}\nOS/Env Info:\n{workspace_text}"
+        project_workspace_str = settings.BASE_DIR
+        terminal_cwd_str = terminal_cwd or "Not provided"
+        active_workspace_str = active_workspace or terminal_cwd or "Not provided"
+        selected_file_str = f"{selected_file}\n(Name: {selected_file_name})" if selected_file else "None"
 
         system_prompt = _SYSTEM_PROMPT.format(
-            workspace_context=workspace_text,
-            system_user=whoami,
-            working_dir=pwd,
+            system_context=system_context_str,
+            terminal_cwd=terminal_cwd_str,
+            active_workspace=active_workspace_str,
+            project_workspace=project_workspace_str,
+            selected_file=selected_file_str,
             tool_count=len(discovery_result.tools),
             tool_descriptions=tool_descriptions,
             past_incidents=past_incidents_text or "(none)",
         )
-        
-        if terminal_cwd:
-            system_prompt += f"\n\n[IDE CONTEXT]\nThe user is currently working in the terminal at directory: {terminal_cwd}\nAssume relative paths or unspecified paths refer to this directory."
 
         # --- Phase 6: Build message history ---
         history = await self._fetch_history(db_session_id)
@@ -300,10 +359,9 @@ Output strictly the category name."""
             findings_path = f".neurosys/sessions/{self.session_id}/findings.json"
 
             latest_inv = None
-            if intent == "investigation":
-                latest_inv = await sync_to_async(
-                    lambda: Investigation.objects.filter(session_id=self.session_id).order_by('-created_at').first()
-                )()
+            latest_inv = await sync_to_async(
+                lambda: Investigation.objects.filter(session_id=self.session_id).order_by('-created_at').first()
+            )()
             if latest_inv:
                 tasks = await sync_to_async(lambda: list(latest_inv.tasks.all()))()
                 findings = await sync_to_async(lambda: list(latest_inv.findings.all()))()
@@ -328,14 +386,14 @@ Output strictly the category name."""
             
             # Continuation classification
             is_continuation = False
-            if history and initial_state["plan"] and initial_state["plan"].get("tasks") and intent == "investigation":
+            if history and initial_state["plan"] and initial_state["plan"].get("tasks"):
                 prev_goal = initial_state["plan"].get("title", "")
                 is_continuation_prompt = f"Previous investigation goal: '{prev_goal}'. New request: '{user_message}'. Is the user continuing the investigation or starting a completely new one? Reply 'CONTINUE' or 'NEW'."
                 resp = await llm.ainvoke([HumanMessage(content=is_continuation_prompt)])
                 if "CONTINUE" in resp.content.upper():
                     is_continuation = True
                     
-            if not is_continuation and intent == "investigation":
+            if not is_continuation:
                 from .events import evt_investigation_started
                 inv_id = "inv_" + str(uuid.uuid4())[:8]
                 now_str = time.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -363,45 +421,65 @@ Output strictly the category name."""
                 
                 # Intercept StateGraph Node outputs
                 if kind == "on_chain_end":
-                    if name == "planner":
-                        state_output = event["data"].get("output", {})
-                        if isinstance(state_output, dict) and "plan" in state_output:
-                            from .events import evt_task_plan
-                            new_plan = state_output["plan"]
-                            plan_data = new_plan
-                            yield evt_task_plan(new_plan)
-                            if artifact_mgr:
-                                await artifact_mgr.upsert_artifact(task_plan_path, json.dumps(new_plan, indent=2), action_type="active_state")
-                            
-                            inv_id = new_plan.get("investigation_id")
-                            if inv_id:
-                                await sync_to_async(lambda: InvestigationTask.objects.filter(investigation_id=inv_id).delete())()
-                                for idx, t in enumerate(new_plan.get("tasks", [])):
-                                    await sync_to_async(InvestigationTask.objects.create)(
-                                        investigation_id=inv_id,
-                                        title=t["task"],
-                                        status=t["status"],
-                                        task_order=idx
-                                    )
-                    elif name == "reflector":
+                    if name in ["planner", "executor", "observer", "goal_checker", "final_response"]:
                         state_output = event["data"].get("output", {})
                         if isinstance(state_output, dict):
+                            
+                            # Handle Requires Approval
+                            if state_output.get("requires_approval"):
+                                final_message = "I need your permission to execute a high-risk command. Please reply with 'approve' to continue, or 'deny' to cancel."
+                                yield evt_error("Safety Block: Approval Required")
+                                
+                            # UX Transparency: Thinking
+                            if state_output.get("thinking"):
+                                yield evt_thinking(state_output["thinking"])
+
+                            # UX Transparency: Hypothesis
+                            if state_output.get("hypothesis"):
+                                yield evt_hypothesis(state_output["hypothesis"])
+
+                            # UX Transparency: Resolution Plan
+                            if state_output.get("resolution_plan"):
+                                yield evt_resolution_plan(state_output["resolution_plan"])
+
+                            # Handle Final Report — always emit, never guard on final_message
+                            if name == "final_response" and state_output.get("final_report"):
+                                final_message = state_output["final_report"]
+                                yield evt_message_chunk(final_message)
+                                
+                                if artifact_mgr:
+                                    artifact_name = state_output.get("artifact_name", "report.md")
+                                    # Ensure artifact_name doesn't contain directory traversal
+                                    safe_name = os.path.basename(artifact_name)
+                                    artifact_path = f".neurosys/sessions/{self.session_id}/artifacts/{safe_name}"
+                                    await artifact_mgr.upsert_artifact(artifact_path, final_message, action_type="report")
+
+
+                            # Sync Findings
                             if "findings" in state_output:
                                 from .events import evt_findings
                                 new_findings = state_output["findings"]
                                 findings_data = new_findings
                                 yield evt_findings(new_findings)
                                 
+                                if artifact_mgr:
+                                    findings_path = f".neurosys/sessions/{self.session_id}/findings.json"
+                                    await artifact_mgr.upsert_artifact(findings_path, json.dumps(new_findings, indent=2), action_type="finding")
+                                
                                 # Sync Findings to DB
-                                inv_id = new_findings.get("investigation_id")
+                                inv_id = plan_data.get("investigation_id") if isinstance(plan_data, dict) else None
+                                if not inv_id and isinstance(new_findings, dict):
+                                    inv_id = new_findings.get("investigation_id")
                                 if inv_id:
-                                    new_f_list = new_findings.get("findings", [])
+                                    new_f_list = new_findings.get("findings", []) if isinstance(new_findings, dict) else new_findings
                                     await sync_to_async(lambda: InvestigationFinding.objects.filter(investigation_id=inv_id).delete())()
                                     for f in new_f_list:
                                         await sync_to_async(InvestigationFinding.objects.create)(
                                             investigation_id=inv_id,
                                             content=f
                                         )
+
+                            # Sync Plan
                             if "plan" in state_output:
                                 from .events import evt_task_plan, evt_task_updated
                                 new_plan = state_output["plan"]
@@ -413,12 +491,15 @@ Output strictly the category name."""
                                     if old_p and old_p.get("status") != p.get("status"):
                                         yield evt_task_updated({
                                             "task_id": idx,
-                                            "task": p.get("task"),
+                                            "task": p.get("description", p.get("title", p.get("task", ""))),
                                             "old_status": old_p.get("status"),
                                             "new_status": p.get("status")
                                         })
                                 plan_data = new_plan
                                 yield evt_task_plan(new_plan)
+                                
+                                if artifact_mgr:
+                                    await artifact_mgr.upsert_artifact(task_plan_path, json.dumps(new_plan, indent=2), action_type="plan")
                                 
                                 # Sync Tasks to DB
                                 inv_id = new_plan.get("investigation_id")
@@ -427,8 +508,8 @@ Output strictly the category name."""
                                     for idx, t in enumerate(new_tasks):
                                         await sync_to_async(InvestigationTask.objects.create)(
                                             investigation_id=inv_id,
-                                            title=t["task"],
-                                            status=t["status"],
+                                            title=t.get("description", t.get("title", t.get("task", ""))),
+                                            status=t.get("status", "pending"),
                                             task_order=idx
                                         )
 
@@ -458,6 +539,13 @@ Output strictly the category name."""
                                 if final_message.strip():
                                     yield evt_thinking(final_message)
                                 final_message = ""
+                            else:
+                                # If streaming populated final_message incrementally, good.
+                                # If not (invoke path), emit from the complete output now.
+                                full_content = getattr(msg, "content", "")
+                                if full_content and not final_message.strip():
+                                    final_message = full_content
+                                    yield evt_message_chunk(final_message)
 
                 elif kind == "on_tool_start":
                     tool_name = name
@@ -481,6 +569,25 @@ Output strictly the category name."""
                     yield evt_tool_start(tool_name, args)
                     self.short_memory.add("tool_call", f"{tool_name}({cmd_str})")
                     self._tools_used.append(tool_name)
+                    
+                    # Intercept file modifications to create artifacts
+                    if tool_name in ["write_file", "edit_file"] and artifact_mgr:
+                        path = args.get("path")
+                        if path:
+                            try:
+                                abs_path = os.path.join(workspace_ctx.path, path) if not os.path.isabs(path) else path
+                                if tool_name == "write_file":
+                                    new_content = args.get("content", "")
+                                else:
+                                    with open(abs_path, "r", encoding="utf-8") as f:
+                                        old_c = f.read()
+                                    new_content = old_c.replace(args.get("old_text", ""), args.get("new_text", ""), 1)
+                                
+                                from .events import evt_creating_artifact
+                                yield evt_creating_artifact(f"Creating artifact for {os.path.basename(path)}")
+                                await artifact_mgr.create_artifact(path, new_content, action_type="edit" if tool_name == "edit_file" else "create")
+                            except Exception as e:
+                                pass
 
                 elif kind == "on_tool_end":
                     result = str(event["data"].get("output", "No output"))
@@ -548,19 +655,20 @@ Output strictly the category name."""
         except Exception:
             pass
 
-    async def run(self, user_message: str, terminal_cwd: Optional[str] = None) -> AsyncGenerator[AgentEvent, None]:
+    async def run(self, user_message: str, terminal_cwd: Optional[str] = None, active_workspace: Optional[str] = None, selected_file: Optional[str] = None, selected_file_name: Optional[str] = None) -> AsyncGenerator[AgentEvent, None]:
         """Main entry point — wraps internal loop to persist events and tool logs."""
         tool_start_times = {}
         tool_args = {}
         events_history = []
         
-        async for event in self._run_internal(user_message, terminal_cwd):
+        async for event in self._run_internal(user_message, terminal_cwd, active_workspace, selected_file, selected_file_name):
             events_history.append(event.to_dict())
             await self._log_event(event)
             
             if event.type.value == "tool_start":
                 tool_name = event.metadata.get("tool", "")
                 tool_start_times[tool_name] = time.time()
+
                 tool_args[tool_name] = event.metadata.get("command", "")
                 
             elif event.type.value == "tool_end":

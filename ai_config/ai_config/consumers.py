@@ -1286,13 +1286,23 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
 
         session_id = data.get("session_id", "")
         terminal_cwd = data.get("terminal_cwd", None)
+        active_workspace = data.get("active_workspace", None)
+        selected_file = data.get("selected_file", None)
+        selected_file_name = data.get("selected_file_name", None)
+        model_name = data.get("model", "mistral-large-latest")
 
         try:
             from sre_agent.engine import SREAgentEngine
 
-            engine = SREAgentEngine(session_id=session_id)
+            engine = SREAgentEngine(session_id=session_id, model_name=model_name)
 
-            async for event in engine.run(user_message, terminal_cwd=terminal_cwd):
+            async for event in engine.run(
+                user_message,
+                terminal_cwd=terminal_cwd,
+                active_workspace=active_workspace,
+                selected_file=selected_file,
+                selected_file_name=selected_file_name
+            ):
                 await self.send(text_data=json.dumps(event.to_dict()))
 
         except Exception as e:

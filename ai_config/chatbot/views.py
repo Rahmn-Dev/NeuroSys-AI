@@ -645,6 +645,7 @@ def artifact_list_api(request):
             "file_path": a.file_path,
             "action_type": a.action_type,
             "diff": a.diff,
+            "new_content": a.new_content,
             "created_at": a.created_at.isoformat()
         })
     return Response(data)

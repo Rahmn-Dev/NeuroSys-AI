@@ -67,9 +67,16 @@ _BLOCKED_RE = [re.compile(pat, re.IGNORECASE) for pat in _BLOCKED_PATTERNS]
 
 # Commands that bump risk level to MEDIUM even from a LOW tool
 _SENSITIVE_COMMANDS = [
-    "sudo ", "systemctl restart", "systemctl stop", "systemctl start",
-    "apt install", "apt remove", "pip install", "npm install",
-    "docker restart", "docker stop", "docker rm",
+    "sudo ", "systemctl status", "systemctl stop", "systemctl start",
+    "pip install", "npm install",
+    "docker stop",
+]
+
+# Commands that strictly require user approval (HIGH risk)
+_HIGH_RISK_COMMANDS = [
+    "apt install", "apt remove", "apt-get install", "apt-get remove",
+    "systemctl restart", "docker restart", "docker rm", "rm -", "rm ",
+    "mv ", "cp "
 ]
 
 
@@ -101,12 +108,24 @@ class SafetyLayer:
                     args_summary=args_str[:200],
                 )
 
-        # 2. Check if args contain sensitive commands (escalate risk)
+        # 2. Check if args contain sensitive or high risk commands (escalate risk)
         effective_risk = risk
-        for sensitive in _SENSITIVE_COMMANDS:
-            if sensitive.lower() in args_str.lower():
-                effective_risk = max(effective_risk, RiskLevel.MEDIUM)
+        for high_risk in _HIGH_RISK_COMMANDS:
+            if high_risk.lower() in args_str.lower():
+                effective_risk = RiskLevel.HIGH
                 break
+                
+        if effective_risk != RiskLevel.HIGH:
+            for sensitive in _SENSITIVE_COMMANDS:
+                if sensitive.lower() in args_str.lower():
+                    effective_risk = max(effective_risk, RiskLevel.MEDIUM)
+                    break
+        
+        # 2.5 Also treat write_file/edit_file (config overwrites) as HIGH risk if they modify system files
+        if tool_name in ["write_file", "edit_file"]:
+            path_arg = args.get("path", "")
+            if path_arg.startswith("/etc/") or path_arg.startswith("/var/") or path_arg.startswith("/usr/"):
+                effective_risk = RiskLevel.HIGH
 
         # 3. Determine verdict based on effective risk
         if effective_risk == RiskLevel.LOW:

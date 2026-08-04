@@ -42,6 +42,8 @@ class AgentEventType(str, enum.Enum):
     SESSION_ID = "session_id"
     SESSION_TITLE = "session_title"
     INVESTIGATION_STARTED = "investigation_started"
+    HYPOTHESIS = "hypothesis"
+    RESOLUTION_PLAN = "resolution_plan"
 
 
 @dataclass
@@ -152,3 +154,9 @@ def evt_error(msg: str) -> AgentEvent:
 
 def evt_session_id(sid: str) -> AgentEvent:
     return AgentEvent(type=AgentEventType.SESSION_ID, content=sid)
+
+def evt_hypothesis(msg: str) -> AgentEvent:
+    return AgentEvent(type=AgentEventType.HYPOTHESIS, content=msg)
+
+def evt_resolution_plan(steps: list) -> AgentEvent:
+    return AgentEvent(type=AgentEventType.RESOLUTION_PLAN, content="Resolution plan ready", metadata={"steps": steps})
