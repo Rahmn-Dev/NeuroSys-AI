@@ -24,6 +24,10 @@ class TaskState(TypedDict):
     thinking: str          # current node's reasoning (→ evt_thinking)
     hypothesis: str        # current working hypothesis (→ evt_hypothesis)
     resolution_plan: list  # structured repair steps (→ evt_resolution_plan)
+    
+    # Infinite loop protection
+    no_progress_cycles: int
+    last_progress_hash: str
 
 
 # ---------------------------------------------------------------------------
@@ -86,16 +90,16 @@ class AutonomousController:
     # -----------------------------------------------------------------------
     # Robust JSON parser with LLM auto-repair
     # -----------------------------------------------------------------------
-    def _robust_json_parse(self, sys_msg, tags, max_retries=2):
+    def _robust_json_parse(self, sys_msg, tags, max_retries=2, fallback_response=None):
         from langchain_core.messages import HumanMessage
         messages = [sys_msg]
         for attempt in range(max_retries):
-            response = self.llm.with_config({"tags": tags}).invoke(messages)
-            raw = response.content
-            if "```" in raw:
-                raw = re.sub(r"```(?:json)?\s*", "", raw).strip("` \n")
             try:
-                # Find the first { or [ to parse
+                response = self.llm.with_config({"tags": tags}).invoke(messages)
+                raw = response.content
+                if "```" in raw:
+                    raw = re.sub(r"```(?:json)?\s*", "", raw).strip("` \n")
+                
                 start_idx = raw.find('{')
                 start_array = raw.find('[')
                 if start_idx == -1 or (start_array != -1 and start_array < start_idx):
@@ -106,9 +110,12 @@ class AutonomousController:
                 return json.loads(json_str)
             except Exception as e:
                 if attempt == max_retries - 1:
-                    raise Exception(f"Failed to parse JSON after {max_retries} attempts. Last error: {str(e)}")
+                    if fallback_response is not None:
+                        return fallback_response
+                    return {}
                 # Append the failed response and a repair prompt
-                messages.append(response)
+                if 'response' in locals():
+                    messages.append(response)
                 messages.append(HumanMessage(content=f"Your previous output failed to parse as valid JSON. Error: {str(e)}\n\nPlease repair the JSON and output STRICTLY valid JSON ONLY. Do not include markdown fences or any other text."))
 
     # -----------------------------------------------------------------------
@@ -150,58 +157,71 @@ class AutonomousController:
 Goal: {goal}
 
 Your job:
-1. Think about what investigation steps are needed.
-2. Write a concise hypothesis about what might be wrong (or what is needed).
-3. Create a strict numbered task plan as a JSON array of strings.
+1. Classify the user's intent. Intent Types: Explain / Identify, Read Information, Modify, Create, Delete, Investigate Incident, Debug Problem, Research.
+2. Think about what investigation steps are needed based on the intent.
+3. Write a concise hypothesis about what might be wrong (or what is needed).
+4. Create a strict numbered task plan as a JSON array of strings.
 
 CRITICAL RULES:
-- For simple queries ("time now", "hostname", "uptime", "current directory") → exactly ONE task.
+- For Explain/Identify requests (e.g., "what is this file", "what does this mean", "identify this", "explain this folder"):
+  - DO NOT create investigative or recovery workflows.
+  - Never assume corruption, recovery, restoration, debugging, security incidents, or hidden problems unless explicitly stated or directly supported by evidence.
+  - Minimal Task Plan: 1. Inspect object, 2. Gather metadata, 3. Explain findings.
+- For simple queries ("time now", "hostname", "uptime") → exactly ONE task.
 - For complex issues ("why nginx stopped?") → sequential investigation steps.
 - Tasks must be actions the agent performs, not instructions to the user.
 
 Output STRICTLY this JSON structure:
 {{
-  "thinking": "Your internal reasoning about the goal",
-  "hypothesis": "Your initial working hypothesis",
+  "intent": "The classified intent type",
+  "thinking": "Your internal reasoning about the goal based on the intent",
+  "hypothesis": "Your initial working hypothesis (if applicable)",
   "tasks": ["Task 1 description", "Task 2 description"]
 }}
 """
         thinking_out = f"Analyzing goal: {goal}"
         tasks = []
         new_tasks = []
-        try:
-            data = self._robust_json_parse(HumanMessage(content=prompt), ["planner_llm"])
-            thinking_out  = data.get("thinking", thinking_out)
-            hypothesis_out = data.get("hypothesis", "")
-            task_titles    = data.get("tasks", [])
+        fallback_json = {
+            "intent": "Research",
+            "thinking": f"Fallback: Generating default task for {goal}",
+            "hypothesis": "",
+            "tasks": [f"Investigate: {goal}"]
+        }
+        
+        data = self._robust_json_parse(
+            HumanMessage(content=prompt), 
+            ["planner_llm"], 
+            fallback_response=fallback_json
+        )
+        
+        thinking_out  = data.get("thinking", thinking_out)
+        hypothesis_out = data.get("hypothesis", "")
+        intent_out     = data.get("intent", "Research")
+        task_titles    = data.get("tasks", [])
+        
+        start_id = max((t.get("id", 0) for t in existing_tasks), default=0)
+        
+        if not task_titles:
+            task_titles = [f"Investigate: {goal}"]
             
-            start_id = max((t.get("id", 0) for t in existing_tasks), default=0)
-            
-            for i, title in enumerate(task_titles):
-                new_tasks.append({
-                    "id": start_id + i + 1,
-                    "description": title,
-                    "status": "pending",
-                    "attempts": 0,
-                    "max_attempts": 3,
-                    "tool": None,
-                    "tool_args": {},
-                    "result": None,
-                    "evidence": [],
-                    "completed": False,
-                })
-        except Exception:
-            start_id = max((t.get("id", 0) for t in existing_tasks), default=0)
-            new_tasks = [{
-                "id": start_id + 1,
-                "description": f"Investigate: {goal}",
-                "status": "pending", "attempts": 0, "max_attempts": 3,
-                "tool": None, "tool_args": {}, "result": None,
-                "evidence": [], "completed": False,
-            }]
+        for i, title in enumerate(task_titles):
+            new_tasks.append({
+                "id": start_id + i + 1,
+                "description": title,
+                "status": "pending",
+                "attempts": 0,
+                "max_attempts": 3,
+                "tool": None,
+                "tool_args": {},
+                "result": None,
+                "evidence": [],
+                "completed": False,
+            })
 
         existing_tasks.extend(new_tasks)
         existing_plan["tasks"]         = existing_tasks
+        existing_plan["intent"]        = intent_out
         existing_plan["completed"]     = False
         existing_plan["dynamic_count"] = 0
 
@@ -259,28 +279,33 @@ Respond ONLY with valid JSON — no explanation, no markdown fences:
   "reason": "Short public reason for the user"
 }}
 """)
-        try:
-            data = self._robust_json_parse(sys_msg, ["executor_llm"])
+        fallback_json = {
+            "thinking": "Fallback: Execution failed to parse JSON, attempting safe system check",
+            "next_action": "system_info",
+            "tool_args": {"aspect": "all"},
+            "reason": "Agent encountered an internal parsing error, running a safe diagnostic."
+        }
+        
+        data = self._robust_json_parse(
+            sys_msg, 
+            ["executor_llm"], 
+            fallback_response=fallback_json
+        )
 
-            tool_name = data.get("next_action")
-            tool_args = data.get("tool_args", {})
-            thinking  = data.get("thinking", f"Executing {tool_name} for task: {current_task['description']}")
+        tool_name = data.get("next_action")
+        tool_args = data.get("tool_args", {})
+        thinking  = data.get("thinking", f"Executing {tool_name} for task: {current_task['description']}")
 
-            if tool_name in self.tool_map:
-                current_task["tool_args"] = tool_args
-                tool_call = {"name": tool_name, "args": tool_args, "id": f"call_{current_task['id']}"}
-                ai_msg = AIMessage(content=data.get("reason", thinking), tool_calls=[tool_call])
-                return {"messages": [ai_msg], "plan": plan, "thinking": thinking}
-            else:
-                current_task["status"] = "pending"
-                current_task["result"] = f"Invalid tool selected: {tool_name}"
-                return {"plan": plan,
-                        "thinking": f"Executor picked unknown tool '{tool_name}', retrying."}
-        except Exception as e:
+        if tool_name in self.tool_map:
+            current_task["tool_args"] = tool_args
+            tool_call = {"name": tool_name, "args": tool_args, "id": f"call_{current_task['id']}"}
+            ai_msg = AIMessage(content=data.get("reason", thinking), tool_calls=[tool_call])
+            return {"messages": [ai_msg], "plan": plan, "thinking": thinking}
+        else:
             current_task["status"] = "pending"
-            current_task["result"] = f"Failed to decide next action: {e}"
+            current_task["result"] = f"Invalid tool selected: {tool_name}"
             return {"plan": plan,
-                    "thinking": f"Executor failed to parse LLM response: {e}"}
+                    "thinking": f"Executor picked unknown tool '{tool_name}', retrying."}
 
     # -----------------------------------------------------------------------
     # Observer Node — validates tool output, extracts findings
@@ -319,7 +344,6 @@ Respond ONLY with valid JSON — no explanation, no markdown fences:
                 "thinking": f"Observer: '{tool_name}' produced valid output. Task marked completed deterministically.",
             }
 
-        # LLM-based analysis for non-deterministic tools
         prompt = f"""You are an SRE observer analyzing tool output.
 
 Tool: {tool_name}
@@ -330,20 +354,42 @@ Tool Output (truncated to 2000 chars):
 {tool_output[:2000]}
 
 Analyze and respond ONLY with valid JSON.
-CRITICAL: Distinguish between "Tool Success" (the command ran without error) and "Goal Success" (the task objective is fully achieved). 
-For example, if the task is "Create a beautiful animated website" and the tool output says "index.html created", that is Tool Success but NOT Goal Success until the content is verified. If Goal Success is not yet achieved, return task_completed: false and update the hypothesis to verify the content.
+CRITICAL CONSTITUTION RULES:
+1. Tool Success is NOT Goal Success. Tool Success alone must never complete a task.
+2. A task is only completed when the user objective has been verified.
+3. You must always answer: Did the tool run? Did it produce expected output? Did the output satisfy the goal? What evidence proves it?
 
 {{
+  "answers": {{
+    "did_tool_run": true or false,
+    "expected_output": true or false,
+    "satisfied_goal": true or false,
+    "evidence_extracted": true or false
+  }},
   "task_completed": true or false,
   "new_findings": ["specific finding 1", "specific finding 2"],
   "evidence": ["quoted evidence from tool output"],
   "hypothesis_update": "Updated working hypothesis based on this evidence"
 }}
 """
-        try:
-            data = self._robust_json_parse(HumanMessage(content=prompt), ["observer_llm"])
+        fallback_json = {
+            "answers": {"did_tool_run": True, "expected_output": False, "satisfied_goal": False, "evidence_extracted": False},
+            "task_completed": False,
+            "new_findings": ["Observer encountered a parsing error."],
+            "evidence": [],
+            "hypothesis_update": "System error during observation, need to re-evaluate."
+        }
 
-            is_comp   = data.get("task_completed", True)
+        try:
+            data = self._robust_json_parse(HumanMessage(content=prompt), ["observer_llm"], fallback_response=fallback_json)
+
+            # Enforce constitution: completion requires all answers to be True
+            answers = data.get("answers", {})
+            is_comp = data.get("task_completed", False)
+            if is_comp and not (answers.get("did_tool_run") and answers.get("expected_output") and answers.get("satisfied_goal") and answers.get("evidence_extracted")):
+                is_comp = False
+                data["hypothesis_update"] = "Verification missing. " + data.get("hypothesis_update", "")
+
             current_task["status"]    = "completed" if is_comp else "failed"
             current_task["completed"] = is_comp
             current_task["evidence"]  = data.get("evidence", [])
@@ -353,7 +399,7 @@ For example, if the task is "Create a beautiful animated website" and the tool o
             return {
                 "plan":       plan,
                 "findings":   findings_data,
-                "thinking":   f"Observer analyzed '{tool_name}': task {'completed' if is_comp else 'failed'}.",
+                "thinking":   f"Observer analyzed '{tool_name}': task {'completed' if is_comp else 'verification required'}.",
                 "hypothesis": new_hyp if new_hyp else state.get("hypothesis", ""),
             }
         except Exception:
@@ -369,44 +415,99 @@ For example, if the task is "Create a beautiful animated website" and the tool o
         plan          = state.get("plan", {})
         tasks         = plan.get("tasks", [])
         findings_data = state.get("findings", {})
+        
+        import hashlib
+        completed_count = sum(1 for t in tasks if t.get("completed"))
+        evidence_count = sum(len(t.get("evidence", [])) for t in tasks)
+        findings_count = len(findings_data.get("findings", []))
+        
+        state_str = f"{len(tasks)}_{completed_count}_{evidence_count}_{findings_count}"
+        current_hash = hashlib.md5(state_str.encode()).hexdigest()
+        
+        last_hash = state.get("last_progress_hash", "")
+        no_prog_cycles = state.get("no_progress_cycles", 0)
+        
+        if current_hash == last_hash:
+            no_prog_cycles += 1
+        else:
+            no_prog_cycles = 0
+            
+        if no_prog_cycles >= 2:
+            plan["completed"] = True
+            findings_data["findings"].append("Investigation terminated due to lack of progress.")
+            return {
+                "plan": plan, 
+                "findings": findings_data,
+                "thinking": "Goal checker: No progress detected for 2 consecutive cycles. Terminating.",
+                "no_progress_cycles": no_prog_cycles,
+                "last_progress_hash": current_hash
+            }
 
         has_pending = any(t["status"] in ["pending", "running"] for t in tasks)
         if has_pending:
-            return {"iteration": state.get("iteration", 0) + 1,
-                    "thinking": "Goal checker: pending tasks remain, continuing execution."}
+            return {
+                "iteration": state.get("iteration", 0) + 1,
+                "thinking": "Goal checker: pending tasks remain, continuing execution.",
+                "no_progress_cycles": no_prog_cycles,
+                "last_progress_hash": current_hash
+            }
 
         # Fast-path: single deterministic task completed
         if len(tasks) == 1 and tasks[0].get("completed", False):
             if tasks[0].get("tool") in DETERMINISTIC_TOOLS:
                 plan["completed"] = True
-                return {"plan": plan,
-                        "thinking": "Goal checker: single deterministic task completed — proceeding to final response."}
+                return {
+                    "plan": plan,
+                    "thinking": "Goal checker: single deterministic task completed — proceeding to final response.",
+                    "no_progress_cycles": no_prog_cycles,
+                    "last_progress_hash": current_hash
+                }
 
-        # LLM goal evaluation
-        prompt = f"""Goal: {state['goal']}
+        # LLM goal evaluation - Verification Gate
+        prompt = f"""You are the Verification Gate for an SRE investigation.
+
+Goal: {state['goal']}
 
 Findings:
 {json.dumps(findings_data.get('findings', []), indent=2)}
 
-Has the user's original goal been completely solved?
+Tasks Evidence:
+{json.dumps([{"task": t["description"], "evidence": t.get("evidence", [])} for t in tasks], indent=2)}
+
+CRITICAL CONSTITUTION RULES:
+1. Completion requires goal_verified = true.
+2. You must independently validate the original goal against the produced evidence and completed tasks.
+3. If evidence does not conclusively prove the goal is achieved, you MUST NOT mark it solved.
+4. Execution without verification is never considered complete.
+
+Analyze the evidence. Has the user's original goal been completely and verifiably solved?
 Respond ONLY with valid JSON:
 {{
-  "solved": true or false,
-  "reason": "explanation",
+  "goal_verified": true or false,
+  "reason": "explanation of verification result",
   "resolution_steps": ["step 1", "step 2"]
 }}
 """
         resolution_steps = []
+        fallback_json = {
+            "goal_verified": False,
+            "reason": "Parsing failed during verification. Assuming unverified.",
+            "resolution_steps": []
+        }
+        
         try:
-            data = self._robust_json_parse(HumanMessage(content=prompt), ["goal_llm"])
-            is_goal_met      = data.get("solved", True)
+            data = self._robust_json_parse(HumanMessage(content=prompt), ["goal_llm"], fallback_response=fallback_json)
+            is_goal_met      = data.get("goal_verified", False)
             resolution_steps = data.get("resolution_steps", [])
         except Exception:
-            is_goal_met = True
+            is_goal_met = False
 
         if is_goal_met:
+            intent = plan.get("intent", "")
+            is_readonly = any(k in intent.lower() for k in ["explain", "identify", "read", "research"])
+            
             # Inject verification task for SRE multi-task investigations
-            if len(tasks) > 1:
+            if len(tasks) > 1 and not is_readonly:
                 has_verified = any(
                     "verify" in t["description"].lower() or
                     "verification" in t["description"].lower()
@@ -427,19 +528,27 @@ Respond ONLY with valid JSON:
                         "iteration": state.get("iteration", 0) + 1,
                         "resolution_plan": resolution_steps,
                         "thinking": "Goal checker: solution verified — injecting final SRE verification task.",
+                        "no_progress_cycles": no_prog_cycles,
+                        "last_progress_hash": current_hash
                     }
             plan["completed"] = True
             return {
                 "plan": plan,
                 "resolution_plan": resolution_steps,
                 "thinking": "Goal checker: goal fully achieved — proceeding to final response.",
+                "no_progress_cycles": no_prog_cycles,
+                "last_progress_hash": current_hash
             }
         else:
             dyn_count = plan.get("dynamic_count", 0)
             if dyn_count >= 2:
                 plan["completed"] = True
-                return {"plan": plan,
-                        "thinking": "Goal checker: dynamic task limit reached — finalizing with available evidence."}
+                return {
+                    "plan": plan,
+                    "thinking": "Goal checker: dynamic task limit reached — finalizing with available evidence.",
+                    "no_progress_cycles": no_prog_cycles,
+                    "last_progress_hash": current_hash
+                }
             new_id = len(tasks) + 1
             tasks.append({
                 "id": new_id,
@@ -454,6 +563,8 @@ Respond ONLY with valid JSON:
                 "iteration": state.get("iteration", 0) + 1,
                 "resolution_plan": resolution_steps,
                 "thinking": f"Goal checker: goal not yet met ({data.get('reason', '')}) — adding deeper investigation task.",
+                "no_progress_cycles": no_prog_cycles,
+                "last_progress_hash": current_hash
             }
 
     # -----------------------------------------------------------------------
@@ -484,6 +595,7 @@ Tool Evidence:
 Rules:
 - Answer the user's question directly and concisely in 1-2 sentences.
 - NEVER dump raw logs, directory listings, JSON, or command output.
+- CRITICAL CONSTITUTION RULE: Never generate a completion message solely because tools executed successfully. Completion without evidence is forbidden. Your answer must be based entirely on the gathered evidence.
 
 Output ONLY valid JSON:
 {{
@@ -507,6 +619,7 @@ Tasks Executed:
 Rules:
 - Synthesize findings into a clear SRE investigation report.
 - Use EXACTLY these sections in the report_content: ## Summary, ## Root Cause, ## Evidence, ## Actions Taken, ## Verification, ## Remaining Issues.
+- CRITICAL CONSTITUTION RULE: The final response must be generated ONLY from findings, evidence, and verification results. Completion without evidence is forbidden.
 
 Output ONLY valid JSON:
 {{
@@ -514,12 +627,17 @@ Output ONLY valid JSON:
   "report_content": "The full markdown report."
 }}"""
 
+        fallback_json = {
+            "artifact_name": "investigation_report.md",
+            "report_content": "Investigation concluded. Note: The final report generation failed to parse gracefully, but the raw evidence is available in the timeline."
+        }
+
         try:
-            data = self._robust_json_parse(HumanMessage(content=prompt), ["agent_llm"])
+            data = self._robust_json_parse(HumanMessage(content=prompt), ["agent_llm"], fallback_response=fallback_json)
             final_report = data.get("report_content", "Investigation completed.")
             artifact_name = data.get("artifact_name", "report.md")
         except Exception:
-            final_report = "Investigation completed, but failed to generate the final formatted report."
+            final_report = "Investigation completed (fallback response)."
             artifact_name = "report.md"
 
         return {
