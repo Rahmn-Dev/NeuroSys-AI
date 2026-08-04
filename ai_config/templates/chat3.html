@@ -546,6 +546,11 @@
           addAgentStep('Result', `<pre class="sre-layout" style="padding:8px;border-radius:6px;overflow-x:auto;font-size:12px;max-height:200px;overflow-y:auto;margin:4px 0;border:1px solid var(--border-color);">${escapeHtml(result)}</pre>`, 'var(--success)', 'check-circle', data.step_id, true);
           break;
 
+        case 'approval_required':
+          addAgentStep('Approval Required', data.content, 'var(--warning)', 'lock');
+          showApprovalModal(data.tool, data.args || data.command, data.content);
+          break;
+
         case 'safety_blocked':
           addAgentStep('Blocked', data.content, 'var(--error)', 'shield-alert');
           break;
@@ -653,6 +658,16 @@
           break;
 
         case 'completed':
+          if (activeInvestigationId && investigations[activeInvestigationId]) {
+            investigations[activeInvestigationId].status = 'completed';
+            if (Array.isArray(investigations[activeInvestigationId].plan)) {
+              investigations[activeInvestigationId].plan.forEach(p => {
+                p.status = 'completed';
+                p.completed = true;
+              });
+            }
+            renderInvestigationTimeline();
+          }
           if (lastGenericStepId) { stopStep(lastGenericStepId); lastGenericStepId = null; }
           const activeDash = document.getElementById('active-dashboard');
           if (activeDash) { activeDash.removeAttribute('id'); }

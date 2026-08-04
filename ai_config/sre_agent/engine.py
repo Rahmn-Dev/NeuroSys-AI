@@ -370,7 +370,18 @@ Output strictly the category name."""
                 plan_data = {
                     "investigation_id": latest_inv.id,
                     "title": latest_inv.title,
-                    "tasks": [{"task": t.title, "status": t.status} for t in tasks]
+                    "tasks": [{
+                        "id": idx + 1,
+                        "description": t.title,
+                        "status": t.status,
+                        "attempts": 0,
+                        "max_attempts": 3,
+                        "tool": None,
+                        "tool_args": {},
+                        "result": None,
+                        "evidence": [],
+                        "completed": t.status == "completed"
+                    } for idx, t in enumerate(tasks)]
                 }
                 findings_data = {
                     "investigation_id": latest_inv.id,
@@ -390,7 +401,12 @@ Output strictly the category name."""
             is_continuation = False
             if history and initial_state["plan"] and initial_state["plan"].get("tasks"):
                 prev_goal = initial_state["plan"].get("title", "")
-                is_continuation_prompt = f"Previous investigation goal: '{prev_goal}'. New request: '{user_message}'. Is the user continuing the investigation or starting a completely new one? Reply 'CONTINUE' or 'NEW'."
+                is_continuation_prompt = f"""Previous investigation goal: '{prev_goal}'
+New user request: '{user_message}'
+
+Is the new user request a direct continuation or follow-up question regarding the EXACT SAME topic/investigation?
+If the user is asking about a different topic, service, or system issue (e.g. CPU/RAM resource usage vs Nginx configuration error), answer 'NEW'.
+Reply STRICTLY 'CONTINUE' or 'NEW'."""
                 resp = await llm.ainvoke([HumanMessage(content=is_continuation_prompt)])
                 if "CONTINUE" in resp.content.upper():
                     is_continuation = True
@@ -399,7 +415,7 @@ Output strictly the category name."""
                 from .events import evt_investigation_started
                 inv_id = "inv_" + str(uuid.uuid4())[:8]
                 now_str = time.strftime("%Y-%m-%dT%H:%M:%SZ")
-                plan_data = {"investigation_id": inv_id, "title": user_message[:40], "created_at": now_str, "tasks": []}
+                plan_data = {"investigation_id": inv_id, "title": user_message[:40], "created_at": now_str, "tasks": [], "is_continuation": False}
                 findings_data = {"investigation_id": inv_id, "title": user_message[:40], "created_at": now_str, "findings": []}
                 initial_state["plan"] = plan_data
                 initial_state["findings"] = findings_data
@@ -412,8 +428,10 @@ Output strictly the category name."""
                 )
                 
                 yield evt_investigation_started(inv_id, user_message[:40])
+            else:
+                initial_state["plan"]["is_continuation"] = True
 
-            async for event in agent.astream_events(initial_state, version="v2"):
+            async for event in agent.astream_events(initial_state, version="v2", config={"recursion_limit": 100}):
                 kind = event["event"]
                 name = event.get("name", "")
                 tags = event.get("tags", [])
@@ -459,6 +477,12 @@ Output strictly the category name."""
                                     safe_name = os.path.basename(artifact_name)
                                     artifact_path = f".neurosys/sessions/{self.session_id}/artifacts/{safe_name}"
                                     await artifact_mgr.upsert_artifact(artifact_path, final_message, action_type="report")
+
+                                # Mark Investigation and tasks as completed in DB
+                                inv_id = plan_data.get("investigation_id") if isinstance(plan_data, dict) else None
+                                if inv_id:
+                                    await sync_to_async(lambda: Investigation.objects.filter(id=inv_id).update(status="completed"))()
+                                    await sync_to_async(lambda: InvestigationTask.objects.filter(investigation_id=inv_id).update(status="completed"))()
 
 
                             # Sync Findings
@@ -510,6 +534,12 @@ Output strictly the category name."""
                                 # Sync Tasks to DB
                                 inv_id = new_plan.get("investigation_id")
                                 if inv_id:
+                                    await sync_to_async(
+                                        lambda: Investigation.objects.get_or_create(
+                                            id=inv_id,
+                                            defaults={"session_id": self.session_id, "title": user_message[:40]}
+                                        )
+                                    )()
                                     await sync_to_async(lambda: InvestigationTask.objects.filter(investigation_id=inv_id).delete())()
                                     for idx, t in enumerate(new_tasks):
                                         await sync_to_async(InvestigationTask.objects.create)(
@@ -566,6 +596,10 @@ Output strictly the category name."""
                             yield evt_safety_blocked(tool_name, check.reason)
                             self.short_memory.add("observation", f"BLOCKED: {tool_name} - {check.reason}")
                             continue
+
+                        if check.verdict == SafetyVerdict.APPROVAL_REQUIRED:
+                            cmd_str = str(args.get("command", "")) or str(args.get("path", "")) or str(args)[:100]
+                            yield evt_approval_required(tool_name, cmd_str, check.reason)
 
                         if check.verdict == SafetyVerdict.WARN:
                             yield evt_safety_warn(tool_name, check.reason)

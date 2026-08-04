@@ -77,8 +77,8 @@ class AutonomousController:
         workflow.add_edge("verifier", "goal_checker")
 
         def should_continue_goal_checker(state: TaskState):
-            if state.get("iteration", 0) > 20:
-                return END
+            if state.get("iteration", 0) >= 12:
+                return "final_response"
             if state.get("plan", {}).get("completed", False):
                 return "final_response"
             return "executor"
@@ -148,26 +148,70 @@ class AutonomousController:
         existing_plan = state.get("plan", {})
         existing_tasks = existing_plan.get("tasks", [])
         
+        is_continuation = existing_plan.get("is_continuation", False)
         has_pending = any(t.get("status") in ["pending", "running"] for t in existing_tasks)
 
-        if existing_plan and existing_tasks and has_pending:
+        if existing_plan and existing_tasks and has_pending and is_continuation:
+            for idx, t in enumerate(existing_tasks):
+                if "id" not in t: t["id"] = idx + 1
+                if "description" not in t: t["description"] = t.get("task", t.get("title", f"Task #{idx+1}"))
+                if "status" not in t: t["status"] = "pending"
+                if "attempts" not in t: t["attempts"] = 0
+                if "max_attempts" not in t: t["max_attempts"] = 3
+                if "completed" not in t: t["completed"] = t["status"] == "completed"
+                if "evidence" not in t: t["evidence"] = []
             return {"plan": existing_plan,
                     "thinking": f"Resuming existing plan for: {goal}"}
 
+        # Clear old tasks when creating a new plan for a new request
+        existing_tasks = []
+        existing_plan["tasks"] = []
+
+        # Format recent conversation history (last 5 messages) to provide context for follow-up questions
+        msgs = state.get("messages", [])
+        chat_history_str = ""
+        if msgs:
+            recent_msgs = []
+            for m in msgs[-6:-1]:
+                role = "User" if isinstance(m, HumanMessage) else ("Assistant" if isinstance(m, AIMessage) else "System")
+                content = m.content[:400] if hasattr(m, "content") else str(m)[:400]
+                if content.strip() and not content.startswith("{"):
+                    recent_msgs.append(f"{role}: {content}")
+            chat_history_str = "\n".join(recent_msgs)
+
         prompt = f"""You are an autonomous SRE execution agent.
 
+=== RECENT CONVERSATION HISTORY ===
+{chat_history_str or "No previous conversation history."}
+
+=== CURRENT USER REQUEST ===
 Goal: {goal}
 
 Your job:
 1. Classify the user's intent EXACTLY into one of these 4 categories: SIMPLE_INFORMATION, ACTION_TASK, DEBUG_TASK, SECURITY_TASK.
 2. Determine a confidence score (0.0 to 1.0) for this intent.
 3. Determine a complexity level (LOW, MEDIUM, HIGH) which controls the depth of planning.
-4. Think about what investigation steps are needed based on the intent and complexity.
+4. Think about what investigation steps are needed based on the intent, conversation history, and complexity.
 5. Write a concise hypothesis about what might be wrong (or what is needed).
 6. Create a strict numbered task plan as a JSON array of strings.
 
 CRITICAL RULES:
-- SIMPLE_INFORMATION: user wants explanation, identification, or basic info. DO NOT create investigative or recovery workflows. Never assume corruption. Minimal Task Plan: 1. Inspect object, 2. Gather metadata, 3. Explain findings.
+- STEP 0 THINKING & CHAT CONTEXT COMPREHENSION:
+  - Evaluate if the CURRENT USER REQUEST is logically a follow-up to the RECENT CONVERSATION HISTORY (e.g. "list the 39 items" after being told there are 39 items) OR a completely new topic (e.g. asking about CPU usage after checking a directory).
+  - IF it is a follow-up, seamlessly use the context from the RECENT CONVERSATION HISTORY (e.g. resolving references like "that file", "those items").
+  - IF it is a NEW topic, IGNORE the RECENT CONVERSATION HISTORY and focus entirely on the CURRENT USER REQUEST. Do NOT drag old context into new topics.
+  - Analyze the user prompt ({goal}) for mixed Indonesian & English context FIRST.
+  - Indonesian Question Patterns: "ini file apaa", "apa isi file ini", "file ini apa" mean "What is this file and what are its contents?".
+  - "apaa", "apa", "kenapa", "ini", "bagaimana" are Indonesian question words ("apa" = "what"). THEY ARE NOT FILE NAMES! Never look for a file named "apaa"!
+  - Target Path Extraction: Convert `file://` URIs (e.g. `file:///home/paul/index.html`) or paths (e.g. `/home/paul/index.html`, `index.html`) to clean absolute paths.
+  - If a file path is provided in the prompt or conversation history, THAT IS THE TARGET FILE! Create a task specifically to read that file.
+- Generate tasks STRICTLY relevant to the current user request ({goal}).
+- For CPU, RAM, Memory, or Resource inquiries (e.g., "why cpu and ram high"):
+  Set intent to SIMPLE_INFORMATION and complexity to LOW.
+  Task plan MUST ONLY contain resource diagnostic tasks (e.g. "Check top CPU and RAM consuming processes using process_manager").
+  DO NOT include tasks for Nginx, Apache, or specific services unless explicitly requested by the user.
+- SIMPLE_INFORMATION (e.g. "what is my hostname", "what is my IP", "can u list 39 contain", "who am I", "ini file apaa /home/paul/index.html"):
+  User wants simple information or identification. Create EXACTLY ONE (1) focused task. DO NOT create extra tasks for inspecting unrelated logs, journalctl, or unrelated services.
 - ACTION_TASK: user wants something changed or executed. Create an execution plan and verify changes.
 - DEBUG_TASK: something is broken. Collect evidence, inspect logs, run diagnostics, generate hypotheses, verify fixes.
 - SECURITY_TASK: security-related analysis.
@@ -178,12 +222,11 @@ Output STRICTLY this JSON structure:
   "intent": "SIMPLE_INFORMATION | ACTION_TASK | DEBUG_TASK | SECURITY_TASK",
   "confidence": 0.95,
   "complexity": "LOW | MEDIUM | HIGH",
-  "thinking": "Your internal reasoning about the goal based on the intent",
+  "thinking": "Your internal reasoning about the goal based on conversation history and intent",
   "hypothesis": "Your initial working hypothesis (if applicable)",
   "tasks": [
-    "Check nginx service status",
-    "Validate nginx configuration syntax",
-    "Inspect nginx error logs"
+    "Task 1 description relevant to the user request",
+    "Task 2 description relevant to the user request"
   ]
 }}
 """
@@ -292,12 +335,15 @@ Output STRICTLY this JSON structure:
         past_calls = [f"- {t['tool']}({json.dumps(t.get('tool_args', {}))})" for t in tasks if t["status"] in ["completed", "failed"] and t.get("tool")]
         past_calls_text = "\n".join(past_calls) if past_calls else "None"
 
+        task_id = current_task.get("id", 1)
+        task_desc = current_task.get("description", current_task.get("task", "Task"))
+        
         sys_msg = SystemMessage(content=f"""{self.system_prompt}
 
 === CURRENT INVESTIGATION ===
 Goal: {state['goal']}
-Current Task (#{current_task['id']}): {current_task['description']}
-Attempt: {current_task['attempts']} / {current_task.get('max_attempts', 3)}
+Current Task (#{task_id}): {task_desc}
+Attempt: {current_task.get('attempts', 1)} / {current_task.get('max_attempts', 3)}
 Working Hypothesis: {hypothesis}
 
 Findings so far:
@@ -336,18 +382,36 @@ Respond ONLY with valid JSON — no explanation, no markdown fences:
 
         tool_name = data.get("next_action")
         tool_args = data.get("tool_args", {})
-        thinking  = data.get("thinking", f"Executing {tool_name} for task: {current_task['description']}")
+        thinking  = data.get("thinking", f"Executing {tool_name} for task: {task_desc}")
 
         if tool_name in self.tool_map:
             current_task["tool_args"] = tool_args
-            tool_call = {"name": tool_name, "args": tool_args, "id": f"call_{current_task['id']}"}
+            tool_call = {"name": tool_name, "args": tool_args, "id": f"call_{task_id}"}
             ai_msg = AIMessage(content=data.get("reason", thinking), tool_calls=[tool_call])
             return {"messages": [ai_msg], "plan": plan, "thinking": thinking}
         else:
-            current_task["status"] = "pending"
-            current_task["result"] = f"Invalid tool selected: {tool_name}"
-            return {"plan": plan,
-                    "thinking": f"Executor picked unknown tool '{tool_name}', retrying."}
+            # Smart terminal fallback when tool_name is invalid or None
+            fallback_tool = "read_file" if "read_file" in self.tool_map and ("file" in state['goal'].lower() or ".html" in state['goal'].lower()) else ("terminal_execute" if "terminal_execute" in self.tool_map else ("linux_diagnostic_execute" if "linux_diagnostic_execute" in self.tool_map else list(self.tool_map.keys())[0]))
+            goal_lower = state['goal'].lower()
+            import re
+            file_match = re.search(r'(?:file:///|/)[^\s]+', state['goal'])
+            if file_match and fallback_tool == "read_file":
+                clean_path = file_match.group(0).replace("file://", "")
+                fallback_args = {"path": clean_path}
+            elif "hostname" in goal_lower:
+                fallback_args = {"command": "hostname"}
+            elif "ip" in goal_lower:
+                fallback_args = {"command": "ip a"}
+            elif "cpu" in goal_lower or "ram" in goal_lower or "memory" in goal_lower:
+                fallback_args = {"command": "free -h && ps -eo pid,user,%cpu,%mem,cmd --sort=-%cpu | head -10"}
+            else:
+                fallback_args = {"command": f"echo '{state['goal']}'"}
+
+            current_task["tool"] = fallback_tool
+            current_task["tool_args"] = fallback_args
+            tool_call = {"name": fallback_tool, "args": fallback_args, "id": f"call_{task_id}"}
+            ai_msg = AIMessage(content=f"Executing diagnostic command via {fallback_tool}", tool_calls=[tool_call])
+            return {"messages": [ai_msg], "plan": plan, "thinking": f"Executing diagnostic command via {fallback_tool} for: {task_desc}"}
 
     # -----------------------------------------------------------------------
     # Observer Node — validates tool output, extracts findings
@@ -379,18 +443,27 @@ Respond ONLY with valid JSON — no explanation, no markdown fences:
             current_task["status"]    = "completed"
             current_task["completed"] = True
             current_task["evidence"]  = [tool_output[:500]]
-            finding_text = f"[{tool_name}] Task '{current_task['description']}' succeeded."
+            task_desc = current_task.get("description", current_task.get("task", "Task"))
+            finding_text = f"[{tool_name}] Task '{task_desc}' succeeded."
             findings_data["findings"].append(finding_text)
+
+            if intent == "SIMPLE_INFORMATION":
+                for t in tasks:
+                    t["status"] = "completed"
+                    t["completed"] = True
+                plan["completed"] = True
+
             return {
                 "plan":     plan,
                 "findings": findings_data,
                 "thinking": f"Observer: '{tool_name}' produced valid output. Task marked completed (fast-path).",
             }
 
+        task_desc = current_task.get("description", current_task.get("task", "Task"))
         prompt = f"""You are an SRE observer analyzing tool output.
 
 Tool: {tool_name}
-Task: {current_task['description']}
+Task: {task_desc}
 Goal: {state['goal']}
 
 Tool Output (truncated to 2000 chars):
@@ -534,7 +607,7 @@ Findings:
 {json.dumps(findings_data.get('findings', []), indent=2)}
 
 Tasks Evidence:
-{json.dumps([{"task": t["description"], "evidence": t.get("evidence", [])} for t in tasks], indent=2)}
+{json.dumps([{"task": t.get("description", t.get("task", "Task")), "evidence": t.get("evidence", [])} for t in tasks], indent=2)}
 
 CRITICAL CONSTITUTION RULES:
 1. Completion requires goal_verified = true.
@@ -567,20 +640,21 @@ Respond ONLY with valid JSON:
 
         if is_goal_met:
             intent = plan.get("intent", "")
-            is_readonly = any(k in intent.lower() for k in ["explain", "identify", "read", "research"])
+            complexity = plan.get("complexity", "LOW")
+            is_readonly = (intent == "SIMPLE_INFORMATION") or (complexity == "LOW") or any(k in intent.lower() for k in ["explain", "identify", "read", "research", "simple"])
             
             # Inject verification task for SRE multi-task investigations
             if len(tasks) > 1 and not is_readonly:
                 has_verified = any(
-                    "verify" in t["description"].lower() or
-                    "verification" in t["description"].lower()
+                    "verify" in t.get("description", "").lower() or
+                    "verification" in t.get("description", "").lower()
                     for t in tasks
                 )
                 if not has_verified and plan.get("dynamic_count", 0) < 2:
                     new_id = len(tasks) + 1
                     tasks.append({
                         "id": new_id,
-                        "description": "Run final SRE verification (service status, config validity, endpoints)",
+                        "description": "Run final verification relevant to the goal",
                         "status": "pending", "attempts": 0, "max_attempts": 3,
                         "tool": None, "tool_args": {}, "result": None,
                         "evidence": [], "completed": False,
@@ -650,6 +724,12 @@ Respond ONLY with valid JSON:
         tasks         = plan.get("tasks", [])
         findings_data = state.get("findings", {})
 
+        # Mark all tasks in plan as completed when final response is reached
+        for t in tasks:
+            t["status"] = "completed"
+            t["completed"] = True
+        plan["completed"] = True
+
         # Build evidence summary from all completed tasks
         evidence_lines = []
         for t in tasks:
@@ -660,8 +740,23 @@ Respond ONLY with valid JSON:
         intent = plan.get("intent", "")
         is_simple = (intent == "SIMPLE_INFORMATION") or (len(tasks) == 1 and plan.get("dynamic_count", 0) == 0)
 
+        # Format recent conversation history for response synthesis
+        msgs = state.get("messages", [])
+        chat_history_str = ""
+        if msgs:
+            recent_msgs = []
+            for m in msgs[-6:-1]:
+                role = "User" if isinstance(m, HumanMessage) else ("Assistant" if isinstance(m, AIMessage) else "System")
+                content = m.content[:400] if hasattr(m, "content") else str(m)[:400]
+                if content.strip() and not content.startswith("{"):
+                    recent_msgs.append(f"{role}: {content}")
+            chat_history_str = "\n".join(recent_msgs)
+
         if is_simple:
             prompt = f"""You are a result interpreter for an SRE agent. You are NOT a tool-output relay.
+
+Recent Conversation History:
+{chat_history_str or "No previous conversation history."}
 
 User Request: {state['goal']}
 
@@ -670,9 +765,10 @@ Tool Evidence:
 
 Rules:
 - Answer the user's question directly and concisely in a conversational assistant tone.
-- NEVER dump raw logs, directory listings, JSON, or command output directly.
+- You ARE an autonomous SRE agent with Linux tool access. NEVER say "I don't have access to your directory", "I don't have access to the file system", or "I cannot list files".
 - Summarize file contents or command outputs unless the user explicitly requested the full raw text.
-- If insufficient information exists to answer the intent, generate a response requesting clarification from the user instead of hallucinating or assuming a problem.
+- If insufficient information exists or tool output shows empty/no process, state clearly that the process/file could not be found or has already terminated.
+- ABSOLUTE ANTI-HALLUCINATION RULE: Never invent dummy placeholders like 'your_command_here', 'username', 'start_time', or '/path/to/working/directory'. Base your answer strictly on actual evidence.
 - CRITICAL CONSTITUTION RULE: Never generate a completion message solely because tools executed successfully. Completion without evidence is forbidden. Your answer must be based entirely on the gathered evidence.
 
 Output ONLY valid JSON:
@@ -692,13 +788,13 @@ Evidence from Tasks:
 {chr(10).join(evidence_lines) or "No direct evidence captured."}
 
 Tasks Executed:
-{json.dumps([{"task": t["description"], "status": t["status"], "result": t.get("result", "")[:200]} for t in tasks], indent=2)}
+{json.dumps([{"task": t.get("description", t.get("task", "Task")), "status": t.get("status", "pending"), "result": str(t.get("result", ""))[:200]} for t in tasks], indent=2)}
 
 Rules:
 - Synthesize findings into a clear SRE investigation report.
 - Use EXACTLY these sections in the report_content: ## Summary, ## Root Cause, ## Evidence, ## Actions Taken, ## Verification, ## Remaining Issues.
 - CRITICAL CONSTITUTION RULE: The final response must be generated ONLY from findings, evidence, and verification results. Completion without evidence is forbidden.
-- CRITICAL REPORT INTEGRITY RULE: The final report MUST ONLY contain executed actions, actual outputs, and verified findings. You are strictly forbidden from claiming a command executed when it failed, claiming a verification was performed if it wasn't, or inventing evidence. (e.g., If no firewall check was executed, state "Firewall verification was not performed.")
+- CRITICAL REPORT INTEGRITY RULE: The final report MUST ONLY contain executed actions, actual outputs, and verified findings. You are strictly forbidden from claiming a command executed when it failed, claiming a verification was performed if it wasn't, or inventing evidence. (e.g., If no firewall check was executed, state "Firewall verification was not performed.") Never output dummy placeholders like 'your_command_here' or 'username'.
 
 Output ONLY valid JSON:
 {{
