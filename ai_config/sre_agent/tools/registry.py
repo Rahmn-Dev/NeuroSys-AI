@@ -80,6 +80,22 @@ class ToolRegistry:
 
     def register(self, tool: BaseTool, meta: ToolMetadata) -> None:
         """Register a tool with its metadata."""
+        import logging
+        if not getattr(meta, "name", None):
+            logging.error("Tool registration failed: Missing 'name' in metadata.")
+            meta.name = getattr(tool, "name", "unknown_tool")
+            
+        if not getattr(meta, "description", None):
+            logging.warning(f"Tool '{meta.name}' missing 'description' in metadata. Adding fallback.")
+            meta.description = f"Tool: {meta.name}"
+
+        # Ensure the underlying BaseTool also has a description to prevent downstream crashes
+        if not getattr(tool, "description", None):
+            try:
+                tool.description = meta.description
+            except Exception as e:
+                logging.warning(f"Failed to set description on BaseTool '{meta.name}': {e}")
+                
         self._entries[meta.name] = _RegistryEntry(tool=tool, meta=meta)
 
     def bulk_register(self, pairs: Sequence[tuple[BaseTool, ToolMetadata]]) -> None:

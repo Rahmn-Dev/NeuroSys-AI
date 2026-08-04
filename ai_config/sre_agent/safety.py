@@ -97,6 +97,50 @@ class SafetyLayer:
         risk = tool_meta.risk_level
         args_str = str(args)
 
+        # 0. Controlled diagnostic tool allowlist
+        if tool_name == "linux_diagnostic_execute":
+            cmd = args.get("command", "").strip()
+            allowed_prefixes = [
+                "systemctl status", "systemctl is-active", "journalctl",
+                "nginx -t", "cat ", "grep ", "find ", "df ", "du ", "free",
+                "ps ", "ss ", "ip ", "docker ps", "docker logs", "docker inspect"
+            ]
+            is_allowed = any(cmd.startswith(prefix) for prefix in allowed_prefixes)
+            if not is_allowed:
+                return SafetyCheckResult(
+                    verdict=SafetyVerdict.BLOCKED,
+                    risk_level=RiskLevel.HIGH,
+                    reason="Command not in diagnostic allowlist.",
+                    tool_name=tool_name,
+                    args_summary=cmd[:200],
+                )
+
+        # 0.5. Terminal Safety Model
+        if tool_name in ["terminal_execute", "terminal_session", "start_background_process"]:
+            cmd = args.get("command", "").strip()
+            if cmd:
+                # High risk patterns
+                high_risk = ["rm ", "rmdir ", "kill ", "killall ", "reboot", "shutdown", "mkfs", "dd ", ">", ">>"]
+                if any(h in cmd for h in high_risk):
+                    return SafetyCheckResult(
+                        verdict=SafetyVerdict.APPROVAL_REQUIRED,
+                        risk_level=RiskLevel.HIGH,
+                        reason="Destructive command requires explicit approval.",
+                        tool_name=tool_name,
+                        args_summary=cmd[:200],
+                    )
+                
+                # Medium risk patterns
+                medium_risk = ["systemctl restart", "systemctl start", "systemctl stop", "systemctl reload", "docker restart", "docker stop", "service "]
+                if any(m in cmd for m in medium_risk):
+                    return SafetyCheckResult(
+                        verdict=SafetyVerdict.APPROVAL_REQUIRED,
+                        risk_level=RiskLevel.MEDIUM,
+                        reason="Service modification requires approval.",
+                        tool_name=tool_name,
+                        args_summary=cmd[:200],
+                    )
+
         # 1. Check blocked patterns in arguments
         for regex in _BLOCKED_RE:
             if regex.search(args_str):

@@ -55,6 +55,7 @@ class AutonomousController:
         workflow.add_node("executor",       self.executor_node)
         workflow.add_node("tools",          self.safe_tool_node)
         workflow.add_node("observer",       self.observer_node)
+        workflow.add_node("verifier",       self.verifier_node)
         workflow.add_node("goal_checker",   self.goal_checker_node)
         workflow.add_node("final_response", self.final_response_node)
 
@@ -72,7 +73,8 @@ class AutonomousController:
         workflow.add_conditional_edges("executor", should_continue_executor,
                                        {"tools": "tools", END: END})
         workflow.add_edge("tools", "observer")
-        workflow.add_edge("observer", "goal_checker")
+        workflow.add_edge("observer", "verifier")
+        workflow.add_edge("verifier", "goal_checker")
 
         def should_continue_goal_checker(state: TaskState):
             if state.get("iteration", 0) > 20:
@@ -90,7 +92,7 @@ class AutonomousController:
     # -----------------------------------------------------------------------
     # Robust JSON parser with LLM auto-repair
     # -----------------------------------------------------------------------
-    def _robust_json_parse(self, sys_msg, tags, max_retries=2, fallback_response=None):
+    def _robust_json_parse(self, sys_msg, tags, max_retries=4, fallback_response=None):
         from langchain_core.messages import HumanMessage
         messages = [sys_msg]
         for attempt in range(max_retries):
@@ -157,33 +159,41 @@ class AutonomousController:
 Goal: {goal}
 
 Your job:
-1. Classify the user's intent. Intent Types: Explain / Identify, Read Information, Modify, Create, Delete, Investigate Incident, Debug Problem, Research.
-2. Think about what investigation steps are needed based on the intent.
-3. Write a concise hypothesis about what might be wrong (or what is needed).
-4. Create a strict numbered task plan as a JSON array of strings.
+1. Classify the user's intent EXACTLY into one of these 4 categories: SIMPLE_INFORMATION, ACTION_TASK, DEBUG_TASK, SECURITY_TASK.
+2. Determine a confidence score (0.0 to 1.0) for this intent.
+3. Determine a complexity level (LOW, MEDIUM, HIGH) which controls the depth of planning.
+4. Think about what investigation steps are needed based on the intent and complexity.
+5. Write a concise hypothesis about what might be wrong (or what is needed).
+6. Create a strict numbered task plan as a JSON array of strings.
 
 CRITICAL RULES:
-- For Explain/Identify requests (e.g., "what is this file", "what does this mean", "identify this", "explain this folder"):
-  - DO NOT create investigative or recovery workflows.
-  - Never assume corruption, recovery, restoration, debugging, security incidents, or hidden problems unless explicitly stated or directly supported by evidence.
-  - Minimal Task Plan: 1. Inspect object, 2. Gather metadata, 3. Explain findings.
-- For simple queries ("time now", "hostname", "uptime") → exactly ONE task.
-- For complex issues ("why nginx stopped?") → sequential investigation steps.
-- Tasks must be actions the agent performs, not instructions to the user.
+- SIMPLE_INFORMATION: user wants explanation, identification, or basic info. DO NOT create investigative or recovery workflows. Never assume corruption. Minimal Task Plan: 1. Inspect object, 2. Gather metadata, 3. Explain findings.
+- ACTION_TASK: user wants something changed or executed. Create an execution plan and verify changes.
+- DEBUG_TASK: something is broken. Collect evidence, inspect logs, run diagnostics, generate hypotheses, verify fixes.
+- SECURITY_TASK: security-related analysis.
+- Complexity (LOW, MEDIUM, HIGH) should control the strictness of verification.
 
 Output STRICTLY this JSON structure:
 {{
-  "intent": "The classified intent type",
+  "intent": "SIMPLE_INFORMATION | ACTION_TASK | DEBUG_TASK | SECURITY_TASK",
+  "confidence": 0.95,
+  "complexity": "LOW | MEDIUM | HIGH",
   "thinking": "Your internal reasoning about the goal based on the intent",
   "hypothesis": "Your initial working hypothesis (if applicable)",
-  "tasks": ["Task 1 description", "Task 2 description"]
+  "tasks": [
+    "Check nginx service status",
+    "Validate nginx configuration syntax",
+    "Inspect nginx error logs"
+  ]
 }}
 """
         thinking_out = f"Analyzing goal: {goal}"
         tasks = []
         new_tasks = []
         fallback_json = {
-            "intent": "Research",
+            "intent": "DEBUG_TASK",
+            "confidence": 1.0,
+            "complexity": "MEDIUM",
             "thinking": f"Fallback: Generating default task for {goal}",
             "hypothesis": "",
             "tasks": [f"Investigate: {goal}"]
@@ -197,8 +207,28 @@ Output STRICTLY this JSON structure:
         
         thinking_out  = data.get("thinking", thinking_out)
         hypothesis_out = data.get("hypothesis", "")
-        intent_out     = data.get("intent", "Research")
+        intent_out     = data.get("intent", "DEBUG_TASK")
+        confidence_out = float(data.get("confidence", 1.0))
+        complexity_out = data.get("complexity", "MEDIUM")
         task_titles    = data.get("tasks", [])
+        
+        # Clarification pause for low confidence complex tasks
+        if confidence_out < 0.8 and intent_out in ["ACTION_TASK", "DEBUG_TASK", "SECURITY_TASK"]:
+            existing_plan["intent"] = intent_out
+            existing_plan["confidence"] = confidence_out
+            existing_plan["complexity"] = complexity_out
+            existing_plan["completed"] = True
+            
+            # Record a finding that we need clarification
+            findings_data = state.get("findings", {"findings": []})
+            findings_data["findings"].append(
+                f"Agent requires user clarification. Intent: {intent_out} with low confidence ({confidence_out})."
+            )
+            return {
+                "plan": existing_plan,
+                "findings": findings_data,
+                "thinking": "Planner: low confidence on complex task, pausing for user clarification."
+            }
         
         start_id = max((t.get("id", 0) for t in existing_tasks), default=0)
         
@@ -222,6 +252,8 @@ Output STRICTLY this JSON structure:
         existing_tasks.extend(new_tasks)
         existing_plan["tasks"]         = existing_tasks
         existing_plan["intent"]        = intent_out
+        existing_plan["confidence"]    = confidence_out
+        existing_plan["complexity"]    = complexity_out
         existing_plan["completed"]     = False
         existing_plan["dynamic_count"] = 0
 
@@ -255,6 +287,10 @@ Output STRICTLY this JSON structure:
                     "thinking": f"Task '{current_task['description']}' exceeded max attempts and was marked failed."}
 
         current_task["status"] = "running"
+        
+        # Build history of executed tools to prevent duplicates
+        past_calls = [f"- {t['tool']}({json.dumps(t.get('tool_args', {}))})" for t in tasks if t["status"] in ["completed", "failed"] and t.get("tool")]
+        past_calls_text = "\n".join(past_calls) if past_calls else "None"
 
         sys_msg = SystemMessage(content=f"""{self.system_prompt}
 
@@ -267,10 +303,16 @@ Working Hypothesis: {hypothesis}
 Findings so far:
 {json.dumps(findings.get('findings', []), indent=2)}
 
+Past Executed Tools:
+{past_calls_text}
+
 Available tools: {', '.join(self.tool_map.keys())}
 
 === INSTRUCTION ===
 Select exactly ONE tool to execute this task.
+CRITICAL RULE 1: DO NOT execute a tool with the exact same arguments as one in 'Past Executed Tools' unless new context or state changes require it.
+CRITICAL RULE 2: SMART TOOL SELECTION - Ask yourself: "What evidence do I already have?". If you already have a clear root cause (e.g. nginx syntax error found), DO NOT run unrelated checks (e.g. check CPU, RAM, Network) unless the evidence directly requires it.
+
 Respond ONLY with valid JSON — no explanation, no markdown fences:
 {{
   "thinking": "Why this tool was chosen for this specific task",
@@ -330,9 +372,10 @@ Respond ONLY with valid JSON — no explanation, no markdown fences:
         current_task["tool"]   = tool_name
         current_task["result"] = tool_output[:500]
 
-        # Deterministic fast-path
+        # Deterministic fast-path and SIMPLE_INFORMATION fast-path
         is_error = "Error" in tool_output or "error" in tool_output.lower()
-        if tool_name in DETERMINISTIC_TOOLS and not is_error and tool_output.strip():
+        intent = plan.get("intent", "")
+        if (tool_name in DETERMINISTIC_TOOLS or intent == "SIMPLE_INFORMATION") and not is_error and tool_output.strip():
             current_task["status"]    = "completed"
             current_task["completed"] = True
             current_task["evidence"]  = [tool_output[:500]]
@@ -341,7 +384,7 @@ Respond ONLY with valid JSON — no explanation, no markdown fences:
             return {
                 "plan":     plan,
                 "findings": findings_data,
-                "thinking": f"Observer: '{tool_name}' produced valid output. Task marked completed deterministically.",
+                "thinking": f"Observer: '{tool_name}' produced valid output. Task marked completed (fast-path).",
             }
 
         prompt = f"""You are an SRE observer analyzing tool output.
@@ -358,6 +401,7 @@ CRITICAL CONSTITUTION RULES:
 1. Tool Success is NOT Goal Success. Tool Success alone must never complete a task.
 2. A task is only completed when the user objective has been verified.
 3. You must always answer: Did the tool run? Did it produce expected output? Did the output satisfy the goal? What evidence proves it?
+4. You must calculate a confidence_score (0.0 to 1.0) indicating how certain you are of the root cause or findings based on evidence.
 
 {{
   "answers": {{
@@ -367,6 +411,7 @@ CRITICAL CONSTITUTION RULES:
     "evidence_extracted": true or false
   }},
   "task_completed": true or false,
+  "confidence_score": 0.95,
   "new_findings": ["specific finding 1", "specific finding 2"],
   "evidence": ["quoted evidence from tool output"],
   "hypothesis_update": "Updated working hypothesis based on this evidence"
@@ -393,7 +438,13 @@ CRITICAL CONSTITUTION RULES:
             current_task["status"]    = "completed" if is_comp else "failed"
             current_task["completed"] = is_comp
             current_task["evidence"]  = data.get("evidence", [])
-            findings_data["findings"].extend(data.get("new_findings", []))
+            current_task["confidence_score"] = data.get("confidence_score", 0.0)
+            
+            # Incorporate confidence score into findings
+            conf = data.get("confidence_score", 0.0)
+            for f in data.get("new_findings", []):
+                findings_data["findings"].append(f"[Confidence {conf}] {f}")
+                
             new_hyp = data.get("hypothesis_update", "")
 
             return {
@@ -409,9 +460,9 @@ CRITICAL CONSTITUTION RULES:
                     "thinking": "Observer: LLM analysis failed, task marked completed as fallback."}
 
     # -----------------------------------------------------------------------
-    # Goal Checker Node — determines if user goal is met; injects verification
+    # Verifier Node — determines if user goal is met
     # -----------------------------------------------------------------------
-    def goal_checker_node(self, state: TaskState):
+    def verifier_node(self, state: TaskState):
         plan          = state.get("plan", {})
         tasks         = plan.get("tasks", [])
         findings_data = state.get("findings", {})
@@ -452,6 +503,17 @@ CRITICAL CONSTITUTION RULES:
                 "last_progress_hash": current_hash
             }
 
+        intent = plan.get("intent", "")
+        # SIMPLE_INFORMATION fast-path
+        if intent == "SIMPLE_INFORMATION":
+            plan["completed"] = True
+            return {
+                "plan": plan,
+                "thinking": "Goal checker: SIMPLE_INFORMATION task completed, bypassing LLM verification.",
+                "no_progress_cycles": no_prog_cycles,
+                "last_progress_hash": current_hash
+            }
+
         # Fast-path: single deterministic task completed
         if len(tasks) == 1 and tasks[0].get("completed", False):
             if tasks[0].get("tool") in DETERMINISTIC_TOOLS:
@@ -479,8 +541,9 @@ CRITICAL CONSTITUTION RULES:
 2. You must independently validate the original goal against the produced evidence and completed tasks.
 3. If evidence does not conclusively prove the goal is achieved, you MUST NOT mark it solved.
 4. Execution without verification is never considered complete.
+5. EVIDENCE SUFFICIENCY (DEBUG/SECURITY): If the evidence already contains a clear error message, affected component/service, failure location/context, and a probable root cause, you MUST set goal_verified = true and stop the investigation. Do NOT inject new diagnostic tasks unless the root cause is still unknown or previous evidence is contradictory.
 
-Analyze the evidence. Has the user's original goal been completely and verifiably solved?
+Analyze the evidence. Has the user's original goal been completely and verifiably solved, or has sufficient evidence been collected to diagnose the root cause?
 Respond ONLY with valid JSON:
 {{
   "goal_verified": true or false,
@@ -568,6 +631,18 @@ Respond ONLY with valid JSON:
             }
 
     # -----------------------------------------------------------------------
+    # Goal Checker Node — routes control flow based on completion
+    # -----------------------------------------------------------------------
+    def goal_checker_node(self, state: TaskState):
+        plan = state.get("plan", {})
+        is_completed = plan.get("completed", False)
+        return {
+            "plan": plan,
+            "is_completed": is_completed,
+            "thinking": f"Goal checker: completion status is {is_completed}."
+        }
+
+    # -----------------------------------------------------------------------
     # Final Response Node — generates human-readable answer from evidence
     # -----------------------------------------------------------------------
     def final_response_node(self, state: TaskState):
@@ -582,7 +657,8 @@ Respond ONLY with valid JSON:
                 evidence_lines.append(f"Task: {t['description']}\n" +
                                       "\n".join(f"  - {e}" for e in t["evidence"]))
 
-        is_simple = (len(tasks) == 1 and plan.get("dynamic_count", 0) == 0)
+        intent = plan.get("intent", "")
+        is_simple = (intent == "SIMPLE_INFORMATION") or (len(tasks) == 1 and plan.get("dynamic_count", 0) == 0)
 
         if is_simple:
             prompt = f"""You are a result interpreter for an SRE agent. You are NOT a tool-output relay.
@@ -593,8 +669,10 @@ Tool Evidence:
 {chr(10).join(evidence_lines) or "No direct evidence captured."}
 
 Rules:
-- Answer the user's question directly and concisely in 1-2 sentences.
-- NEVER dump raw logs, directory listings, JSON, or command output.
+- Answer the user's question directly and concisely in a conversational assistant tone.
+- NEVER dump raw logs, directory listings, JSON, or command output directly.
+- Summarize file contents or command outputs unless the user explicitly requested the full raw text.
+- If insufficient information exists to answer the intent, generate a response requesting clarification from the user instead of hallucinating or assuming a problem.
 - CRITICAL CONSTITUTION RULE: Never generate a completion message solely because tools executed successfully. Completion without evidence is forbidden. Your answer must be based entirely on the gathered evidence.
 
 Output ONLY valid JSON:
@@ -620,6 +698,7 @@ Rules:
 - Synthesize findings into a clear SRE investigation report.
 - Use EXACTLY these sections in the report_content: ## Summary, ## Root Cause, ## Evidence, ## Actions Taken, ## Verification, ## Remaining Issues.
 - CRITICAL CONSTITUTION RULE: The final response must be generated ONLY from findings, evidence, and verification results. Completion without evidence is forbidden.
+- CRITICAL REPORT INTEGRITY RULE: The final report MUST ONLY contain executed actions, actual outputs, and verified findings. You are strictly forbidden from claiming a command executed when it failed, claiming a verification was performed if it wasn't, or inventing evidence. (e.g., If no firewall check was executed, state "Firewall verification was not performed.")
 
 Output ONLY valid JSON:
 {{

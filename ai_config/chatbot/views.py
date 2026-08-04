@@ -632,12 +632,15 @@ def workspace_file_api(request):
 def artifact_list_api(request):
     """Returns a list of artifacts."""
     from chatbot.models import AgentArtifact
+    from django.db.models import Q
     
     session_id = request.GET.get('session_id')
     if not session_id:
         return Response([])
         
-    artifacts = AgentArtifact.objects.filter(session_id=session_id).exclude(action_type="active_state").order_by('-created_at')[:50]
+    artifacts = AgentArtifact.objects.filter(
+        Q(session_id=session_id) | Q(file_path__icontains=session_id)
+    ).exclude(action_type="active_state").order_by('-created_at')[:50]
     data = []
     for a in artifacts:
         data.append({
@@ -645,6 +648,7 @@ def artifact_list_api(request):
             "file_path": a.file_path,
             "action_type": a.action_type,
             "diff": a.diff,
+            "old_content": a.old_content,
             "new_content": a.new_content,
             "created_at": a.created_at.isoformat()
         })

@@ -59,6 +59,7 @@ def _ensure_tools_registered():
     from .tools.shell import register_shell_tools
     from .tools.monitoring import register_monitoring_tools
     from .tools.security import register_security_tools
+    from .tools.terminal import register_terminal_tools
 
     register_filesystem_tools()
     register_linux_tools()
@@ -67,6 +68,7 @@ def _ensure_tools_registered():
     register_shell_tools()
     register_monitoring_tools()
     register_security_tools()
+    register_terminal_tools()
 
 
 # ---------------------------------------------------------------------------
@@ -351,12 +353,12 @@ Output strictly the category name."""
             final_message = ""
             plan_data = {}
             findings_data = {}
-            artifact_mgr = None
-            if workspace_ctx:
-                artifact_mgr = ArtifactManager(workspace_ctx.path)
+            ws_path = workspace_ctx.path if workspace_ctx else os.getcwd()
+            artifact_mgr = ArtifactManager(ws_path, session_id=self.session_id)
                 
-            task_plan_path = f".neurosys/sessions/{self.session_id}/task_plan.json"
-            findings_path = f".neurosys/sessions/{self.session_id}/findings.json"
+            task_plan_path = f".neurosys/sessions/{self.session_id}/artifacts/task_plan.json"
+            findings_path = f".neurosys/sessions/{self.session_id}/artifacts/findings.json"
+            history_path = f".neurosys/sessions/{self.session_id}/artifacts/execution_history.json"
 
             latest_inv = None
             latest_inv = await sync_to_async(
@@ -421,10 +423,14 @@ Output strictly the category name."""
                 
                 # Intercept StateGraph Node outputs
                 if kind == "on_chain_end":
-                    if name in ["planner", "executor", "observer", "goal_checker", "final_response"]:
+                    if name in ["planner", "executor", "observer", "verifier", "goal_checker", "final_response"]:
                         state_output = event["data"].get("output", {})
                         if isinstance(state_output, dict):
                             
+                            # Dump execution history if plan/tasks are present
+                            if artifact_mgr and "plan" in state_output and isinstance(state_output["plan"], dict):
+                                await artifact_mgr.upsert_artifact(history_path, json.dumps(state_output["plan"].get("tasks", []), indent=2), action_type="history")
+
                             # Handle Requires Approval
                             if state_output.get("requires_approval"):
                                 final_message = "I need your permission to execute a high-risk command. Please reply with 'approve' to continue, or 'deny' to cancel."
@@ -572,20 +578,27 @@ Output strictly the category name."""
                     
                     # Intercept file modifications to create artifacts
                     if tool_name in ["write_file", "edit_file"] and artifact_mgr:
-                        path = args.get("path")
+                        path = args.get("path") or args.get("file_path") or args.get("target_file") or args.get("file")
                         if path:
                             try:
-                                abs_path = os.path.join(workspace_ctx.path, path) if not os.path.isabs(path) else path
+                                ws_base = workspace_ctx.path if workspace_ctx else os.getcwd()
+                                abs_path = os.path.join(ws_base, path) if not os.path.isabs(path) else path
+                                
+                                is_backup = any(b in path.lower() for b in [".bak", ".backup", ".orig", ".old", "copy"])
+                                action_type = "backup" if is_backup else ("edit" if tool_name == "edit_file" else "create")
+
                                 if tool_name == "write_file":
                                     new_content = args.get("content", "")
                                 else:
-                                    with open(abs_path, "r", encoding="utf-8") as f:
-                                        old_c = f.read()
+                                    old_c = ""
+                                    if os.path.exists(abs_path):
+                                        with open(abs_path, "r", encoding="utf-8", errors="ignore") as f:
+                                            old_c = f.read()
                                     new_content = old_c.replace(args.get("old_text", ""), args.get("new_text", ""), 1)
                                 
                                 from .events import evt_creating_artifact
                                 yield evt_creating_artifact(f"Creating artifact for {os.path.basename(path)}")
-                                await artifact_mgr.create_artifact(path, new_content, action_type="edit" if tool_name == "edit_file" else "create")
+                                await artifact_mgr.create_artifact(path, new_content, action_type=action_type)
                             except Exception as e:
                                 pass
 

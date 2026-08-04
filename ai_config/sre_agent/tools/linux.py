@@ -163,6 +163,13 @@ def user_manager(action: str = "who") -> str:
         return "Unknown action. Use: who, last, list."
 
 
+@tool
+def linux_diagnostic_execute(command: str) -> str:
+    """Execute a safe Linux diagnostic command via subprocess.
+    Allowed commands are restricted by the safety layer (e.g., systemctl status, journalctl, cat, grep, ps, etc)."""
+    return _run(command, timeout=20)
+
+
 # ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
@@ -226,5 +233,14 @@ def register_linux_tools() -> None:
             input_schema={"action": "who|last|list"},
             examples=["user_manager('who')", "user_manager('last')"],
             keywords=["user", "login", "who", "last", "session"],
+        )),
+        (linux_diagnostic_execute, ToolMetadata(
+            name="linux_diagnostic_execute",
+            description="Execute safe Linux diagnostic commands (e.g. systemctl status, journalctl, cat, grep, ps)",
+            category="linux",
+            risk_level=RiskLevel.MEDIUM,
+            input_schema={"command": "string"},
+            examples=["linux_diagnostic_execute('systemctl status nginx')", "linux_diagnostic_execute('nginx -t')"],
+            keywords=["linux", "diagnostic", "command", "shell", "execute", "systemctl", "journalctl", "cat", "grep", "ps"],
         )),
     ])

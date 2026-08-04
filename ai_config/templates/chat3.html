@@ -246,7 +246,7 @@
       </div>
       <div style="display:flex; align-items:center; gap:8px;">
         <select id="model-selector" class="sre-input"
-          style="font-size: 12px; padding: 4px 10px; border-radius: 12px; cursor: pointer; outline: none; transition: all 0.2s; font-weight: 500;">
+          style="appearance: none; -webkit-appearance: none; font-size: 12px; padding: 6px 16px; padding-right: 28px; border-radius: 20px; cursor: pointer; outline: none; transition: all 0.2s ease; font-weight: 500; background-image: url('data:image/svg+xml;utf8,<svg fill=\'%238b949e\' height=\'20\' viewBox=\'0 0 24 24\' width=\'20\' xmlns=\'http://www.w3.org/2000/svg\'><path d=\'M7 10l5 5 5-5z\'/></svg>'); background-repeat: no-repeat; background-position-x: calc(100% - 6px); background-position-y: 50%;">
           <option value="mistral-large-latest">Mistral Large</option>
           <option value="deepseek-ai/deepseek-v4-flash">NVIDIA DeepSeek (deepseek-v4-pro)</option>
           <option value="openai/gpt-oss-120b">GPT OSS 120B (NVIDIA)</option>
@@ -557,9 +557,11 @@
 
         case 'creating_artifact':
           addAgentStep('Creating Artifact', data.content, 'var(--success)', 'file-code-2');
+          loadArtifacts();
           break;
         case 'restoring_artifact':
           addAgentStep('Restoring Artifact', data.content, 'var(--warning)', 'history');
+          loadArtifacts();
           break;
         case 'security_scan':
           addAgentStep('Security Scan', data.content, 'var(--purple)', 'shield-check');
@@ -1304,32 +1306,55 @@
         const container = document.getElementById('artifacts-list');
         container.innerHTML = '';
 
-        if (data.length === 0) {
-          container.innerHTML = '<div class="sre-text-secondary" style="font-style:italic;padding:16px;">No artifacts generated yet.</div>';
+        if (!data || data.length === 0) {
+          container.innerHTML = '<div class="sre-text-secondary" style="font-style:italic;padding:16px;">No artifacts generated yet for this session.</div>';
           return;
         }
 
         data.forEach(art => {
           let el = document.createElement('div');
-          el.style.cssText = 'padding:10px; class="sre-layout" border:1px solid #30363d; border-radius:6px; margin-bottom:8px;';
-          let contentToShow = art.diff;
-          if (!contentToShow) {
-            contentToShow = art.new_content;
+          el.className = 'sre-layout';
+          el.style.cssText = 'padding:12px; border:1px solid var(--border-color, #30363d); border-radius:8px; margin-bottom:10px; background:var(--bg-main, #161b22);';
+          
+          let badgeColor = '#58a6ff';
+          let badgeBg = 'rgba(88, 166, 255, 0.15)';
+          let typeLabel = art.action_type ? art.action_type.toUpperCase() : 'ARTIFACT';
+          
+          if (art.action_type === 'create') {
+            badgeColor = '#3fb950'; badgeBg = 'rgba(63, 185, 80, 0.15)'; typeLabel = 'FILE CREATED';
+          } else if (art.action_type === 'edit') {
+            badgeColor = '#d29922'; badgeBg = 'rgba(210, 153, 34, 0.15)'; typeLabel = 'FILE MODIFIED';
+          } else if (art.action_type === 'backup') {
+            badgeColor = '#a371f7'; badgeBg = 'rgba(163, 113, 247, 0.15)'; typeLabel = 'FILE BACKUP';
+          } else if (art.action_type === 'report') {
+            badgeColor = '#58a6ff'; badgeBg = 'rgba(88, 166, 255, 0.15)'; typeLabel = 'REPORT';
+          } else if (art.action_type === 'plan') {
+            badgeColor = '#39c5cf'; badgeBg = 'rgba(57, 197, 207, 0.15)'; typeLabel = 'TASK PLAN';
+          } else if (art.action_type === 'finding') {
+            badgeColor = '#f0883e'; badgeBg = 'rgba(240, 136, 62, 0.15)'; typeLabel = 'FINDINGS';
           }
-          if (!contentToShow) {
-            contentToShow = 'No diff available';
+
+          let timeStr = art.created_at ? new Date(art.created_at).toLocaleTimeString() : '';
+          let contentToShow = art.diff || art.new_content || 'No content preview available';
+
+          let rollbackBtn = '';
+          if (['edit', 'create', 'backup'].includes(art.action_type)) {
+            rollbackBtn = `<button onclick="rollbackArtifact(${art.id})" style="background:rgba(218, 54, 51, 0.2); color:#f85149; border:1px solid rgba(218, 54, 51, 0.4); border-radius:4px; padding:3px 8px; font-size:11px; cursor:pointer; transition:all 0.2s;">↩ Rollback File</button>`;
           }
+
           el.innerHTML = `
-            <div style="font-weight:bold; margin-bottom:4px; color:#58a6ff;">${art.action_type.toUpperCase()}: ${art.file_path}</div>
-            <pre style="background:#000; padding:4px; border-radius:4px; overflow-x:auto; font-size:11px; max-height:100px;">${escapeHtml(contentToShow)}</pre>
-            <div style="margin-top:8px; display:flex; gap:8px;">
-                <button onclick="rollbackArtifact(${art.id})" style="background:#da3633; color:white; border:none; border-radius:4px; padding:4px 8px; cursor:pointer;">Rollback</button>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <span style="font-size:10px; font-weight:700; padding:2px 8px; border-radius:12px; color:${badgeColor}; background:${badgeBg}; letter-spacing:0.5px;">${typeLabel}</span>
+              <span style="font-size:10px; opacity:0.6;">${timeStr}</span>
             </div>
+            <div style="font-weight:600; font-size:12px; margin-bottom:6px; color:var(--text-primary); word-break:break-all;">📄 ${escapeHtml(art.file_path)}</div>
+            <pre style="background:#090d13; color:#c9d1d9; padding:8px; border-radius:6px; overflow-x:auto; font-size:11px; max-height:140px; border:1px solid rgba(255,255,255,0.05); font-family:monospace; line-height:1.4;">${escapeHtml(contentToShow)}</pre>
+            ${rollbackBtn ? `<div style="margin-top:8px; display:flex; justify-content:flex-end;">${rollbackBtn}</div>` : ''}
           `;
           container.appendChild(el);
         });
       } catch (e) {
-        document.getElementById('artifacts-list').innerHTML = 'Error loading artifacts.';
+        document.getElementById('artifacts-list').innerHTML = '<div class="sre-text-secondary" style="font-style:italic;padding:16px;">Error loading artifacts.</div>';
       }
     }
 
