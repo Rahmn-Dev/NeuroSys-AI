@@ -44,6 +44,9 @@ class AgentEventType(str, enum.Enum):
     INVESTIGATION_STARTED = "investigation_started"
     HYPOTHESIS = "hypothesis"
     RESOLUTION_PLAN = "resolution_plan"
+    PARALLEL_START = "parallel_start"
+    PARALLEL_PROGRESS = "parallel_progress"
+    PARALLEL_COMPLETE = "parallel_complete"
 
 
 @dataclass
@@ -160,3 +163,18 @@ def evt_hypothesis(msg: str) -> AgentEvent:
 
 def evt_resolution_plan(steps: list) -> AgentEvent:
     return AgentEvent(type=AgentEventType.RESOLUTION_PLAN, content="Resolution plan ready", metadata={"steps": steps})
+
+def evt_parallel_start(total_tasks: int, task_summaries: list = None) -> AgentEvent:
+    return AgentEvent(type=AgentEventType.PARALLEL_START,
+                      content=f"Executing {total_tasks} tasks in parallel...",
+                      metadata={"total": total_tasks, "tasks": task_summaries or []})
+
+def evt_parallel_progress(completed: int, total: int, task_id: str = "", task_desc: str = "") -> AgentEvent:
+    return AgentEvent(type=AgentEventType.PARALLEL_PROGRESS,
+                      content=f"{completed}/{total} tasks completed",
+                      metadata={"completed": completed, "total": total, "task_id": task_id, "task_desc": task_desc})
+
+def evt_parallel_complete(total: int, duration: float = 0) -> AgentEvent:
+    return AgentEvent(type=AgentEventType.PARALLEL_COMPLETE,
+                      content=f"All {total} tasks completed in {duration:.1f}s",
+                      metadata={"total": total, "duration": duration})

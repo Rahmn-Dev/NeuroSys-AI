@@ -35,6 +35,7 @@ from .events import (
     evt_safety_blocked, evt_safety_warn, evt_analyzing,
     evt_creating_artifact, evt_restoring_artifact, evt_security_scan,
     evt_hypothesis, evt_resolution_plan,
+    evt_parallel_start, evt_parallel_progress, evt_parallel_complete,
 )
 from .memory import LongTermMemory, ShortTermMemory, WorkspaceMemory
 from .safety import SafetyLayer, SafetyVerdict
@@ -441,7 +442,7 @@ Reply STRICTLY 'CONTINUE' or 'NEW'."""
                 
                 # Intercept StateGraph Node outputs
                 if kind == "on_chain_end":
-                    if name in ["planner", "executor", "observer", "verifier", "goal_checker", "final_response"]:
+                    if name in ["fast_path_router", "direct_executor", "planner", "worker_scheduler", "aggregator", "goal_checker", "final_response"]:
                         state_output = event["data"].get("output", {})
                         if isinstance(state_output, dict):
                             
@@ -465,6 +466,15 @@ Reply STRICTLY 'CONTINUE' or 'NEW'."""
                             # UX Transparency: Resolution Plan
                             if state_output.get("resolution_plan"):
                                 yield evt_resolution_plan(state_output["resolution_plan"])
+
+                            # Worker scheduler completion events
+                            if name == "worker_scheduler" and "parallel_results" in state_output:
+                                p_results = state_output["parallel_results"]
+                                total = len(p_results)
+                                task_summaries = [r.get("task_id", "") for r in p_results]
+                                yield evt_parallel_start(total, task_summaries)
+                                total_duration = sum(r.get("duration", 0) for r in p_results)
+                                yield evt_parallel_complete(total, total_duration)
 
                             # Handle Final Report — always emit, never guard on final_message
                             if name == "final_response" and state_output.get("final_report"):

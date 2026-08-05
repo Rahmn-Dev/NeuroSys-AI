@@ -572,6 +572,17 @@
           addAgentStep('Security Scan', data.content, 'var(--purple)', 'shield-check');
           break;
 
+        case 'parallel_start':
+          addAgentStep('Parallel Execution', `⚡ ${data.content || 'Executing tasks in parallel...'}`, '#00d4ff', 'layers');
+          break;
+        case 'parallel_progress':
+          addAgentStep('Progress', data.content || 'Tasks progressing...', '#00d4ff', 'loader');
+          break;
+        case 'parallel_complete':
+          addAgentStep('Parallel Complete', `✅ ${data.content || 'All tasks completed.'}`, 'var(--success)', 'check-circle');
+          break;
+
+
         case 'investigation_started':
           if (activeInvestigationId && investigations[activeInvestigationId]) {
             investigations[activeInvestigationId].status = 'completed';
