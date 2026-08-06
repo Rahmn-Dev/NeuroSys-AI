@@ -642,6 +642,13 @@ AVAILABLE TOOLS:
 RULES:
 - Select the SINGLE MOST VALUABLE next action to advance the investigation.
 - If investigating a service failure (e.g. nginx), STRICTLY PRIORITIZE direct service diagnostics (service status, config tests, logs) over basic reconnaissance like whoami or get_current_directory.
+- EVIDENCE PRIORITY HIERARCHY (Higher overrides lower):
+  1. Verified deterministic evidence (e.g. config syntax failure, explicit crash)
+  2. Application/service specific failure logs
+  3. Service state failures (systemd/service status)
+  4. Generic environmental symptoms (e.g. permission denied, disk warnings, generic resource usage)
+- Generic environmental symptoms MUST NOT override a direct service failure root cause.
+- Read the AVAILABLE TOOLS carefully. Workers MUST ONLY select actions explicitly exposed by tool schemas. Never invent tool actions, parameters, or capabilities.
 - For service config tests (e.g. nginx config validation), DO NOT invent actions for `service_manager`. You MUST use `linux_diagnostic_execute` to run the specific test command (e.g., `nginx -t`, `apache2ctl configtest`).
 - Do NOT repeat a tool+args combination already in the ALREADY EXECUTED list. If you do, it will be BLOCKED.
 - If a diagnostic domain has already been satisfied and verified, move to the next logical domain.

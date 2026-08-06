@@ -438,17 +438,20 @@ Goal: {goal}{terminal_cwd_note}
 Your job:
 1. Classify intent: SIMPLE_INFORMATION, ACTION_TASK, DEBUG_TASK, SECURITY_TASK.
 2. Determine complexity: LOW, MEDIUM, HIGH.
-3. Define worker objectives — one per investigation domain.
+3. Classify incident type: service failure, resource issue, network issue, application error, etc.
+4. Define targeted worker objectives — one per narrow diagnostic domain.
 
 CRITICAL RULES:
 - Each worker gets a GOAL (what to investigate), NOT a list of commands.
 - Workers will autonomously decide which tools and commands to run.
-- Independent workers (depends_on: []) run in parallel.
+- Independent workers (depends_on: []) run in parallel. Use this for non-interfering checks.
+- For service failures, dynamically identify the exact service (e.g. postgresql, nginx) and generate narrow, application-specific workers (e.g., Worker A: Service status, Worker B: Config validation, Worker C: Error logs).
+- Generic system resource checks (CPU/memory/disk) should only run if service-specific checks do not find the issue. Set `depends_on` for generic workers so they wait for targeted workers to finish.
+- Do NOT generate broad "Analyze entire system" workers. Give each worker one clear objective.
 - SIMPLE_INFORMATION: 1 worker max.
-- DEBUG_TASK: split into domain-focused workers (service, config, logs, network, resources — only as needed).
 - Do NOT generate 'tool' or 'tool_args' — workers decide their own execution strategy.
 - DO NOT create workers for unrelated services unless explicitly requested.
-- You MUST define `expected_diagnostic_domains` dynamically based on the exact issue type (e.g. database failure -> ["database_status", "connection_logs", "resource_usage"]; memory issue -> ["memory_usage", "process_analysis"]). Do not just copy the nginx examples.
+- You MUST define `expected_diagnostic_domains` dynamically based on the exact issue type (e.g. database failure -> ["database_status", "connection_logs"]; memory issue -> ["memory_usage", "process_analysis"]).
 - If EXTRACTED FILE PATHS are provided above, you MUST include the exact absolute path in the worker goal.
 
 Context rules:
@@ -459,22 +462,29 @@ Output STRICTLY this JSON:
 {{
   "intent": "SIMPLE_INFORMATION | ACTION_TASK | DEBUG_TASK | SECURITY_TASK",
   "complexity": "LOW | MEDIUM | HIGH",
-  "thinking": "Your strategic reasoning",
+  "thinking": "Incident classification and strategic reasoning",
   "hypothesis": "Initial hypothesis about what's wrong",
   "workers": [
     {{
       "id": "A",
-      "goal": "Investigate nginx service status, configuration validity, and recent restarts",
-      "expected_diagnostic_domains": ["service_status", "service_logs", "configuration"],
+      "goal": "Check systemd service status and failed services for nginx",
+      "expected_diagnostic_domains": ["service_status"],
       "depends_on": [],
       "priority": "high"
     }},
     {{
       "id": "B",
-      "goal": "Analyze nginx error logs for failure patterns and root causes",
-      "expected_diagnostic_domains": ["service_logs", "resource_usage"],
+      "goal": "Validate nginx configuration files",
+      "expected_diagnostic_domains": ["configuration"],
       "depends_on": [],
       "priority": "high"
+    }},
+    {{
+      "id": "C",
+      "goal": "Check system resources (CPU, memory, disk)",
+      "expected_diagnostic_domains": ["resource_usage"],
+      "depends_on": ["A", "B"],
+      "priority": "low"
     }}
   ]
 }}
