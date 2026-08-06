@@ -267,7 +267,8 @@ Output EXACTLY valid JSON matching this format:
             meta = registry.get_metadata(tool_choice)
             is_safe = meta.safe_fast_path if meta else False
             
-            if confidence >= 0.8 and is_safe and intent == "SIMPLE_INFORMATION":
+            # Phase A.5: Fallback if confidence < 0.7
+            if confidence >= 0.7 and is_safe and intent == "SIMPLE_INFORMATION":
                 return {
                     "plan": {
                         "fast_path": True,
@@ -287,8 +288,8 @@ Output EXACTLY valid JSON matching this format:
                 }
             
             # Log why it failed the gate
-            if confidence < 0.8:
-                reason = f"confidence {confidence:.2f} < 0.8"
+            if confidence < 0.7:
+                reason = f"confidence {confidence:.2f} < 0.7"
             elif not is_safe:
                 reason = "safe_fast_path=False"
             else:

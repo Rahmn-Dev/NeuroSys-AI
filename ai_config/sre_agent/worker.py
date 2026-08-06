@@ -450,6 +450,27 @@ class InvestigationWorker:
                         self.state.iteration += 1
                         continue
 
+                    # Phase A.5: Strict Capability Validation Guard
+                    required_capability = action.get("required_capability", "")
+                    tool_name = action.get("tool")
+                    from .tools.registry import ToolRegistry
+                    registry = ToolRegistry()
+                    
+                    # Fetch capabilities from registry (or fallback to empty if unknown)
+                    tool_caps = []
+                    if tool_name in registry._entries:
+                        tool_caps = registry._entries[tool_name].meta.capabilities
+                        
+                    if required_capability not in tool_caps:
+                        self.state.findings.append({
+                            "tool": "_capability_mismatch", "args": {},
+                            "output": f"BLOCKED: Required capability '{required_capability}' is not supported by tool '{tool_name}'. Tool capabilities: {tool_caps}. Please select a different tool or use Option D (Insufficient Capability).",
+                            "signal": "WARNING", "finding": "capability_mismatch",
+                            "iteration": self.state.iteration, "timestamp": time.time()
+                        })
+                        self.state.iteration += 1
+                        continue
+
                 # Handle spawn_child request
                 if action.get("spawn_child"):
                     # Start the child worker as an asyncio Task for concurrent execution
@@ -687,7 +708,7 @@ RULES:
 - To set "done": true, you MUST construct a logical `evidence_chain` grounded in actual observations (symptom -> mechanism -> failure root). Do NOT invent causal links. Each chain element must reference an observation, command output, or verified signal.
 - EVIDENCE RELEVANCE VALIDATION: Verified evidence alone is insufficient. Before concluding a root cause, you MUST verify that the evidence is relevant to the incident and logically explains the observed failure. (e.g., a missing docker-compose.yml must not be cited as the root cause for 'docker container exited' unless evidence explicitly links them).
 - TOOL CAPABILITY AWARENESS: If a tool returns an error indicating an unsupported action or missing capability (e.g. "Unknown action"), you MUST NOT retry it. Treat it as a capability gap and pivot to an alternative diagnostic approach.
-- CAPABILITY MATCHING LAYER: Every tool declares capabilities. You MUST select tools based on capability matching, not tool name similarity. 
+- CAPABILITY MATCHING LAYER: Every tool declares capabilities. You MUST select tools based on capability matching, not tool name similarity. The `required_capability` field MUST be an EXACT VERBATIM match of one of the strings listed in the chosen tool's `Capabilities:` array. Do not invent your own capability strings.
 - FORBIDDEN TOOL SELECTION: A worker MUST NOT execute a tool unless the tool capability directly contributes to the assigned goal. (e.g. Do not use memory_info for config validation goals).
 - WORKER SELF-VALIDATION: Before executing a tool, you must answer "How does this tool help achieve the assigned goal?" in one sentence (`self_validation`). If it takes more than one sentence, the tool is irrelevant.
 - CAPABILITY CONFIDENCE: You must assign a `tool_relevance_score` between 0.0 and 1.0. The execution will be rejected if the score is < 0.7.
@@ -703,6 +724,7 @@ Option A - Execute a tool:
 {{
   "reasoning": "why this tool next",
   "required_capability": "the capability needed for the goal",
+  "investigation_action": "what action needs to be taken",
   "candidate_tools": ["tool1", "tool2"],
   "best_tool": "chosen tool",
   "tool_relevance_score": 0.9,
@@ -993,8 +1015,18 @@ Respond with ONLY valid JSON:
 
     def _describe_tools(self) -> str:
         lines = []
+        from .tools.registry import ToolRegistry
+        registry = ToolRegistry()
         for name, tool_obj in list(self.tool_map.items())[:15]:
             desc = getattr(tool_obj, "description", "")[:120]
+            
+            # Extract capabilities
+            caps_str = "None"
+            if name in registry._entries:
+                caps = registry._entries[name].meta.capabilities
+                if caps:
+                    caps_str = ", ".join(f"'{c}'" for c in caps)
+            
             # Extract argument names from tool schema if available
             args_str = ""
             try:
@@ -1006,7 +1038,7 @@ Respond with ONLY valid JSON:
                     )
             except Exception:
                 pass
-            lines.append(f"  {name}{args_str}: {desc}")
+            lines.append(f"  {name}{args_str}\n    Capabilities: [{caps_str}]\n    Desc: {desc}")
         return "\n".join(lines)
 
     @staticmethod
