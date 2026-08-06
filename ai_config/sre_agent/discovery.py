@@ -120,7 +120,19 @@ class ToolDiscoveryAgent:
     """
 
     def __init__(self):
-        self.registry = ToolRegistry()
+        # Ensure all tool modules are registered in the global ToolRegistry.
+        # We do this inline (not via engine import) to avoid circular imports.
+        registry = ToolRegistry()
+        if registry.count() == 0:
+            from .tools.filesystem import register_filesystem_tools
+            from .tools.linux import register_linux_tools
+            from .tools.terminal import register_terminal_tools
+            from .tools.shell import register_shell_tools
+            register_filesystem_tools()
+            register_linux_tools()
+            register_terminal_tools()
+            register_shell_tools()
+        self.registry = registry
 
     def classify_intent(self, user_message: str) -> str:
         """
@@ -156,6 +168,9 @@ class ToolDiscoveryAgent:
         4. Enrich based on workspace context (e.g., if Django project → filesystem tools)
         5. Deduplicate and cap at max_tools
         """
+        import logging
+        logger = logging.getLogger(__name__)
+
         intent = self.classify_intent(user_message)
         intent_config = _INTENT_MAP.get(intent, _INTENT_MAP["general"])
 
@@ -172,17 +187,50 @@ class ToolDiscoveryAgent:
             if workspace_context.get("framework") == "django":
                 keywords.extend(["manage.py", "django", "gunicorn", "daphne"])
 
-        # Query registry
-        results = self.registry.discover(
+        # -----------------------------------------------------------------------
+        # STEP 1: Semantic Capability Ranking (runs FIRST, across ALL tools)
+        # This ensures high-capability tools like terminal_execute are discovered
+        # regardless of their category.
+        # -----------------------------------------------------------------------
+        semantic_ranked = self.registry.rank_capabilities(user_message, "SIMPLE_INFORMATION")
+        
+        logger.debug("=== Capability Injection Results ===")
+        for r in semantic_ranked[:5]:
+            logger.debug(
+                f"  {r['name']}: cap_score={r['capability_match_score']:.2f}, "
+                f"final_score={r['final_score']:.2f}, "
+                f"matched={r['matched_capabilities']}"
+            )
+
+        # Collect top capability-matched tools (score > 0) to inject at the front
+        capability_results = []
+        injected_names = []
+        for ranked_tool in semantic_ranked:
+            if ranked_tool["capability_match_score"] > 0:
+                capability_results.append((ranked_tool["tool"], ranked_tool["meta"]))
+                injected_names.append(ranked_tool["name"])
+        
+        logger.debug(f"=== Injected capability candidates: {injected_names} ===")
+
+        # -----------------------------------------------------------------------
+        # STEP 2: Category/keyword query as supplementary tools
+        # -----------------------------------------------------------------------
+        category_results = self.registry.discover(
             categories=categories,
             keywords=keywords if keywords else None,
         )
 
-        # If too few results from keyword search, broaden to full categories
-        if len(results) < 3:
-            results = []
+        # If too few category results, broaden to full categories
+        if len(category_results) < 3:
+            category_results = []
             for cat in categories:
-                results.extend(self.registry.get_by_category(cat))
+                category_results.extend(self.registry.get_by_category(cat))
+
+        # -----------------------------------------------------------------------
+        # STEP 3: Merge — capability tools FIRST, then category tools
+        # This guarantees capability-matched tools survive the max_tools cap
+        # -----------------------------------------------------------------------
+        results = capability_results + category_results
 
         # Deduplicate by tool name
         seen = set()
@@ -192,11 +240,13 @@ class ToolDiscoveryAgent:
                 seen.add(meta.name)
                 unique_results.append((tool, meta))
 
-        # Always include safe_execute as a fallback
-        safe_exec = self.registry.get_tool("safe_execute")
-        if safe_exec and "safe_execute" not in seen:
-            meta = self.registry.get_metadata("safe_execute")
-            unique_results.append((safe_exec, meta))
+        # Always include fundamental tools as fallbacks
+        for fallback_tool in ["safe_execute", "read_file", "get_current_directory"]:
+            tool = self.registry.get_tool(fallback_tool)
+            if tool and fallback_tool not in seen:
+                meta = self.registry.get_metadata(fallback_tool)
+                unique_results.append((tool, meta))
+                seen.add(fallback_tool)
 
         # Cap at max_tools
         unique_results = unique_results[:max_tools]

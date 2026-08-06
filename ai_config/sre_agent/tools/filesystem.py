@@ -19,6 +19,19 @@ from .registry import ToolRegistry, ToolMetadata, RiskLevel
 # ---------------------------------------------------------------------------
 
 @tool
+def get_current_directory() -> str:
+    """Get the current working directory of the user's terminal session.
+    Always prefer this dedicated tool when asked for the current directory."""
+    from ..context import current_session_context
+    try:
+        ctx = current_session_context.get()
+        if ctx and ctx.cwd:
+            return ctx.cwd
+    except LookupError:
+        pass
+    return os.getcwd()
+
+@tool
 def read_file(path: str) -> str:
     """Read the full content of a file and return it as text.
     Use this when you need to inspect configuration files, source code,
@@ -152,6 +165,19 @@ def register_filesystem_tools() -> None:
     """Register all filesystem tools in the global ToolRegistry."""
     registry = ToolRegistry()
     registry.bulk_register([
+        (get_current_directory, ToolMetadata(
+            name="get_current_directory",
+            description="Get the current working directory of the user's terminal session",
+            category="filesystem",
+            risk_level=RiskLevel.LOW,
+            input_schema={},
+            examples=["get_current_directory()"],
+            keywords=["pwd", "cwd", "directory", "current", "where"],
+            priority=100,
+            capabilities=["current directory", "working directory", "pwd", "where am i", "current location"],
+            supported_intents=["SIMPLE_INFORMATION"],
+            safe_fast_path=True,
+        )),
         (read_file, ToolMetadata(
             name="read_file",
             description="Read the full content of a file",
@@ -187,6 +213,7 @@ def register_filesystem_tools() -> None:
             input_schema={"pattern": "string (regex)", "path": "string", "file_glob": "string (optional)"},
             examples=["search_files('ERROR', '/var/log/', '*.log')", "search_files('listen 80', '/etc/nginx/')"],
             keywords=["search", "grep", "find", "pattern", "text", "log"],
+            priority=20,
         )),
         (list_directory, ToolMetadata(
             name="list_directory",
@@ -196,6 +223,7 @@ def register_filesystem_tools() -> None:
             input_schema={"path": "string — directory path (default: '.')"},
             examples=["list_directory('/etc/nginx/')", "list_directory('.')"],
             keywords=["list", "ls", "directory", "folder", "files", "tree"],
+            priority=40,
         )),
         (file_info, ToolMetadata(
             name="file_info",

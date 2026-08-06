@@ -182,10 +182,26 @@ def register_terminal_tools() -> None:
     registry.bulk_register([
         (terminal_execute, ToolMetadata(
             name="terminal_execute",
-            description="Execute Linux commands safely, capturing stdout, stderr, exit code. Supports timeouts.",
+            description="Execute arbitrary terminal commands in the active workspace",
             category="terminal",
-            risk_level=RiskLevel.MEDIUM,
+            risk_level=RiskLevel.HIGH,
             input_schema={"command": "string", "timeout": "int"},
+            keywords=["time", "date", "now", "hostname", "whoami", "uptime", "pwd", "ip"],
+            capabilities=[
+                "current time",
+                "date",
+                "time",
+                "now",
+                "what time",
+                "hostname",
+                "current user",
+                "working directory",
+                "uptime",
+                "operating system information",
+                "arbitrary shell execution"
+            ],
+            supported_intents=["SIMPLE_INFORMATION", "DIAGNOSIS", "REMEDIATION"],
+            safe_fast_path=True,
         )),
         (terminal_session, ToolMetadata(
             name="terminal_session",

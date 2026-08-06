@@ -47,6 +47,7 @@ class AgentEventType(str, enum.Enum):
     PARALLEL_START = "parallel_start"
     PARALLEL_PROGRESS = "parallel_progress"
     PARALLEL_COMPLETE = "parallel_complete"
+    WORKER_ACTIVITY = "worker_activity"
 
 
 @dataclass
@@ -178,3 +179,8 @@ def evt_parallel_complete(total: int, duration: float = 0) -> AgentEvent:
     return AgentEvent(type=AgentEventType.PARALLEL_COMPLETE,
                       content=f"All {total} tasks completed in {duration:.1f}s",
                       metadata={"total": total, "duration": duration})
+
+def evt_worker_activity(workers: list) -> AgentEvent:
+    return AgentEvent(type=AgentEventType.WORKER_ACTIVITY,
+                      content="Worker activity updated",
+                      metadata={"workers": workers})

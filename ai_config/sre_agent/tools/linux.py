@@ -150,6 +150,40 @@ def log_reader(source: str, lines: int = 50, filter_pattern: str = "") -> str:
 
 
 @tool
+def memory_info() -> str:
+    """Get system memory and RAM usage."""
+    return _run("free -h && echo '---' && ps -eo pid,user,%cpu,%mem,cmd --sort=-%mem | head -10")
+
+@tool
+def whoami() -> str:
+    """Get the current logged in user."""
+    from ..context import current_session_context
+    try:
+        ctx = current_session_context.get()
+        if ctx and ctx.user:
+            return ctx.user
+    except LookupError:
+        pass
+    return _run("whoami")
+
+@tool
+def hostname() -> str:
+    """Get the system hostname."""
+    from ..context import current_session_context
+    try:
+        ctx = current_session_context.get()
+        if ctx and ctx.hostname:
+            return ctx.hostname
+    except LookupError:
+        pass
+    return _run("hostname")
+
+@tool
+def uptime() -> str:
+    """Get system uptime."""
+    return _run("uptime")
+
+@tool
 def user_manager(action: str = "who") -> str:
     """Get information about system users.
     `action`: who (currently logged in), last (recent logins), list (all users)."""
@@ -178,6 +212,58 @@ def register_linux_tools() -> None:
     """Register all Linux tools in the global ToolRegistry."""
     registry = ToolRegistry()
     registry.bulk_register([
+        (memory_info, ToolMetadata(
+            name="memory_info",
+            description="Get system memory and RAM usage",
+            category="linux",
+            risk_level=RiskLevel.LOW,
+            input_schema={},
+            examples=["memory_info()"],
+            keywords=["memory", "ram", "free"],
+            priority=100,
+            capabilities=["memory usage", "ram usage", "free memory", "how much ram", "cek ram"],
+            supported_intents=["SIMPLE_INFORMATION"],
+            safe_fast_path=True,
+        )),
+        (whoami, ToolMetadata(
+            name="whoami",
+            description="Get the current logged in user",
+            category="linux",
+            risk_level=RiskLevel.LOW,
+            input_schema={},
+            examples=["whoami()"],
+            keywords=["user", "whoami", "current user"],
+            priority=100,
+            capabilities=["whoami", "who am i", "current user", "siapa saya"],
+            supported_intents=["SIMPLE_INFORMATION"],
+            safe_fast_path=True,
+        )),
+        (hostname, ToolMetadata(
+            name="hostname",
+            description="Get the system hostname",
+            category="linux",
+            risk_level=RiskLevel.LOW,
+            input_schema={},
+            examples=["hostname()"],
+            keywords=["hostname", "host"],
+            priority=100,
+            capabilities=["hostname", "host name"],
+            supported_intents=["SIMPLE_INFORMATION"],
+            safe_fast_path=True,
+        )),
+        (uptime, ToolMetadata(
+            name="uptime",
+            description="Get system uptime",
+            category="linux",
+            risk_level=RiskLevel.LOW,
+            input_schema={},
+            examples=["uptime()"],
+            keywords=["uptime", "how long"],
+            priority=100,
+            capabilities=["uptime", "how long", "system uptime"],
+            supported_intents=["SIMPLE_INFORMATION"],
+            safe_fast_path=True,
+        )),
         (system_info, ToolMetadata(
             name="system_info",
             description="Gather system information (CPU, memory, disk, OS, uptime)",
@@ -186,6 +272,10 @@ def register_linux_tools() -> None:
             input_schema={"aspect": "all|cpu|memory|disk|os|uptime|hostname"},
             examples=["system_info('memory')", "system_info('all')"],
             keywords=["system", "cpu", "memory", "ram", "disk", "uptime", "os", "uname", "hostname", "status"],
+            priority=40,
+            capabilities=["system information", "cpu usage", "os version", "kernel version", "disk usage"],
+            supported_intents=["SIMPLE_INFORMATION"],
+            safe_fast_path=True,
         )),
         (service_manager, ToolMetadata(
             name="service_manager",
@@ -196,6 +286,7 @@ def register_linux_tools() -> None:
             input_schema={"action": "status|start|stop|restart|list|failed", "service_name": "string (optional)"},
             examples=["service_manager('list')", "service_manager('status', 'nginx')"],
             keywords=["service", "systemctl", "daemon", "nginx", "docker", "start", "stop", "restart", "failed"],
+            priority=80,
         )),
         (process_manager, ToolMetadata(
             name="process_manager",
@@ -205,6 +296,7 @@ def register_linux_tools() -> None:
             input_schema={"action": "list|top|search|kill", "target": "string (PID or name)"},
             examples=["process_manager('list')", "process_manager('search', 'python')"],
             keywords=["process", "ps", "top", "kill", "pid", "cpu", "memory"],
+            priority=60,
         )),
         (package_manager, ToolMetadata(
             name="package_manager",
@@ -215,6 +307,7 @@ def register_linux_tools() -> None:
             input_schema={"action": "list_installed|search|info|update|install", "package": "string"},
             examples=["package_manager('search', 'nginx')"],
             keywords=["package", "apt", "dpkg", "install", "update", "dependency"],
+            priority=60,
         )),
         (log_reader, ToolMetadata(
             name="log_reader",
@@ -224,6 +317,7 @@ def register_linux_tools() -> None:
             input_schema={"source": "syslog|auth|kern|nginx|docker|journal|<filepath>", "lines": "int", "filter_pattern": "string"},
             examples=["log_reader('nginx', 100, 'error')", "log_reader('journal', 50, 'failed')"],
             keywords=["log", "syslog", "journalctl", "error", "tail", "nginx", "auth", "kern"],
+            priority=50,
         )),
         (user_manager, ToolMetadata(
             name="user_manager",
@@ -233,6 +327,7 @@ def register_linux_tools() -> None:
             input_schema={"action": "who|last|list"},
             examples=["user_manager('who')", "user_manager('last')"],
             keywords=["user", "login", "who", "last", "session"],
+            priority=50,
         )),
         (linux_diagnostic_execute, ToolMetadata(
             name="linux_diagnostic_execute",
@@ -242,5 +337,9 @@ def register_linux_tools() -> None:
             input_schema={"command": "string"},
             examples=["linux_diagnostic_execute('systemctl status nginx')", "linux_diagnostic_execute('nginx -t')"],
             keywords=["linux", "diagnostic", "command", "shell", "execute", "systemctl", "journalctl", "cat", "grep", "ps"],
+            priority=10,
+            capabilities=["execute diagnostic command", "run safe command"],
+            supported_intents=["SIMPLE_INFORMATION", "DIAGNOSIS"],
+            safe_fast_path=False, # Arbitrary commands shouldn't fast-path blindly unless it's a dedicated tool
         )),
     ])

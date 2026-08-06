@@ -42,6 +42,8 @@ from .worker import WorkerScheduler, WorkerState
 class TaskState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
     goal: str
+    terminal_cwd: str
+    active_workspace: str
     plan: dict
     findings: dict
     iteration: int
@@ -61,45 +63,7 @@ class TaskState(TypedDict):
     parallel_results: list   # list of TaskResult dicts from parallel executor
 
 
-# ---------------------------------------------------------------------------
-# Fast-path command mapping — zero LLM calls for trivial queries
-# ---------------------------------------------------------------------------
 
-FAST_PATH_MAP = {
-    "hostname":    {"tool": "terminal_execute", "args": {"command": "hostname"}},
-    "whoami":      {"tool": "terminal_execute", "args": {"command": "whoami"}},
-    "who am i":    {"tool": "terminal_execute", "args": {"command": "whoami"}},
-    "uptime":      {"tool": "terminal_execute", "args": {"command": "uptime"}},
-    "date":        {"tool": "terminal_execute", "args": {"command": "date"}},
-    "time":        {"tool": "terminal_execute", "args": {"command": "date"}},
-    "pwd":         {"tool": "terminal_execute", "args": {"command": "pwd"}},
-    "disk":        {"tool": "terminal_execute", "args": {"command": "df -h"}},
-    "disk usage":  {"tool": "terminal_execute", "args": {"command": "df -h"}},
-    "memory":      {"tool": "terminal_execute", "args": {"command": "free -h && ps -eo pid,user,%cpu,%mem,cmd --sort=-%mem | head -10"}},
-    "ram":         {"tool": "terminal_execute", "args": {"command": "free -h && ps -eo pid,user,%cpu,%mem,cmd --sort=-%mem | head -10"}},
-    "cpu":         {"tool": "terminal_execute", "args": {"command": "top -bn1 | head -20"}},
-    "ip":          {"tool": "terminal_execute", "args": {"command": "ip -4 addr show | grep inet"}},
-    "ip address":  {"tool": "terminal_execute", "args": {"command": "ip -4 addr show | grep inet"}},
-    "load":        {"tool": "terminal_execute", "args": {"command": "uptime && cat /proc/loadavg"}},
-    "os":          {"tool": "terminal_execute", "args": {"command": "cat /etc/os-release"}},
-    "kernel":      {"tool": "terminal_execute", "args": {"command": "uname -a"}},
-    "uname":       {"tool": "terminal_execute", "args": {"command": "uname -a"}},
-}
-
-# Keywords that trigger fast-path matching
-FAST_PATH_KEYWORDS = {
-    "hostname": "hostname", "whoami": "whoami", "who am i": "who am i",
-    "uptime": "uptime", "what time": "time", "jam berapa": "time",
-    "current time": "time", "tanggal": "date", "current date": "date",
-    "current directory": "pwd", "direktori": "pwd", "working directory": "pwd",
-    "disk usage": "disk usage", "disk space": "disk usage",
-    "free memory": "memory", "ram usage": "ram", "memory usage": "memory",
-    "cpu usage": "cpu", "cpu load": "cpu",
-    "ip address": "ip address", "my ip": "ip address",
-    "load average": "load",
-    "os version": "os", "operating system": "os",
-    "kernel version": "kernel",
-}
 
 
 # ---------------------------------------------------------------------------
@@ -196,90 +160,149 @@ class AutonomousController:
     # -----------------------------------------------------------------------
     def fast_path_router_node(self, state: TaskState):
         goal = state["goal"].strip()
-        goal_lower = goal.lower()
+        intent = "SIMPLE_INFORMATION"
 
-        # Pick the best available shell execution tool from whatever the discovery loaded
-        SHELL_TOOL_PRIORITY = [
-            "terminal_execute", "linux_diagnostic_execute", "safe_execute",
-            "execute_command", "shell_execute",
-        ]
-        shell_tool = next((t for t in SHELL_TOOL_PRIORITY if t in self.tool_map), None)
-
-        # Pick the best file reading tool
-        FILE_TOOL_PRIORITY = ["read_file", "filesystem_read", "file_read"]
-        file_tool = next((t for t in FILE_TOOL_PRIORITY if t in self.tool_map), None)
-
-        if not shell_tool:
-            # No shell tool available at all — must use planner
+        # 1. Tool Discovery & Semantic Ranking
+        from .tools.registry import ToolRegistry
+        registry = ToolRegistry()
+        
+        # Call the semantic ranker
+        ranked_tools = registry.rank_capabilities(goal, intent)
+        
+        # Filter down to tools that are actually loaded in this run context (self.tool_map)
+        available_ranked = [t for t in ranked_tools if t["name"] in self.tool_map]
+        
+        # Take top 5 candidates
+        candidates = available_ranked[:5]
+        
+        # If no candidates, fallback
+        if not candidates:
             return {
                 "plan": state.get("plan", {}),
-                "thinking": "Complex query — routing to strategic planner (no shell tool available for fast-path).",
+                "thinking": "Micro Tool Selector: No tools available for capability ranking.",
             }
-
-        # Build shell-tool-aware fast_path_map using the available tool
-        def shell_fp(cmd):
-            return {"tool": shell_tool, "args": {"command": cmd}}
-
-        DYNAMIC_FAST_PATH = {
-            "hostname":    shell_fp("hostname"),
-            "whoami":      shell_fp("whoami"),
-            "who am i":    shell_fp("whoami"),
-            "uptime":      shell_fp("uptime"),
-            "date":        shell_fp("date"),
-            "time":        shell_fp("date"),
-            "pwd":         shell_fp("pwd"),
-            "disk":        shell_fp("df -h"),
-            "disk usage":  shell_fp("df -h"),
-            "memory":      shell_fp("free -h && echo '---' && ps -eo pid,user,%cpu,%mem,cmd --sort=-%mem | head -10"),
-            "ram":         shell_fp("free -h && echo '---' && ps -eo pid,user,%cpu,%mem,cmd --sort=-%mem | head -10"),
-            "cpu":         shell_fp("top -bn1 | head -20"),
-            "ip":          shell_fp("ip -4 addr show | grep inet"),
-            "ip address":  shell_fp("ip -4 addr show | grep inet"),
-            "load":        shell_fp("uptime && cat /proc/loadavg"),
-            "os":          shell_fp("cat /etc/os-release"),
-            "kernel":      shell_fp("uname -a"),
-            "uname":       shell_fp("uname -a"),
-        }
-
-        # Extended keyword → fast_path_key mapping (checks substrings in goal_lower)
-        KEYWORD_CHECKS = [
-            (["what time", "jam berapa", "current time", "waktu sekarang", "time now"], "time"),
-            (["tanggal", "current date", "what date", "today"], "date"),
-            (["hostname", "host name"], "hostname"),
-            (["whoami", "who am i", "siapa saya"], "whoami"),
-            (["uptime", "how long"], "uptime"),
-            (["current directory", "working directory", "direktori", "what dir", "pwd"], "pwd"),
-            (["disk usage", "disk space", "df -h", "storage"], "disk usage"),
-            (["memory usage", "free memory", "ram usage", "how much ram"], "memory"),
-            (["cek ram", "check ram", "ram info"], "ram"),
-            (["cpu usage", "cpu load", "cpu info"], "cpu"),
-            (["ip address", "my ip", "ip addr"], "ip address"),
-            (["load average"], "load"),
-            (["os version", "operating system", "linux version"], "os"),
-            (["kernel version", "kernel", "uname"], "kernel"),
-        ]
-
-        for keywords, fp_key in KEYWORD_CHECKS:
-            if any(kw in goal_lower for kw in keywords):
-                fp = DYNAMIC_FAST_PATH.get(fp_key)
-                if fp:
+            
+        # 2. Fast bypass if only 1 highly relevant tool exists?
+        if len(available_ranked) == 1:
+            best = available_ranked[0]
+            if not getattr(best["tool"], "args_schema", None):
+                # Ensure safety gate is passed even on bypass
+                if best["meta"].safe_fast_path:
                     return {
                         "plan": {
                             "fast_path": True,
                             "intent": "SIMPLE_INFORMATION",
                             "tasks": [{
                                 "id": "FP",
-                                "description": f"Fast-path: {fp_key}",
-                                "tool": fp["tool"],
-                                "tool_args": fp["args"],
+                                "description": f"Fast-path: {best['name']}",
+                                "tool": best["name"],
+                                "tool_args": {},
                                 "status": "pending",
                                 "depends_on": [],
                                 "group": "system",
                             }],
                             "completed": False,
                         },
-                        "thinking": f"Fast-path detected: '{fp_key}' using '{fp['tool']}' — bypassing LLM planner.",
+                        "thinking": f"Micro Tool Selector: Only 1 tool discovered ({best['name']}), bypassing LLM.",
                     }
+        
+        # 3. Micro Tool Selector LLM call
+        tools_prompt_lines = []
+        for c in candidates:
+            meta = c["meta"]
+            args_str = ""
+            try:
+                schema = c["tool"].args_schema.model_json_schema() if getattr(c["tool"], "args_schema", None) else {}
+                props = schema.get("properties", {})
+                if props:
+                    args_str = "{" + ", ".join(f'"{k}": "{v.get("type","any")}"' for k, v in props.items()) + "}"
+            except Exception:
+                pass
+            
+            tools_prompt_lines.append(
+                f"- {c['name']}:\n"
+                f"  Capabilities: {', '.join(meta.capabilities) if meta.capabilities else 'None'}\n"
+                f"  Supported Intents: {', '.join(meta.supported_intents) if meta.supported_intents else 'None'}\n"
+                f"  Capability Score: {c['capability_match_score']:.2f}\n"
+                f"  Final Rank Score: {c['final_score']:.2f}\n"
+                f"  Args schema: {args_str}"
+            )
+            
+        tools_prompt = "\n".join(tools_prompt_lines)
+        
+        prompt = f"""You are the Micro Tool Selector. Your ONLY job is to select exactly one tool for a simple informational query.
+
+User Query: {goal}
+
+Candidate Tools (Ranked by semantic capability score):
+{tools_prompt}
+
+Rules:
+1. Tool capabilities represent the actual abilities of a tool. Match user intent against capabilities before deciding.
+2. Choose the single most relevant tool to instantly answer the query.
+3. If the query requires complex investigation, planning, or multiple tools, you MUST return null for the tool.
+4. Dedicated tools should be strongly preferred over generic tools for simple lookups.
+5. Provide a confidence score (0.0 to 1.0). If you are guessing, confidence should be low (<0.8).
+
+Output EXACTLY valid JSON matching this format:
+{{
+  "tool": "tool_name_or_null",
+  "args": {{"arg1": "value"}},
+  "confidence": 0.95
+}}"""
+
+        fallback = {"tool": None, "args": {}, "confidence": 0.0}
+        
+        from langchain_core.messages import HumanMessage
+        try:
+            data = self._robust_json_parse(HumanMessage(content=prompt), ["agent_llm"], fallback_response=fallback)
+        except Exception:
+            data = fallback
+            
+        tool_choice = data.get("tool")
+        confidence = data.get("confidence", 0.0)
+        
+        # 4. Safety gate rules
+        if tool_choice and tool_choice in self.tool_map:
+            meta = registry.get_metadata(tool_choice)
+            is_safe = meta.safe_fast_path if meta else False
+            
+            if confidence >= 0.8 and is_safe and intent == "SIMPLE_INFORMATION":
+                return {
+                    "plan": {
+                        "fast_path": True,
+                        "intent": "SIMPLE_INFORMATION",
+                        "tasks": [{
+                            "id": "FP",
+                            "description": f"Fast-path: {tool_choice}",
+                            "tool": tool_choice,
+                            "tool_args": data.get("args", {}),
+                            "status": "pending",
+                            "depends_on": [],
+                            "group": "system",
+                        }],
+                        "completed": False,
+                    },
+                    "thinking": f"Micro Tool Selector: Selected '{tool_choice}' with confidence {confidence:.2f}.",
+                }
+            
+            # Log why it failed the gate
+            if confidence < 0.8:
+                reason = f"confidence {confidence:.2f} < 0.8"
+            elif not is_safe:
+                reason = "safe_fast_path=False"
+            else:
+                reason = "intent not SIMPLE_INFORMATION"
+                
+            return {
+                "plan": state.get("plan", {}),
+                "thinking": f"Micro Tool Selector: Deferred to Planner ({reason}).",
+            }
+            
+        return {
+            "plan": state.get("plan", {}),
+            "thinking": f"Micro Tool Selector: Deferred to Planner (tool={tool_choice}).",
+        }
 
         # Not a fast-path query → route to planner
         return {
@@ -335,11 +358,28 @@ class AutonomousController:
         existing_plan = state.get("plan", {})
         iteration = state.get("iteration", 0)
         is_followup = iteration > 0
+        is_continuation = existing_plan.get("is_continuation", False)
+
+
+
+        # Extract file:// URIs and resolve to absolute paths
+        # so both the planner and workers get concrete paths, not guesses
+        import re as _re
+        _file_uri_re = _re.compile(r'file:///([^\s]+)')
+        _file_matches = _file_uri_re.findall(goal)
+        extracted_files_note = ""
+        if _file_matches:
+            resolved = [f'/{p}' for p in _file_matches]
+            # Clean up goal: replace URIs with resolved paths
+            for fpath in _file_matches:
+                goal = goal.replace(f'file:///{fpath}', f'/{fpath}')
+            extracted_files_note = f"\nEXTRACTED FILE PATHS (use these exact paths in worker goals): {', '.join(resolved)}\n"
+
 
         # Format recent conversation history
         msgs = state.get("messages", [])
         chat_history_str = ""
-        if msgs:
+        if msgs and (is_continuation or is_followup):
             recent_msgs = []
             for m in msgs[-6:-1]:
                 role = "User" if isinstance(m, HumanMessage) else ("Assistant" if isinstance(m, AIMessage) else "System")
@@ -351,30 +391,49 @@ class AutonomousController:
         followup_note = ""
         if is_followup:
             prev_workers = existing_plan.get("workers", [])
+            # Fix 3: Include verification state and domain coverage in prior summary.
+            # Fix 5 merge-back ensures prev_workers now contains real execution state.
             if prev_workers:
                 prior_summary = "\n".join(
                     f"  Worker {w.get('id','?')}: {w.get('goal','')} — "
                     f"confidence={w.get('confidence_score', 0):.2f}, "
-                    f"root_cause={w.get('root_cause','none')}"
+                    f"root_cause={w.get('root_cause','none')}, "
+                    f"verified={w.get('has_verified_evidence', False)}, "
+                    f"domains_covered={w.get('investigation_coverage', [])}"
                     for w in prev_workers
                 )
+                # Fix 3: Satisfied domains hard prohibition
+                satisfied_domains = existing_plan.get("satisfied_domains", [])
+                satisfied_note = ""
+                if satisfied_domains:
+                    satisfied_note = f"""
+=== PERMANENTLY SATISFIED DOMAINS ===
+The following investigation domains have verified root-cause evidence and are CLOSED.
+Do NOT generate any worker targeting these domains: {', '.join(satisfied_domains)}
+"""
                 followup_note = f"""
 === FOLLOW-UP: PREVIOUS WORKERS COMPLETED ===
 Prior results:
 {prior_summary}
-
-Generate ONLY workers for remaining unresolved aspects.
+{satisfied_note}
+Generate ONLY workers for remaining UNRESOLVED aspects.
 Do NOT repeat goals that were already investigated.
+Do NOT create workers for satisfied domains listed above.
 """
 
+        terminal_cwd_note = (
+            f"\n(Note: User's terminal is currently at {state.get('terminal_cwd')} "
+            f"— do not assume the issue is located here unless explicitly stated)"
+        ) if state.get('terminal_cwd') else ""
+        
         prompt = f"""You are a strategic SRE planner. You assign investigation objectives to autonomous workers.
 
 === RECENT CONVERSATION HISTORY ===
 {chat_history_str or "No previous conversation history."}
 
 === CURRENT USER REQUEST ===
-Goal: {goal}
-{followup_note}
+Goal: {goal}{terminal_cwd_note}
+{extracted_files_note}{followup_note}
 
 Your job:
 1. Classify intent: SIMPLE_INFORMATION, ACTION_TASK, DEBUG_TASK, SECURITY_TASK.
@@ -389,6 +448,8 @@ CRITICAL RULES:
 - DEBUG_TASK: split into domain-focused workers (service, config, logs, network, resources — only as needed).
 - Do NOT generate 'tool' or 'tool_args' — workers decide their own execution strategy.
 - DO NOT create workers for unrelated services unless explicitly requested.
+- You MUST define `expected_diagnostic_domains` dynamically based on the exact issue type (e.g. database failure -> ["database_status", "connection_logs", "resource_usage"]; memory issue -> ["memory_usage", "process_analysis"]). Do not just copy the nginx examples.
+- If EXTRACTED FILE PATHS are provided above, you MUST include the exact absolute path in the worker goal.
 
 Context rules:
 - Indonesian question words ("apa", "kenapa", "ini", "apaa") are NOT file names.
@@ -404,12 +465,14 @@ Output STRICTLY this JSON:
     {{
       "id": "A",
       "goal": "Investigate nginx service status, configuration validity, and recent restarts",
+      "expected_diagnostic_domains": ["service_status", "service_logs", "configuration"],
       "depends_on": [],
       "priority": "high"
     }},
     {{
       "id": "B",
       "goal": "Analyze nginx error logs for failure patterns and root causes",
+      "expected_diagnostic_domains": ["service_logs", "resource_usage"],
       "depends_on": [],
       "priority": "high"
     }}
@@ -421,7 +484,7 @@ Output STRICTLY this JSON:
             "complexity": "MEDIUM",
             "thinking": f"Fallback: Generating default worker for {goal}",
             "hypothesis": "",
-            "workers": [{"id": "A", "goal": goal, "depends_on": [], "priority": "high"}]
+            "workers": [{"id": "A", "goal": goal, "expected_diagnostic_domains": [], "depends_on": [], "priority": "high"}]
         }
 
         data = self._robust_json_parse(
@@ -442,13 +505,20 @@ Output STRICTLY this JSON:
             worker_specs.append({
                 "id": w.get("id", chr(65 + i)),
                 "goal": w.get("goal", goal),
+                "expected_diagnostic_domains": w.get("expected_diagnostic_domains", []),
                 "depends_on": w.get("depends_on", []),
                 "priority": w.get("priority", "medium"),
                 "status": "pending",
+                "terminal_cwd": state.get("terminal_cwd", ""),
+                "active_workspace": state.get("active_workspace", "")
             })
 
         if not worker_specs:
-            worker_specs = [{"id": "A", "goal": goal, "depends_on": [], "priority": "high", "status": "pending"}]
+            worker_specs = [{
+                "id": "A", "goal": goal, "expected_diagnostic_domains": [], "depends_on": [], "priority": "high", "status": "pending",
+                "terminal_cwd": state.get("terminal_cwd", ""),
+                "active_workspace": state.get("active_workspace", "")
+            }]
 
         plan = {
             "intent": intent_out,
@@ -486,12 +556,22 @@ Output STRICTLY this JSON:
         if "findings" not in findings:
             findings["findings"] = []
 
-        pending_specs = [w for w in worker_specs if w.get("status") == "pending"]
+        # Fix 3 (defence-in-depth): Also filter out workers whose diagnostic domains
+        # are already satisfied, even if planner somehow generated them.
+        satisfied_domains = set(plan.get("satisfied_domains", []))
+        pending_specs = [
+            w for w in worker_specs
+            if w.get("status") == "pending"
+            and not any(
+                domain in satisfied_domains
+                for domain in w.get("expected_diagnostic_domains", [])
+            )
+        ]
         if not pending_specs:
             return {
                 "plan": plan,
                 "findings": findings,
-                "thinking": "Worker scheduler: no pending workers.",
+                "thinking": "Worker scheduler: no pending workers (all completed or domains satisfied).",
             }
 
         # Run all workers concurrently via WorkerScheduler
@@ -501,12 +581,8 @@ Output STRICTLY this JSON:
         total_duration = 0.0
         requires_approval = False
         worker_results = []
-        for ws in worker_states:
-            total_duration += ws.total_duration
-            if ws.requires_approval:
-                requires_approval = True
-
-            # Serialize worker state for JSON-serializable plan
+        
+        def collect_workers(ws):
             worker_result = {
                 "id": ws.id,
                 "goal": ws.goal,
@@ -519,7 +595,15 @@ Output STRICTLY this JSON:
                 "iterations": ws.iteration,
                 "findings_count": len(ws.findings),
                 "children_count": len(ws.children),
-                "findings": ws.findings,    # full finding records
+                "findings": ws.findings,
+                "is_child": getattr(ws, "is_child", False),
+                "parent_id": getattr(ws, "parent_id", None),
+                # Evidence quality: True only if any finding is verified root cause
+                "has_verified_evidence": ws.confidence.has_verified_evidence,
+                "evidence_chain": getattr(ws, "evidence_chain", []),
+                "evidence_chain_confidence": getattr(ws, "evidence_chain_confidence", 0.0),
+                "investigation_coverage": getattr(ws, "investigation_coverage", []),
+                "max_evidence_relevance": max([e.relevance_score for e in ws.confidence.evidence] + [0.0]),
                 "children": [{
                     "id": c.id, "goal": c.goal,
                     "confidence_score": c.confidence.score,
@@ -544,6 +628,31 @@ Output STRICTLY this JSON:
                     f"{f.get('tool','?')}({json.dumps(f.get('args',{}))[:60]}): "
                     f"{str(f.get('output',''))[:200]}"
                 )
+                
+            for child in getattr(ws, "children", []):
+                collect_workers(child)
+
+        for ws in worker_states:
+            total_duration += ws.total_duration
+            if ws.requires_approval:
+                requires_approval = True
+            collect_workers(ws)
+
+        # Fix 5: Merge execution results back into plan["workers"] specs.
+        # This is the structural fix: without this merge, plan["workers"] keeps
+        # "status": "pending" indefinitely, so the scheduler re-runs workers on
+        # every subsequent iteration even after they completed with verified evidence.
+        # This fix is independent of satisfied_domains — it works even if domain
+        # propagation fails for any reason.
+        result_map = {wr["id"]: wr for wr in worker_results}
+        for spec in plan.get("workers", []):
+            result = result_map.get(spec["id"])
+            if result:
+                spec["status"] = result.get("status", "completed")
+                spec["root_cause"] = result.get("root_cause", "")
+                spec["has_verified_evidence"] = result.get("has_verified_evidence", False)
+                spec["confidence_score"] = result.get("confidence_score", 0.0)
+                spec["investigation_coverage"] = result.get("investigation_coverage", [])
 
         plan["worker_results"] = worker_results
 
@@ -593,9 +702,35 @@ Output STRICTLY this JSON:
         # Compute global confidence from all workers
         worker_scores = [w.get("confidence_score", 0) for w in worker_results]
         global_confidence = max(worker_scores) if worker_scores else 0.0
+        plan["global_confidence"] = global_confidence
 
-        # Collect all root causes and recommendations
-        root_causes = [w["root_cause"] for w in worker_results if w.get("root_cause")]
+        # Fix 2: Two-path acceptance for verified root causes.
+        # Path A: Full LLM-validated evidence chain (existing strict gate).
+        # Path B: Deterministic rule-engine verified direct_error — accepted without LLM chain.
+        # Acceptance is based on evidence STATE (finding fields), never on root_cause string content.
+        def _is_deterministic_verified(w: dict) -> bool:
+            """True if any finding records a rule-engine verified direct_error."""
+            return any(
+                f.get("evidence_type") == "direct_error" and f.get("verified") is True
+                for f in w.get("findings", [])
+            )
+
+        all_root_causes = [w["root_cause"] for w in worker_results if w.get("root_cause")]
+        verified_root_causes = [
+            w["root_cause"] for w in worker_results
+            if w.get("root_cause") and (
+                # Path A: LLM-validated evidence chain
+                (
+                    w.get("has_verified_evidence", False)
+                    and len(w.get("evidence_chain", [])) >= 2
+                    and w.get("evidence_chain_confidence", 0.0) >= 0.8
+                    and w.get("max_evidence_relevance", 0.0) >= 0.8
+                    and len(w.get("investigation_coverage", [])) >= 2
+                )
+                # Path B: Deterministic rule-engine direct error (verified=True, evidence_type=direct_error)
+                or _is_deterministic_verified(w)
+            )
+        ]
         all_recommendations = []
         for w in worker_results:
             all_recommendations.extend(w.get("recommendations", []))
@@ -606,18 +741,26 @@ Output STRICTLY this JSON:
             if cs.get("contradiction_count", 0) > 0:
                 contradictions.append(f"Worker {w['id']} has {cs['contradiction_count']} contradictions")
 
-        # If global confidence is high enough, mark completed
-        from .worker import WORKER_CONFIDENCE_THRESHOLD, GLOBAL_CONFIDENCE_THRESHOLD
-        if global_confidence >= WORKER_CONFIDENCE_THRESHOLD or root_causes:
+        # Completion gate: verified root cause found → mark complete and set satisfied_domains.
+        from .worker import WORKER_CONFIDENCE_THRESHOLD
+        if verified_root_causes:
+            # Collect all investigation domains covered by verified workers for Fix 3 (planner prohibition)
+            all_satisfied = []
+            for w in worker_results:
+                if _is_deterministic_verified(w) or w.get("has_verified_evidence"):
+                    all_satisfied.extend(w.get("investigation_coverage", []))
+            plan["satisfied_domains"] = list(set(all_satisfied))
             plan["completed"] = True
-            if root_causes:
-                findings_data["findings"].append(f"[Aggregator] Root cause identified: {'; '.join(root_causes[:3])}")
+            findings_data["findings"].append(f"[Aggregator] Verified root cause: {'; '.join(verified_root_causes[:3])}")
             return {
                 "plan": plan,
                 "findings": findings_data,
-                "thinking": f"Aggregator: sufficient (global_confidence={global_confidence:.2f}). Root causes: {root_causes}.",
-                "resolution_plan": list(dict.fromkeys(all_recommendations))[:10],  # deduplicated
+                "thinking": f"Aggregator: verified root cause accepted (causes={verified_root_causes}).",
+                "resolution_plan": list(dict.fromkeys(all_recommendations))[:10],
             }
+        
+        # Workers claimed a root cause but without verified evidence, or no root cause found yet
+        # Continue to LLM synthesis to give the aggregator LLM a chance to assess whether evidence is sufficient.
 
         # Not confident enough — one LLM call to synthesize and decide
         evidence_summary = []
@@ -656,9 +799,16 @@ Respond ONLY with valid JSON:
                     "root_cause": None, "summary": "Aggregation complete.",
                     "recommendations": all_recommendations[:5]}
 
-        data = self._robust_json_parse(HumanMessage(content=prompt), ["aggregator_llm"], fallback)
+        data = self._robust_json_parse(
+            HumanMessage(content=prompt),
+            ["aggregator_llm"],
+            fallback_response=fallback
+        )
 
-        if data.get("sufficient") or data.get("confidence", 0) >= WORKER_CONFIDENCE_THRESHOLD:
+        # The aggregator should only mark completed if it actually identified a valid root cause
+        # or confirmed that the system is completely healthy and no root cause exists.
+        has_root_cause = bool(data.get("root_cause"))
+        if (data.get("sufficient") or data.get("confidence", 0) >= WORKER_CONFIDENCE_THRESHOLD) and has_root_cause:
             plan["completed"] = True
 
         if data.get("root_cause"):
@@ -937,12 +1087,18 @@ Output ONLY valid JSON:
             final_report = "Investigation completed (fallback response)."
             artifact_name = "report.md"
 
+        global_confidence = plan.get("global_confidence", 1.0)
+        is_verified = global_confidence >= 0.5
+        
+        if not is_verified:
+            final_report = f"> [!WARNING]\n> **Best Effort Result** (Confidence {global_confidence:.2f} < 0.5)\n> The system could not definitively verify this conclusion.\n\n" + final_report
+
         return {
             "messages":    [AIMessage(content=final_report)],
             "is_completed": True,
-            "is_verified":  True,
+            "is_verified":  is_verified,
             "final_report": final_report,
             "artifact_name": artifact_name,
             "plan":         plan,
-            "thinking":     "Final response generated from verified evidence.",
+            "thinking":     "Final response generated from verified evidence." if is_verified else "Final response: Best Effort Result.",
         }

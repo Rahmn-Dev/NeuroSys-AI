@@ -36,6 +36,7 @@ from .events import (
     evt_creating_artifact, evt_restoring_artifact, evt_security_scan,
     evt_hypothesis, evt_resolution_plan,
     evt_parallel_start, evt_parallel_progress, evt_parallel_complete,
+    evt_approval_required,
 )
 from .memory import LongTermMemory, ShortTermMemory, WorkspaceMemory
 from .safety import SafetyLayer, SafetyVerdict
@@ -315,6 +316,19 @@ Output strictly the category name."""
         system_context_str = f"User: {whoami}\nOS/Env Info:\n{workspace_text}"
         project_workspace_str = settings.BASE_DIR
         terminal_cwd_str = terminal_cwd or "Not provided"
+        
+        import socket
+        # Populate SessionContext
+        from .context import current_session_context, SessionContext
+        current_session_context.set(SessionContext(
+            cwd=terminal_cwd or "",
+            user=whoami,
+            hostname=socket.gethostname(),
+            environment="local" # Placeholder, could be derived from workspace_ctx
+        ))
+        
+        if terminal_cwd:
+            os.environ["SRE_TERMINAL_CWD"] = terminal_cwd
         active_workspace_str = active_workspace or terminal_cwd or "Not provided"
         selected_file_str = f"{selected_file}\n(Name: {selected_file_name})" if selected_file else "None"
 
@@ -392,25 +406,46 @@ Output strictly the category name."""
             initial_state = {
                 "messages": messages,
                 "goal": user_message,
+                "terminal_cwd": terminal_cwd or "",
+                "active_workspace": active_workspace or "",
                 "plan": plan_data if isinstance(plan_data, dict) else {},
                 "findings": findings_data if isinstance(findings_data, dict) else {},
                 "iteration": 0,
                 "is_completed": False
             }
             
-            # Continuation classification
+            # Continuation classification (Hybrid: Keyword + Strict LLM Fallback)
             is_continuation = False
             if history and initial_state["plan"] and initial_state["plan"].get("tasks"):
-                prev_goal = initial_state["plan"].get("title", "")
-                is_continuation_prompt = f"""Previous investigation goal: '{prev_goal}'
+                explicit_continuation_phrases = ["continue", "lanjutkan", "lanjut cek", "still failing", "same issue", "tadi"]
+                user_msg_lower = user_message.lower()
+                if any(phrase in user_msg_lower for phrase in explicit_continuation_phrases):
+                    is_continuation = True
+                else:
+                    # Strict LLM Fallback
+                    prev_goal = initial_state["plan"].get("title", "")
+                    # Findings contain the root cause and domains from previous investigation
+                    prev_findings = "\n".join(initial_state["findings"].get("findings", [])[-4:])
+                    
+                    is_continuation_prompt = f"""You are a continuation classifier for an SRE investigation agent.
+
+Previous investigation goal: '{prev_goal}'
+Previous investigation findings/root causes:
+{prev_findings}
+
 New user request: '{user_message}'
 
-Is the new user request a direct continuation or follow-up question regarding the EXACT SAME topic/investigation?
-If the user is asking about a different topic, service, or system issue (e.g. CPU/RAM resource usage vs Nginx configuration error), answer 'NEW'.
+Is the new user request a direct continuation of the EXACT SAME investigation?
+RULES:
+1. If the user is asking about a different service, system issue, or diagnostic domain, answer 'NEW'.
+2. Generic words like "service", "error", "failed", or "system" in the new request are NOT enough to classify as a continuation.
+3. Only classify as 'CONTINUE' if the new request refers to the exact same failure or service from the previous findings.
+
 Reply STRICTLY 'CONTINUE' or 'NEW'."""
-                resp = await llm.ainvoke([HumanMessage(content=is_continuation_prompt)])
-                if "CONTINUE" in resp.content.upper():
-                    is_continuation = True
+                    
+                    resp = await llm.ainvoke([HumanMessage(content=is_continuation_prompt)])
+                    if "CONTINUE" in resp.content.upper():
+                        is_continuation = True
                     
             if not is_continuation:
                 from .events import evt_investigation_started
@@ -651,8 +686,15 @@ Reply STRICTLY 'CONTINUE' or 'NEW'."""
                     yield evt_tool_end(name, result)
                     self.short_memory.add("observation", f"{name} result: {result[:300]}")
 
+                elif kind == "on_custom_event":
+                    if event.get("name") == "worker_activity":
+                        from .events import evt_worker_activity
+                        yield evt_worker_activity(event["data"].get("workers", []))
+
         except Exception as e:
-            yield evt_error(f"Agent engine error: {str(e)}")
+            import traceback
+            tb = traceback.format_exc()
+            yield evt_error(f"Agent engine error: {str(e)}\nTraceback:\n{tb}")
             final_message = ""
 
         finally:

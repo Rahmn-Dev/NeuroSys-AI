@@ -42,6 +42,10 @@ class ToolMetadata:
     input_schema: Dict[str, Any] = field(default_factory=dict)
     examples: List[str] = field(default_factory=list)
     keywords: List[str] = field(default_factory=list)  # extra search terms
+    priority: int = 50                  # Ranking priority for Fast Tool Intelligence
+    capabilities: List[str] = field(default_factory=list)
+    supported_intents: List[str] = field(default_factory=list)
+    safe_fast_path: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -133,6 +137,62 @@ class ToolRegistry:
     def get_categories(self) -> List[str]:
         """Return a deduplicated list of all categories."""
         return sorted({e.meta.category for e in self._entries.values()})
+
+    def rank_capabilities(self, goal: str, intent: str) -> List[dict]:
+        """Rank all registered tools based on capability and intent matching score."""
+        import re
+        goal_lower = goal.lower()
+        
+        # Tokenize goal for simple matching
+        tokens = set(re.findall(r'\w+', goal_lower))
+        
+        ranked_results = []
+        for name, entry in self._entries.items():
+            meta = entry.meta
+            
+            # Intent match (1.0 if match, 0.0 otherwise)
+            intent_match_score = 1.0 if intent in meta.supported_intents else 0.0
+            
+            # Capability match score
+            best_cap_score = 0.0
+            matched_caps = []
+            
+            for cap in meta.capabilities:
+                cap_lower = cap.lower()
+                # Substring match gives a base score
+                if cap_lower in goal_lower:
+                    best_cap_score = max(best_cap_score, 0.8)
+                    matched_caps.append(cap)
+                # Token overlap gives a partial score
+                cap_tokens = set(re.findall(r'\w+', cap_lower))
+                if cap_tokens:
+                    overlap = len(tokens.intersection(cap_tokens)) / len(cap_tokens)
+                    if overlap > 0:
+                        best_cap_score = max(best_cap_score, overlap * 0.9)
+                        if overlap >= 0.4 and cap not in matched_caps:
+                            matched_caps.append(cap)
+            
+            # Calculate final score according to requested formula:
+            # final_score = (capability_match_score * 0.6) + (intent_match_score * 0.25) + (priority_score * 0.15)
+            # We assume priority_score is scaled 0.0 to 1.0 (priority / 100)
+            priority_score = min(meta.priority / 100.0, 1.0)
+            
+            final_score = (best_cap_score * 0.6) + (intent_match_score * 0.25) + (priority_score * 0.15)
+            
+            ranked_results.append({
+                "name": name,
+                "tool": entry.tool,
+                "meta": meta,
+                "capability_match_score": best_cap_score,
+                "intent_match_score": intent_match_score,
+                "priority_score": priority_score,
+                "final_score": final_score,
+                "matched_capabilities": matched_caps
+            })
+            
+        # Sort descending by final_score
+        ranked_results.sort(key=lambda x: x["final_score"], reverse=True)
+        return ranked_results
 
     def discover(
         self,

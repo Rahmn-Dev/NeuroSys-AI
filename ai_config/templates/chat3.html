@@ -363,6 +363,7 @@
         <!-- Investigation Tab -->
         <div id="tab-investigation" class="tab-content"
           style="flex:1; display:flex; flex-direction:column; padding:0; overflow-y:auto; font-size:13px; background:var(--bg-main);">
+          <div id="worker-activity-container" style="display:flex; flex-direction:column; border-bottom:1px solid var(--border-color);"></div>
           <div id="investigation-timeline-container" style="display:flex; flex-direction:column;">
             <div style="    background: var(--bg-main); padding:16px; color:var(--text-secondary); font-style:italic;">
               No investigations yet.</div>
@@ -599,6 +600,14 @@
             activeInvestigationId = invId;
             renderInvestigationTimeline();
             addAgentStep('Investigation Started', data.content || 'Starting new investigation...', 'var(--accent)', 'search');
+          }
+          break;
+
+        case 'worker_activity':
+          const workers = data.workers || (data.metadata && data.metadata.workers);
+          if (workers) {
+            activeWorkers = workers;
+            renderWorkerActivity();
           }
           break;
 
@@ -929,6 +938,7 @@
     // -- Investigation Timeline State --
     let investigations = {};
     let activeInvestigationId = null;
+    let activeWorkers = [];
 
     function renderInvestigationTimeline() {
       const container = document.getElementById('investigation-timeline-container');
@@ -959,7 +969,29 @@
         let findingsHtml = '';
         if (inv.findings && inv.findings.length > 0) {
           findingsHtml = inv.findings.map(f => {
-            return `<div style="display:flex;align-items:start;gap:8px;"><span style="color:var(--success);margin-top:2px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span> <span>${escapeHtml(f)}</span></div>`;
+            let icon = `<span style="color:var(--success);margin-top:2px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>`;
+            let content = escapeHtml(f);
+            
+            const match = f.match(/^\[(.*?)\]\[(.*?)\]\s*(.*)$/);
+            if (match) {
+                const worker = escapeHtml(match[1]);
+                const level = escapeHtml(match[2]);
+                const text = escapeHtml(match[3]);
+                
+                let badgeColor = 'var(--text-secondary)';
+                if (level === 'FAILURE' || level === 'ERROR') badgeColor = 'var(--error)';
+                if (level === 'SUCCESS' || level === 'INFO') badgeColor = 'var(--success)';
+                if (level === 'WARNING') badgeColor = 'var(--warning)';
+                
+                content = `<span style="font-size:10px; background:${badgeColor}22; color:${badgeColor}; padding:2px 6px; border-radius:4px; margin-right:6px; font-weight:600;">${level}</span>
+                           <span style="color:var(--text-secondary); font-weight:600; margin-right:6px;">[${worker}]</span>
+                           <span>${text}</span>`;
+            }
+
+            return `<div style="display:flex;align-items:start;gap:8px; line-height:1.4;">
+                      ${!match ? icon : ''}
+                      <div style="flex:1; word-break:break-word;">${content}</div>
+                    </div>`;
           }).join('');
         } else {
           findingsHtml = `<div class="sre-text-secondary" style="font-style:italic;">No findings yet</div>`;
@@ -999,7 +1031,58 @@
       }
     }
 
+    function renderWorkerActivity() {
+      const container = document.getElementById('worker-activity-container');
+      if (!container) return;
 
+      if (!activeWorkers || activeWorkers.length === 0) {
+        container.innerHTML = '';
+        container.style.display = 'none';
+        return;
+      }
+
+      container.style.display = 'flex';
+      let html = `<div style="padding:12px 16px; font-weight:600; color:var(--text-primary); background:var(--bg-panel); display:flex; align-items:center; gap:8px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spin-anim" style="color:var(--accent);"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>
+        Active Workers
+      </div>
+      <div style="padding:12px 16px; display:flex; flex-direction:column; gap:16px;">`;
+
+      activeWorkers.forEach((w, index) => {
+        let toolHtml = '';
+        if (w.last_tool) {
+            toolHtml += `<div style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--success);">
+               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+               ${escapeHtml(w.last_tool)}
+            </div>`;
+        }
+        
+        let actionColor = w.current_action.toLowerCase().includes('executing') ? 'var(--warning)' : 'var(--text-secondary)';
+        let currentActionHtml = `<div style="display:flex; align-items:center; gap:6px; font-size:12px; color:${actionColor}; margin-top:4px;">
+           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spin-anim"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>
+           ${escapeHtml(w.current_action)}
+        </div>`;
+
+        html += `
+          <div style="background:var(--bg-main); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:12px; box-shadow:0 2px 8px rgba(0,0,0,0.2);">
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+               <div style="font-weight:600; color:var(--text-primary); font-size:13px;">Worker ${w.id.substring(0,4).toUpperCase()}</div>
+               <div style="display:flex; gap:6px;">
+                  <span style="font-size:10px; background:rgba(255,255,255,0.1); padding:2px 6px; border-radius:4px; color:var(--text-secondary);" title="Findings Count">${w.findings_count} findings</span>
+                  <span style="font-size:10px; background:rgba(63, 185, 80, 0.2); padding:2px 6px; border-radius:4px; color:var(--success);" title="Evidence Count">${w.evidence_count} evidence</span>
+               </div>
+            </div>
+            <div style="font-size:12px; color:var(--text-secondary); margin-bottom:8px; font-style:italic;">
+               Goal: ${escapeHtml(w.goal)}
+            </div>
+            ${toolHtml}
+            ${currentActionHtml}
+          </div>
+        `;
+      });
+      html += `</div>`;
+      container.innerHTML = html;
+    }
 
     function scrollToBottom() {
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
