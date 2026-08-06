@@ -434,6 +434,7 @@ Do NOT create workers for satisfied domains listed above.
 === CURRENT USER REQUEST ===
 Goal: {goal}{terminal_cwd_note}
 {extracted_files_note}{followup_note}
+Current Iteration: {iteration}
 
 Your job:
 1. Classify intent: SIMPLE_INFORMATION, ACTION_TASK, DEBUG_TASK, SECURITY_TASK.
@@ -445,8 +446,10 @@ CRITICAL RULES:
 - Each worker gets a GOAL (what to investigate), NOT a list of commands.
 - Workers will autonomously decide which tools and commands to run.
 - Independent workers (depends_on: []) run in parallel. Use this for non-interfering checks.
-- For service failures, dynamically identify the exact service (e.g. postgresql, nginx) and generate narrow, application-specific workers (e.g., Worker A: Service status, Worker B: Config validation, Worker C: Error logs).
-- Generic system resource checks (CPU/memory/disk) should only run if service-specific checks do not find the issue. Set `depends_on` for generic workers so they wait for targeted workers to finish.
+- ADAPTIVE WORKER SCALING:
+  - If Current Iteration is 0 (Phase 1): Start with ONLY minimal high-probability diagnostic workers (e.g. service status, config validation, application logs). Do NOT generate workers for broad resource checks (CPU/memory/disk) yet.
+  - If Current Iteration > 0 (Phase 2+): Analyze evidence gaps from prior results and dynamically expand the investigation (e.g. resource checks, network checks) ONLY if Phase 1 failed to identify the root cause.
+- For service failures, dynamically identify the exact service (e.g. postgresql, nginx) and generate narrow, application-specific workers.
 - Do NOT generate broad "Analyze entire system" workers. Give each worker one clear objective.
 - SIMPLE_INFORMATION: 1 worker max.
 - Do NOT generate 'tool' or 'tool_args' — workers decide their own execution strategy.
@@ -796,6 +799,14 @@ Analyze all worker evidence together:
 2. Are there contradictions between worker findings?
 3. Is overall confidence sufficient (>= {WORKER_CONFIDENCE_THRESHOLD})?
 
+EVIDENCE PRIORITY HIERARCHY (Higher priority MUST ALWAYS override lower priority):
+Priority 1: Direct deterministic failure evidence (e.g. config syntax errors, crash logs)
+Priority 2: Application/service specific logs
+Priority 3: Service manager failure state
+Priority 4: Generic system symptoms (e.g. disk permission denied, high memory)
+
+CRITICAL RULE: Priority 4 generic environmental evidence MUST NEVER override Priority 1/2/3 direct causal root causes.
+
 Respond ONLY with valid JSON:
 {{
   "sufficient": true or false,
@@ -1075,7 +1086,8 @@ Rules:
 - Synthesize findings into a clear SRE investigation report.
 - Use EXACTLY these sections in the report_content: ## Summary, ## Root Cause, ## Evidence, ## Actions Taken, ## Verification, ## Remaining Issues.
 - You ARE an autonomous SRE agent with Linux tool access. NEVER say "I don't have access".
-- CRITICAL CONSTITUTION RULE: The final response must be generated ONLY from findings, evidence, and verification results. Completion without evidence is forbidden.
+- CRITICAL CONSTITUTION RULE: The final response must be generated ONLY from findings, evidence, and verification results.
+- FINAL REPORT COMPLETION GUARD: You MUST ONLY state claims that are backed by the provided execution evidence. FORBIDDEN: Do not claim files were fixed, configurations changed, or services restarted unless there is explicit execution evidence (e.g. `systemctl restart nginx`) proving it happened.
 - CRITICAL REPORT INTEGRITY RULE: The final report MUST ONLY contain executed actions, actual outputs, and verified findings. Never output dummy placeholders like 'your_command_here' or 'username'.
 
 Output ONLY valid JSON:

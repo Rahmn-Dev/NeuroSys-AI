@@ -371,9 +371,9 @@ Output strictly the category name."""
             ws_path = workspace_ctx.path if workspace_ctx else os.getcwd()
             artifact_mgr = ArtifactManager(ws_path, session_id=self.session_id)
                 
-            task_plan_path = f".neurosys/sessions/{self.session_id}/artifacts/task_plan.json"
-            findings_path = f".neurosys/sessions/{self.session_id}/artifacts/findings.json"
-            history_path = f".neurosys/sessions/{self.session_id}/artifacts/execution_history.json"
+            task_plan_path = None
+            findings_path = None
+            history_path = None
 
             latest_inv = None
             latest_inv = await sync_to_async(
@@ -437,9 +437,13 @@ New user request: '{user_message}'
 
 Is the new user request a direct continuation of the EXACT SAME investigation?
 RULES:
-1. If the user is asking about a different service, system issue, or diagnostic domain, answer 'NEW'.
-2. Generic words like "service", "error", "failed", or "system" in the new request are NOT enough to classify as a continuation.
-3. Only classify as 'CONTINUE' if the new request refers to the exact same failure or service from the previous findings.
+1. STRICT INVESTIGATION BOUNDARIES: A new investigation_id MUST be created (answer 'NEW') when:
+   - A new user request starts
+   - The incident target changes (e.g. from nginx to postgres)
+   - The incident class changes (e.g. from service failure to server slow)
+2. If the user is asking about a different service, system issue, or diagnostic domain, answer 'NEW'.
+3. Generic words like "service", "error", "failed", or "system" in the new request are NOT enough to classify as a continuation.
+4. Only classify as 'CONTINUE' if the new request explicitly refers to the exact same failure or service from the previous findings.
 
 Reply STRICTLY 'CONTINUE' or 'NEW'."""
                     
@@ -451,8 +455,22 @@ Reply STRICTLY 'CONTINUE' or 'NEW'."""
                 from .events import evt_investigation_started
                 inv_id = "inv_" + str(uuid.uuid4())[:8]
                 now_str = time.strftime("%Y-%m-%dT%H:%M:%SZ")
-                plan_data = {"investigation_id": inv_id, "title": user_message[:40], "created_at": now_str, "tasks": [], "is_continuation": False}
-                findings_data = {"investigation_id": inv_id, "title": user_message[:40], "created_at": now_str, "findings": []}
+                # Fix 8: Aggregation State Isolation. Strict reset of all states.
+                plan_data = {
+                    "investigation_id": inv_id, 
+                    "title": user_message[:40], 
+                    "created_at": now_str, 
+                    "tasks": [], 
+                    "is_continuation": False,
+                    "completed": False,
+                    "satisfied_domains": []
+                }
+                findings_data = {
+                    "investigation_id": inv_id, 
+                    "title": user_message[:40], 
+                    "created_at": now_str, 
+                    "findings": []
+                }
                 initial_state["plan"] = plan_data
                 initial_state["findings"] = findings_data
                 
@@ -465,7 +483,13 @@ Reply STRICTLY 'CONTINUE' or 'NEW'."""
                 
                 yield evt_investigation_started(inv_id, user_message[:40])
             else:
+                inv_id = initial_state["plan"].get("investigation_id", "inv_" + str(uuid.uuid4())[:8])
                 initial_state["plan"]["is_continuation"] = True
+
+            # Fix 8: Artifact Segmentation. Scope artifacts by investigation_id.
+            task_plan_path = f".neurosys/sessions/{self.session_id}/investigations/{inv_id}/task_plan.json"
+            findings_path = f".neurosys/sessions/{self.session_id}/investigations/{inv_id}/findings.json"
+            history_path = f".neurosys/sessions/{self.session_id}/investigations/{inv_id}/execution_history.json"
 
             async for event in agent.astream_events(initial_state, version="v2", config={"recursion_limit": 100}):
                 kind = event["event"]

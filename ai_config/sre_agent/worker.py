@@ -108,6 +108,7 @@ class ConfidenceEngine:
             ev_type = "direct_error"
             verified = True
             relevance = 0.95
+            weight = max(weight, 1.0)  # Fix 7: Direct deterministic errors guarantee high confidence
         elif signal == "SUCCESS":
             ev_type = "service_status"
             verified = False
@@ -425,6 +426,30 @@ class InvestigationWorker:
                 if not action:
                     break  # LLM gave up
 
+                # Fix 9: Option D - Insufficient Capability
+                if action.get("insufficient_capability"):
+                    self.state.status = "failed"
+                    self.state.findings.append({
+                        "tool": "_capability_gap", "args": {},
+                        "output": f"INSUFFICIENT CAPABILITY: {action.get('missing_capability', 'unknown')}. {action.get('reasoning', '')}",
+                        "signal": "WARNING", "finding": "capability_gap",
+                        "iteration": self.state.iteration, "timestamp": time.time()
+                    })
+                    break  # Abort worker
+
+                # Fix 9: Tool Relevance Score Guard
+                if "tool" in action and not action.get("done") and not action.get("spawn_child"):
+                    relevance_score = action.get("tool_relevance_score", 1.0)
+                    if relevance_score < 0.7:
+                        self.state.findings.append({
+                            "tool": action.get("tool"), "args": action.get("args", {}),
+                            "output": f"BLOCKED: Tool relevance score ({relevance_score}) is below 0.7. Reason: {action.get('reasoning')}",
+                            "signal": "WARNING", "finding": "low_relevance",
+                            "iteration": self.state.iteration, "timestamp": time.time()
+                        })
+                        self.state.iteration += 1
+                        continue
+
                 # Handle spawn_child request
                 if action.get("spawn_child"):
                     # Start the child worker as an asyncio Task for concurrent execution
@@ -660,6 +685,13 @@ RULES:
 - CRITICAL: You MUST execute at least one tool before you can set "done": true. If no tools have been executed yet, you MUST choose Option A.
 - Only set "done": true when you have actual tool output as evidence.
 - To set "done": true, you MUST construct a logical `evidence_chain` grounded in actual observations (symptom -> mechanism -> failure root). Do NOT invent causal links. Each chain element must reference an observation, command output, or verified signal.
+- EVIDENCE RELEVANCE VALIDATION: Verified evidence alone is insufficient. Before concluding a root cause, you MUST verify that the evidence is relevant to the incident and logically explains the observed failure. (e.g., a missing docker-compose.yml must not be cited as the root cause for 'docker container exited' unless evidence explicitly links them).
+- TOOL CAPABILITY AWARENESS: If a tool returns an error indicating an unsupported action or missing capability (e.g. "Unknown action"), you MUST NOT retry it. Treat it as a capability gap and pivot to an alternative diagnostic approach.
+- CAPABILITY MATCHING LAYER: Every tool declares capabilities. You MUST select tools based on capability matching, not tool name similarity. 
+- FORBIDDEN TOOL SELECTION: A worker MUST NOT execute a tool unless the tool capability directly contributes to the assigned goal. (e.g. Do not use memory_info for config validation goals).
+- WORKER SELF-VALIDATION: Before executing a tool, you must answer "How does this tool help achieve the assigned goal?" in one sentence (`self_validation`). If it takes more than one sentence, the tool is irrelevant.
+- CAPABILITY CONFIDENCE: You must assign a `tool_relevance_score` between 0.0 and 1.0. The execution will be rejected if the score is < 0.7.
+- INSUFFICIENT CAPABILITY: If no tool has a relevance score >= 0.7, you MUST NOT fabricate evidence or execute unrelated tools. You must select Option D (Insufficient Capability) to report the gap.
 - The `evidence_chain_confidence` must be >= 0.8 for the root cause to be accepted.
 - Do not conclude an investigation only because a suspicious metric exists. First verify that the metric explains the failure of the requested component.
 - Example Bad Reasoning: "nginx down, memory high -> memory caused nginx failure"
@@ -670,6 +702,11 @@ Respond ONLY with valid JSON, one of:
 Option A - Execute a tool:
 {{
   "reasoning": "why this tool next",
+  "required_capability": "the capability needed for the goal",
+  "candidate_tools": ["tool1", "tool2"],
+  "best_tool": "chosen tool",
+  "tool_relevance_score": 0.9,
+  "self_validation": "One sentence explaining how this tool helps achieve the assigned goal.",
   "tool": "tool_name",
   "args": {{"arg1": "value1"}},
   "hypothesis_update": "updated hypothesis",
@@ -695,6 +732,14 @@ Option C - Done (sufficient evidence found):
   "evidence_chain_confidence": 0.95,
   "evidence_relevance_score": 0.9,
   "recommendations": ["step 1", "step 2"]
+}}
+
+Option D - Insufficient Capability:
+{{
+  "reasoning": "why the available tools cannot achieve the goal",
+  "insufficient_capability": true,
+  "missing_capability": "the capability that is missing",
+  "done": true
 }}
 """
         try:
@@ -1068,10 +1113,10 @@ class WorkerScheduler:
                 if on_worker_complete:
                     await _maybe_await(on_worker_complete, spec["id"], state)
 
-                # Fix 4: Cancel remaining workers when any worker finds verified root-cause evidence.
-                # Previously score-gated at 0.90, but a FAILURE rule scores only 0.60,
-                # so parallel workers kept running unrelated diagnostics.
-                if state.confidence.has_verified_evidence or state.confidence.score >= self.global_threshold:
+                # Fix 7: Early Worker Cancellation / Termination Gate.
+                # Cancel remaining workers ONLY when verified deterministic evidence is found 
+                # AND confidence is >= 0.95.
+                if state.confidence.has_verified_evidence and state.confidence.score >= 0.95:
                     cancel_event.set()
 
         await asyncio.gather(*[run_single(i, spec) for i, spec in enumerate(worker_specs)],
