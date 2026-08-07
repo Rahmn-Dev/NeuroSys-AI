@@ -180,6 +180,15 @@ class SREAgentEngine:
                 max_tokens=4096,
                 extra_body={"chat_template_kwargs":{"thinking":False}},
             )
+        elif self.model_name == "9router":
+            from langchain_openai import ChatOpenAI
+            return ChatOpenAI(
+                model="9router",
+                base_url="http://localhost:20128/v1",
+                api_key="9router",  # Dummy key usually required by langchain
+                temperature=0.1,
+                max_tokens=4096,
+            )
         elif self.model_name in ["mistral:latest", "qwen2.5-coder:latest"]:
             from langchain_ollama import ChatOllama
             ollama_url = getattr(settings, "OLLAMA_URL", os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434"))

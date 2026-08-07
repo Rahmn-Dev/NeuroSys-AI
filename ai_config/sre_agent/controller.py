@@ -444,13 +444,14 @@ Your job:
 4. Define targeted worker objectives — one per narrow diagnostic domain.
 
 CRITICAL RULES:
-- Each worker gets a GOAL (what to investigate), NOT a list of commands.
+- Each worker gets a GOAL (what to investigate AND remediate), NOT a list of commands.
+- Give each worker an ACTIONABLE objective (e.g. "Validate and fix configuration files" instead of just "Validate").
 - Workers will autonomously decide which tools and commands to run.
 - Independent workers (depends_on: []) run in parallel. Use this for non-interfering checks.
 - ADAPTIVE WORKER SCALING:
   - If Current Iteration is 0 (Phase 1): Start with ONLY minimal high-probability diagnostic workers (e.g. service status, config validation, application logs). Do NOT generate workers for broad resource checks (CPU/memory/disk) yet.
   - If Current Iteration > 0 (Phase 2+): Analyze evidence gaps from prior results and dynamically expand the investigation (e.g. resource checks, network checks) ONLY if Phase 1 failed to identify the root cause.
-- For service failures, dynamically identify the exact service (e.g. postgresql, nginx) and generate narrow, application-specific workers.
+- For service failures, dynamically identify the exact service (e.g. Service A, Runtime B) and generate narrow, application-specific workers.
 - Do NOT generate broad "Analyze entire system" workers. Give each worker one clear objective.
 - SIMPLE_INFORMATION: 1 worker max.
 - Do NOT generate 'tool' or 'tool_args' — workers decide their own execution strategy.
@@ -471,14 +472,14 @@ Output STRICTLY this JSON:
   "workers": [
     {{
       "id": "A",
-      "goal": "Check systemd service status and failed services for nginx",
+      "goal": "Check systemd service status for target application and restart/fix if failed",
       "expected_diagnostic_domains": ["service_status"],
       "depends_on": [],
       "priority": "high"
     }},
     {{
       "id": "B",
-      "goal": "Validate nginx configuration files",
+      "goal": "Validate configuration files for target application and fix any syntax errors",
       "expected_diagnostic_domains": ["configuration"],
       "depends_on": [],
       "priority": "high"

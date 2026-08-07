@@ -248,7 +248,7 @@ class RuleObserver:
         (r"failed to start",                           "FAILURE",  "service_start_failed", False),
         (r"start request repeated too quickly",        "FAILURE",  "service_restart_loop", False),
         # Config
-        (r"syntax error|invalid directive|unknown directive|nginx: \[emerg\]",
+        (r"syntax error|invalid directive|unknown directive",
                                                        "FAILURE",  "config_error", True),
         (r"syntax is ok|test is successful|configuration file.*syntax is ok",
                                                        "SUCCESS",  "config_valid", False),
@@ -266,10 +266,7 @@ class RuleObserver:
         # Memory/CPU
         (r"Out of memory|OOM killer|oom-kill",         "CRITICAL", "oom_kill", False),
         (r"Killed process",                            "CRITICAL", "process_killed", False),
-        # Docker
-        (r"Exited \([^0]",                             "FAILURE",  "container_exited", False),
-        (r"Up \d+ (second|minute|hour|day)",           "SUCCESS",  "container_running", False),
-        (r"cannot connect to docker daemon",           "FAILURE",  "docker_daemon_down", False),
+
         # Disk
         (r"\b(9[5-9]|100)%",                          "CRITICAL", "disk_near_full", False),
         (r"\b([0-7][0-9])%",                           "INFO",     "disk_ok", False),
@@ -344,12 +341,21 @@ class WorkerState:
     status: str                               = "pending"   # pending|running|completed|failed|blocked|cancelled
     completed: bool                           = False
     root_cause: str                           = ""
-    recommendations: List[str]               = field(default_factory=list)
+    recommendations: List[str]                = field(default_factory=list)
     children: List["WorkerState"]             = field(default_factory=list)
     is_child: bool                            = False
     parent_id: Optional[str]                  = None
-    total_duration: float                     = 0.0
+    parent_context: List[dict]                = field(default_factory=list)
     requires_approval: bool                   = False
+
+    # Universal Operator Task State (Phase A.7)
+    current_phase: str                        = "understanding"
+    completed_actions: List[str]              = field(default_factory=list)
+    pending_actions: List[str]                = field(default_factory=list)
+    observations: List[str]                   = field(default_factory=list)
+    failures: List[str]                       = field(default_factory=list)
+    next_action: str                          = ""
+
     terminal_cwd: str                         = ""
     active_workspace: str                     = ""
     evidence_chain: List[str]                 = field(default_factory=list)
@@ -357,10 +363,22 @@ class WorkerState:
     expected_diagnostic_domains: List[str]    = field(default_factory=list)
     investigation_coverage: List[str]         = field(default_factory=list)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Investigation Worker
-# ─────────────────────────────────────────────────────────────────────────────
+    def snapshot(self) -> dict:
+        return {
+            "id": self.id,
+            "goal": self.goal,
+            "status": self.status,
+            "iteration": self.iteration,
+            "completed": self.completed,
+            "root_cause": self.root_cause,
+            "confidence": self.confidence.summary(),
+            "children_count": len(self.children),
+            "findings_count": len(self.findings),
+            "is_child": self.is_child,
+            "current_phase": self.current_phase,
+            "completed_actions": self.completed_actions,
+            "pending_actions": self.pending_actions,
+        }
 
 class InvestigationWorker:
     """
@@ -400,6 +418,9 @@ class InvestigationWorker:
         self._parent_context = parent_context or []
         self._child_depth = 1 if is_child else 0
         self._active_children: List[asyncio.Task] = []
+        
+        from .executor import PythonToolExecutor
+        self.executor = PythonToolExecutor(self.tool_map)
 
     # ── public entry point ───────────────────────────────────────────────────
 
@@ -425,6 +446,14 @@ class InvestigationWorker:
                 action = await self._think()
                 if not action:
                     break  # LLM gave up
+
+                # Process Task State Update
+                if "task_state_update" in action:
+                    ts = action["task_state_update"]
+                    if "current_phase" in ts: self.state.current_phase = ts["current_phase"]
+                    if "completed_actions" in ts: self.state.completed_actions = ts["completed_actions"]
+                    if "pending_actions" in ts: self.state.pending_actions = ts["pending_actions"]
+                    if "observations" in ts: self.state.observations = ts["observations"]
 
                 # Fix 9: Option D - Insufficient Capability
                 if action.get("insufficient_capability"):
@@ -492,6 +521,90 @@ class InvestigationWorker:
 
                     child_task.add_done_callback(_on_child_done)
                     self._active_children.append(child_task)
+                    self.state.iteration += 1
+                    continue
+
+                # Phase A.6/A.7: Handle Option E - Operator Action
+                if action.get("proposed_action"):
+                    proposed = action["proposed_action"]
+                    capability = proposed.get("capability")
+                    op_action = proposed.get("action")
+                    target = proposed.get("target")
+                    kwargs = proposed.get("kwargs", {})
+                    
+                    # Mandatory Environment Discovery Gate
+                    if not any("environment_discovery" in s for s in self.state.tool_history) and not any("environment_discovery" in a.lower() for a in self.state.completed_actions):
+                        self.state.findings.append({
+                            "tool": "_operator_plan", "args": {},
+                            "output": "BLOCKED: Environment Discovery Gate. You MUST perform environment_discovery before executing any mutation or Operator Action in an unknown environment.",
+                            "signal": "BLOCKED", "finding": "discovery_required",
+                            "iteration": self.state.iteration, "timestamp": time.time()
+                        })
+                        self.state.iteration += 1
+                        continue
+                    
+                    self.state.findings.append({
+                        "tool": "_operator_plan", "args": {},
+                        "output": f"OPERATOR PLAN:\nObjective: {action.get('objective')}\nAction: {op_action} {target}\nExpected: {action.get('expected_result')}",
+                        "signal": "INFO", "finding": "operator_plan",
+                        "iteration": self.state.iteration, "timestamp": time.time()
+                    })
+                    
+                    if on_progress:
+                        on_progress(self.state, f"Executing Action: {op_action}")
+                        
+                    # Phase A.6 Operator Safety Check
+                    tool_name_resolved = self.executor._resolve_tool(capability, op_action, target)
+                    if tool_name_resolved:
+                        mapped_args = self.executor._map_args(tool_name_resolved, op_action, target, kwargs)
+                        approved, block_reason = self._safety_check(tool_name_resolved, mapped_args)
+                        if not approved:
+                            self.state.findings.append({
+                                "tool": "_operator_plan", "args": {"target": target},
+                                "output": f"BLOCKED: {block_reason}. This action requires explicit approval or is blocked.",
+                                "signal": "BLOCKED", "finding": "operator_blocked",
+                                "iteration": self.state.iteration, "timestamp": time.time()
+                            })
+                            if "approval_required" in block_reason.lower():
+                                self.state.requires_approval = True
+                                self.state.status = "blocked"
+                                break
+                            self.state.iteration += 1
+                            continue
+                        
+                    # Execute
+                    success, op_output = self.executor.execute(capability, op_action, target, kwargs)
+                    
+                    self.state.findings.append({
+                        "tool": f"{capability}:{op_action}", "args": {"target": target},
+                        "output": op_output[:1500],
+                        "signal": "SUCCESS" if success else "FAILURE", 
+                        "finding": "operator_execution",
+                        "iteration": self.state.iteration, "timestamp": time.time()
+                    })
+                    
+                    # Verify
+                    if on_progress:
+                        on_progress(self.state, f"Verifying Action...")
+                    
+                    verification_method = action.get("verification_method", "")
+                    if verification_method:
+                        # Map verification to execution
+                        v_success, v_output = self.executor.execute("command_execution", verification_method, "", {})
+                        v_signal = "SUCCESS" if v_success else "FAILURE"
+                        
+                        v_detail = v_output[:1500]
+                        if not v_success:
+                            v_detail += "\n\nVERIFICATION FAILED. Recovery Loop Triggered. You MUST propose a recovery action or rollback."
+                            
+                        self.state.findings.append({
+                            "tool": "_verification", "args": {"method": verification_method},
+                            "output": f"Action Result: {op_output[:500]}\nVerification Output:\n{v_detail}",
+                            "signal": v_signal, 
+                            "finding": "operator_verification",
+                            "iteration": self.state.iteration, "timestamp": time.time()
+                        })
+                    
                     self.state.iteration += 1
                     continue
 
@@ -564,27 +677,22 @@ class InvestigationWorker:
                         is_root_cause=is_rule_root_cause,
                     )
 
-                    # If this rule flags a definite root cause, complete immediately
+                    # If this rule flags a definite root cause, record it but DO NOT break!
+                    # We want the LLM to see this deterministic finding so it can propose a remediation via Option E.
                     if is_rule_root_cause:
-                        # Fix 1: Auto-populate evidence state from actual observations.
-                        # The rule broke the loop before the LLM could populate these fields,
-                        # so we build them deterministically from real tool history.
                         executed_tools = [f"Executed: {t}" for t in self.state.tool_history[-5:]]
                         self.state.evidence_chain = executed_tools + [
                             f"Direct evidence [{rule_match.finding}]: {rule_match.matched_text[:200]}"
                         ]
                         self.state.evidence_chain_confidence = 1.0  # deterministic rule = certain
-                        # Coverage is derived from signals that actually produced findings
                         self.state.investigation_coverage = list({
                             f.get("finding", "")
                             for f in self.state.findings
                             if f.get("signal") in ("FAILURE", "CRITICAL", "SUCCESS") and f.get("finding")
                         })
-                        # Structured root_cause — no ambiguous "Found via rule:" prefix
                         self.state.root_cause = f"{rule_match.finding}: {rule_match.matched_text[:200]}"
-                        self.state.completed = True
-                        self.state.status = "completed"
-                        break
+                        # Instead of completing, we let the LLM see it on the next iteration.
+                        self.state.confidence.is_sufficient = True
                 else:
                     # Uncertain — call LLM observe as fallback
                     llm_obs = await self._llm_observe(output, rule_match)
@@ -613,11 +721,7 @@ class InvestigationWorker:
 
                 self.state.iteration += 1
 
-                # 6. Worker-level early termination
-                if self.state.confidence.is_sufficient:
-                    self.state.completed = True
-                    self.state.status = "completed"
-                    break
+                # 6. Worker-level LLM termination (Option C) handles completion now.
 
             # Iteration limit reached
             if not self.state.completed:
@@ -666,7 +770,18 @@ class InvestigationWorker:
             )
 
         expected_domains_str = ", ".join(self.state.expected_diagnostic_domains) if self.state.expected_diagnostic_domains else "None specified (determine appropriate domains yourself)"
-        prompt = f"""You are an autonomous SRE investigation worker.{is_child_note}
+
+        task_state_str = (
+            f"--- UNIVERSAL OPERATOR TASK STATE ---\n"
+            f"CURRENT PHASE: {self.state.current_phase}\n"
+            f"COMPLETED ACTIONS: {self.state.completed_actions}\n"
+            f"PENDING ACTIONS: {self.state.pending_actions}\n"
+            f"OBSERVATIONS: {self.state.observations}\n"
+            f"FAILURES: {self.state.failures}\n"
+            f"--------------------------------------"
+        )
+
+        prompt = f"""You are an Autonomous Universal Linux Operator.{is_child_note}
 
 INVESTIGATION GOAL: {self.state.goal}
 EXPECTED DIAGNOSTIC DOMAINS: {expected_domains_str}
@@ -675,6 +790,7 @@ CONFIDENCE: {self.state.confidence.score:.2f} (threshold: {WORKER_CONFIDENCE_THR
 ITERATION: {self.state.iteration + 1} of {self.max_iterations}
 TERMINAL WORKING DIRECTORY: {self.state.terminal_cwd or "Unknown"}
 {parent_ctx_str}
+{task_state_str}
 
 PRIOR FINDINGS (most recent first):
 {prior_findings_str}
@@ -687,7 +803,7 @@ AVAILABLE TOOLS:
 
 RULES:
 - Select the SINGLE MOST VALUABLE next action to advance the investigation.
-- If investigating a service failure (e.g. nginx), STRICTLY PRIORITIZE direct service diagnostics (service status, config tests, logs) over basic reconnaissance like whoami or get_current_directory.
+- If investigating a service failure, STRICTLY PRIORITIZE direct service diagnostics (service status, config tests, logs) over basic reconnaissance like whoami or get_current_directory.
 - EVIDENCE PRIORITY HIERARCHY (Higher overrides lower):
   1. Verified deterministic evidence (e.g. config syntax failure, explicit crash)
   2. Application/service specific failure logs
@@ -695,7 +811,7 @@ RULES:
   4. Generic environmental symptoms (e.g. permission denied, disk warnings, generic resource usage)
 - Generic environmental symptoms MUST NOT override a direct service failure root cause.
 - Read the AVAILABLE TOOLS carefully. Workers MUST ONLY select actions explicitly exposed by tool schemas. Never invent tool actions, parameters, or capabilities.
-- For service config tests (e.g. nginx config validation), DO NOT invent actions for `service_manager`. You MUST use `linux_diagnostic_execute` to run the specific test command (e.g., `nginx -t`, `apache2ctl configtest`).
+- For service config tests, DO NOT invent actions for `service_manager`. You MUST use `linux_diagnostic_execute` to run the specific test command (e.g., `apache2ctl configtest` or equivalent).
 - Do NOT repeat a tool+args combination already in the ALREADY EXECUTED list. If you do, it will be BLOCKED.
 - If a diagnostic domain has already been satisfied and verified, move to the next logical domain.
 - RETRIEVAL PRIORITY: For SIMPLE_INFORMATION or data retrieval tasks, prioritize direct retrieval tools over investigative tools.
@@ -704,19 +820,21 @@ RULES:
 - If a sub-investigation is needed (e.g., network latency, DB connection), you may spawn a child worker.
 - You may spawn a child worker while current depth < MAX_WORKER_DEPTH.
 - CRITICAL: You MUST execute at least one tool before you can set "done": true. If no tools have been executed yet, you MUST choose Option A.
-- Only set "done": true when you have actual tool output as evidence.
+- REMEDIATION PRIORITY: If you find a definitive root cause (e.g. a syntax error, stopped service, failed process), you MUST attempt to remediate it using Option E or a file edit tool. Do NOT use Option C until the system is fully restored or you lack the capability to fix it.
+- Only set "done": true when you have actual tool output as evidence AND have attempted to fix any identified issues.
 - To set "done": true, you MUST construct a logical `evidence_chain` grounded in actual observations (symptom -> mechanism -> failure root). Do NOT invent causal links. Each chain element must reference an observation, command output, or verified signal.
 - EVIDENCE RELEVANCE VALIDATION: Verified evidence alone is insufficient. Before concluding a root cause, you MUST verify that the evidence is relevant to the incident and logically explains the observed failure. (e.g., a missing docker-compose.yml must not be cited as the root cause for 'docker container exited' unless evidence explicitly links them).
 - TOOL CAPABILITY AWARENESS: If a tool returns an error indicating an unsupported action or missing capability (e.g. "Unknown action"), you MUST NOT retry it. Treat it as a capability gap and pivot to an alternative diagnostic approach.
 - CAPABILITY MATCHING LAYER: Every tool declares capabilities. You MUST select tools based on capability matching, not tool name similarity. The `required_capability` field MUST be an EXACT VERBATIM match of one of the strings listed in the chosen tool's `Capabilities:` array. Do not invent your own capability strings.
-- FORBIDDEN TOOL SELECTION: A worker MUST NOT execute a tool unless the tool capability directly contributes to the assigned goal. (e.g. Do not use memory_info for config validation goals).
+- UNIVERSAL WORKFLOW: Understand → Discover Environment → Create Plan → Execute Action → Observe Result → Adapt → Verify Outcome. You MUST follow this workflow across all domains (SRE, dev, deploy).
+- MANDATORY ENVIRONMENT DISCOVERY: For unknown environments, you MUST NOT execute mutation actions before completing environment discovery. Before any Operation Mode action, use `environment_discovery` to identify OS, runtime, and project structure.
+- TASK STATE UPDATES: In your JSON response, you MUST include a `task_state_update` object to maintain long-running progress.
+- ENVIRONMENT DISCOVERY: Before attempting any complex Operator Mode mutations (e.g., restarting services, modifying configs), you SHOULD use the `environment_discovery` capability to understand the OS and running context.
 - WORKER SELF-VALIDATION: Before executing a tool, you must answer "How does this tool help achieve the assigned goal?" in one sentence (`self_validation`). If it takes more than one sentence, the tool is irrelevant.
 - CAPABILITY CONFIDENCE: You must assign a `tool_relevance_score` between 0.0 and 1.0. The execution will be rejected if the score is < 0.7.
 - INSUFFICIENT CAPABILITY: If no tool has a relevance score >= 0.7, you MUST NOT fabricate evidence or execute unrelated tools. You must select Option D (Insufficient Capability) to report the gap.
 - The `evidence_chain_confidence` must be >= 0.8 for the root cause to be accepted.
 - Do not conclude an investigation only because a suspicious metric exists. First verify that the metric explains the failure of the requested component.
-- Example Bad Reasoning: "nginx down, memory high -> memory caused nginx failure"
-- Example Good Reasoning: "nginx failed -> nginx worker disappeared -> journal shows OOM kill event -> kernel killed nginx because memory exhausted -> root cause: memory exhaustion"
 
 Respond ONLY with valid JSON, one of:
 
@@ -732,6 +850,12 @@ Option A - Execute a tool:
   "tool": "tool_name",
   "args": {{"arg1": "value1"}},
   "hypothesis_update": "updated hypothesis",
+  "task_state_update": {{
+    "current_phase": "e.g., environment_discovery, planning, execution, debugging",
+    "completed_actions": ["list of completed items"],
+    "pending_actions": ["list of pending items"],
+    "observations": ["important state observations"]
+  }},
   "done": false
 }}
 
@@ -758,10 +882,32 @@ Option C - Done (sufficient evidence found):
 
 Option D - Insufficient Capability:
 {{
-  "reasoning": "why the available tools cannot achieve the goal",
+  "reasoning": "why no tool can achieve the goal",
   "insufficient_capability": true,
-  "missing_capability": "the capability that is missing",
-  "done": true
+  "missing_capability": "the required capability that is missing"
+}}
+
+Option E - Operator Action (Execute -> Observe -> Verify loop):
+Use this ONLY when performing system mutations, remediation, or state changes.
+{{
+  "objective": "Restore Service A",
+  "observation": "Service A failed because configuration contains syntax error",
+  "hypothesis": "Invalid Service A directive prevents startup",
+  "proposed_action": {{
+    "capability": "service_management",
+    "action": "restart_service",
+    "target": "Service_A",
+    "kwargs": {{}}
+  }},
+  "expected_result": "Service A starts successfully",
+  "verification_method": "systemctl status Service_A",
+  "risk_level": "medium",
+  "task_state_update": {{
+    "current_phase": "e.g., execution, verification",
+    "completed_actions": ["..."],
+    "pending_actions": ["..."],
+    "observations": ["..."]
+  }}
 }}
 """
         try:
@@ -873,9 +1019,9 @@ Rules matched (uncertain): {rule_match.finding}
 
 Evidence Classification Rules:
 - "observation": Something you noticed (e.g. memory is high, CPU is busy). NOT a root cause by itself.
-- "service_status": Direct status of a specific service (e.g. nginx is stopped, active=failed).
-- "direct_error": A specific error message directly from the affected component's logs (e.g. nginx OOM kill, config syntax error).
-- "correlated": You found two pieces of evidence that together form a causal chain (e.g. memory high + OOM kill timestamp matches nginx crash time).
+- "service_status": Direct status of a specific service (e.g. service is stopped, active=failed).
+- "direct_error": A specific error message directly from the affected component's logs (e.g. OOM kill, config syntax error).
+- "correlated": You found two pieces of evidence that together form a causal chain (e.g. memory high + OOM kill timestamp matches service crash time).
 
 Relevance Score (0.0 - 1.0):
 - 0.0-0.3: Unrelated observation

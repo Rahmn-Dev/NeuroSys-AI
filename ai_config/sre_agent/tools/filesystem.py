@@ -174,7 +174,7 @@ def register_filesystem_tools() -> None:
             examples=["get_current_directory()"],
             keywords=["pwd", "cwd", "directory", "current", "where"],
             priority=100,
-            capabilities=["current directory", "working directory", "pwd", "where am i", "current location"],
+            capabilities=["environment_discovery", "filesystem_operation"],
             supported_intents=["SIMPLE_INFORMATION"],
             safe_fast_path=True,
         )),
@@ -185,7 +185,7 @@ def register_filesystem_tools() -> None:
             risk_level=RiskLevel.LOW,
             input_schema={"path": "string — absolute or relative file path"},
             examples=["read_file('/etc/nginx/nginx.conf')", "read_file('docker-compose.yml')"],
-            keywords=["read", "cat", "view", "content", "config", "log", "file"],
+            capabilities=["workspace_operation", "filesystem_operation"],
         )),
         (write_file, ToolMetadata(
             name="write_file",
@@ -194,7 +194,7 @@ def register_filesystem_tools() -> None:
             risk_level=RiskLevel.MEDIUM,
             input_schema={"path": "string", "content": "string"},
             examples=["write_file('/tmp/test.txt', 'hello world')"],
-            keywords=["write", "create", "save", "file", "output"],
+            capabilities=["workspace_operation", "filesystem_operation"],
         )),
         (edit_file, ToolMetadata(
             name="edit_file",
@@ -203,7 +203,7 @@ def register_filesystem_tools() -> None:
             risk_level=RiskLevel.MEDIUM,
             input_schema={"path": "string", "old_text": "string", "new_text": "string"},
             examples=["edit_file('/etc/nginx/nginx.conf', 'worker_connections 768', 'worker_connections 1024')"],
-            keywords=["edit", "modify", "replace", "change", "update", "config"],
+            capabilities=["workspace_operation", "filesystem_operation"],
         )),
         (search_files, ToolMetadata(
             name="search_files",
@@ -213,7 +213,7 @@ def register_filesystem_tools() -> None:
             input_schema={"pattern": "string (regex)", "path": "string", "file_glob": "string (optional)"},
             examples=["search_files('ERROR', '/var/log/', '*.log')", "search_files('listen 80', '/etc/nginx/')"],
             keywords=["search", "grep", "find", "pattern", "text", "log"],
-            priority=20,
+            capabilities=["workspace_operation", "filesystem_operation"],
         )),
         (list_directory, ToolMetadata(
             name="list_directory",
@@ -223,7 +223,7 @@ def register_filesystem_tools() -> None:
             input_schema={"path": "string — directory path (default: '.')"},
             examples=["list_directory('/etc/nginx/')", "list_directory('.')"],
             keywords=["list", "ls", "directory", "folder", "files", "tree"],
-            priority=40,
+            capabilities=["workspace_operation", "environment_discovery", "filesystem_operation"],
         )),
         (file_info, ToolMetadata(
             name="file_info",
@@ -232,6 +232,6 @@ def register_filesystem_tools() -> None:
             risk_level=RiskLevel.LOW,
             input_schema={"path": "string"},
             examples=["file_info('/var/log/syslog')"],
-            keywords=["stat", "info", "metadata", "permissions", "owner", "size"],
+            capabilities=["filesystem_operation", "environment_discovery"],
         )),
     ])

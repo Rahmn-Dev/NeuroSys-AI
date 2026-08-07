@@ -1,5 +1,5 @@
 """
-Network diagnostic tools — ports, connectivity, DNS, firewall, nginx.
+Network diagnostic tools — ports, connectivity, DNS, firewall.
 
 All tools registered in the global ToolRegistry on import.
 """
@@ -75,21 +75,6 @@ def firewall_status(action: str = "status") -> str:
         return "Unknown action. Use: status, rules, ports."
 
 
-@tool
-def nginx_status(action: str = "status") -> str:
-    """Check Nginx web server status and configuration.
-    `action`: status, config_test, sites, connections."""
-    if action == "status":
-        return _run("systemctl status nginx --no-pager 2>&1 | head -20")
-    elif action == "config_test":
-        return _run("nginx -t 2>&1")
-    elif action == "sites":
-        return _run("ls -la /etc/nginx/sites-enabled/ 2>/dev/null && echo '---' && ls -la /etc/nginx/conf.d/ 2>/dev/null")
-    elif action == "connections":
-        return _run("ss -tlpn | grep -E ':80|:443|nginx'")
-    else:
-        return "Unknown action. Use: status, config_test, sites, connections."
-
 
 # ---------------------------------------------------------------------------
 # Registration
@@ -135,13 +120,5 @@ def register_network_tools() -> None:
             examples=["firewall_status('status')"],
             keywords=["firewall", "ufw", "iptables", "rules", "block", "allow", "security"],
         )),
-        (nginx_status, ToolMetadata(
-            name="nginx_status",
-            description="Check Nginx status, test config, list sites, check connections",
-            category="network",
-            risk_level=RiskLevel.LOW,
-            input_schema={"action": "status|config_test|sites|connections"},
-            examples=["nginx_status('config_test')", "nginx_status('status')"],
-            keywords=["nginx", "web", "server", "proxy", "reverse", "config", "site", "502", "503", "504"],
-        )),
+
     ])

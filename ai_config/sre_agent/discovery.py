@@ -27,8 +27,7 @@ from .tools.registry import ToolRegistry, ToolMetadata, RiskLevel
 # Static mapping — fast, no LLM call needed for common intents
 _INTENT_MAP: Dict[str, Dict] = {
     "troubleshooting_web": {
-        "categories": ["network", "docker", "linux", "filesystem"],
-        "keywords": ["nginx", "docker", "logs", "error", "502", "503", "504", "web", "http"],
+        "keywords": ["web", "http", "proxy", "server", "site", "url", "logs", "error"],
         "description": "Diagnosing web server / reverse proxy issues",
     },
     "troubleshooting_service": {
@@ -47,8 +46,7 @@ _INTENT_MAP: Dict[str, Dict] = {
         "description": "Checking system health and resource usage",
     },
     "docker_management": {
-        "categories": ["docker"],
-        "keywords": ["container", "docker", "compose", "image", "volume"],
+        "keywords": ["runtime", "container", "image", "volume", "pod", "sandbox"],
         "description": "Managing Docker containers and services",
     },
     "file_operations": {
@@ -62,13 +60,11 @@ _INTENT_MAP: Dict[str, Dict] = {
         "description": "Security auditing and hardening",
     },
     "deployment": {
-        "categories": ["docker", "linux", "filesystem", "network"],
-        "keywords": ["deploy", "compose", "nginx", "service", "config", "restart"],
+        "keywords": ["deploy", "release", "service", "config", "restart", "app"],
         "description": "Deploying or updating services",
     },
     "log_analysis": {
-        "categories": ["linux", "docker", "filesystem"],
-        "keywords": ["log", "error", "tail", "journal", "syslog", "auth", "grep"],
+        "keywords": ["log", "error", "tail", "journal", "syslog", "auth", "grep", "trace"],
         "description": "Analyzing log files for errors or patterns",
     },
     "general": {
@@ -80,11 +76,11 @@ _INTENT_MAP: Dict[str, Dict] = {
 
 # Keyword → intent mapping for fast classification
 _KEYWORD_INTENT: List[Tuple[List[str], str]] = [
-    (["502", "503", "504", "nginx", "web server", "reverse proxy", "upstream"], "troubleshooting_web"),
+    (["web server", "reverse proxy", "upstream", "site", "http", "https"], "troubleshooting_web"),
     (["service", "systemctl", "daemon", "failed service", "unit"], "troubleshooting_service"),
     (["ping", "dns", "port", "firewall", "connection refused", "timeout", "unreachable"], "troubleshooting_network"),
     (["cpu", "memory", "ram", "disk", "load average", "uptime", "status", "health"], "system_monitoring"),
-    (["docker", "container", "compose", "image"], "docker_management"),
+    (["container", "runtime", "image", "pod", "sandbox"], "docker_management"),
     (["file", "read", "write", "edit", "config", "directory", "folder"], "file_operations"),
     (["security", "auth", "login", "ssh", "firewall", "permission", "audit", "intrusion"], "security_audit"),
     (["deploy", "deployment", "release", "update service"], "deployment"),
@@ -174,7 +170,7 @@ class ToolDiscoveryAgent:
         intent = self.classify_intent(user_message)
         intent_config = _INTENT_MAP.get(intent, _INTENT_MAP["general"])
 
-        categories = list(intent_config["categories"])
+        categories = list(intent_config.get("categories", []))
         keywords = list(intent_config["keywords"])
 
         # Enrich from workspace context

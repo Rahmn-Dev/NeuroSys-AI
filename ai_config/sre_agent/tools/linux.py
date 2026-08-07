@@ -122,21 +122,17 @@ def package_manager(action: str, package: str = "") -> str:
 @tool
 def log_reader(source: str, lines: int = 50, filter_pattern: str = "") -> str:
     """Read system logs.
-    `source`: syslog, auth, kern, nginx, docker, journal, or a file path.
+    `source`: syslog, auth, kern, journal, or a file path.
     `lines`: number of tail lines (default 50).
     `filter_pattern`: optional grep filter."""
     log_map = {
         "syslog": "/var/log/syslog",
         "auth": "/var/log/auth.log",
         "kern": "/var/log/kern.log",
-        "nginx": "/var/log/nginx/error.log",
-        "nginx_access": "/var/log/nginx/access.log",
     }
 
     if source == "journal":
         cmd = f"journalctl --no-pager -n {lines}"
-    elif source == "docker":
-        cmd = f"journalctl -u docker --no-pager -n {lines}"
     elif source in log_map:
         cmd = f"tail -n {lines} {log_map[source]}"
     else:
@@ -221,7 +217,7 @@ def register_linux_tools() -> None:
             examples=["memory_info()"],
             keywords=["memory", "ram", "free"],
             priority=100,
-            capabilities=["resource_monitoring", "memory_analysis"],
+            capabilities=["environment_discovery"],
             supported_intents=["SIMPLE_INFORMATION"],
             safe_fast_path=True,
         )),
@@ -234,7 +230,7 @@ def register_linux_tools() -> None:
             examples=["whoami()"],
             keywords=["user", "whoami", "current user"],
             priority=100,
-            capabilities=["system_analysis", "user_analysis"],
+            capabilities=["environment_discovery"],
             supported_intents=["SIMPLE_INFORMATION"],
             safe_fast_path=True,
         )),
@@ -247,7 +243,7 @@ def register_linux_tools() -> None:
             examples=["hostname()"],
             keywords=["hostname", "host"],
             priority=100,
-            capabilities=["system_analysis", "network_analysis"],
+            capabilities=["environment_discovery", "network_operation"],
             supported_intents=["SIMPLE_INFORMATION"],
             safe_fast_path=True,
         )),
@@ -260,7 +256,7 @@ def register_linux_tools() -> None:
             examples=["uptime()"],
             keywords=["uptime", "how long"],
             priority=100,
-            capabilities=["resource_monitoring", "system_analysis"],
+            capabilities=["environment_discovery"],
             supported_intents=["SIMPLE_INFORMATION"],
             safe_fast_path=True,
         )),
@@ -273,7 +269,7 @@ def register_linux_tools() -> None:
             examples=["system_info('memory')", "system_info('all')"],
             keywords=["system", "cpu", "memory", "ram", "disk", "uptime", "os", "uname", "hostname", "status"],
             priority=40,
-            capabilities=["resource_monitoring", "system_analysis", "hardware_analysis"],
+            capabilities=["environment_discovery"],
             supported_intents=["SIMPLE_INFORMATION"],
             safe_fast_path=True,
         )),
@@ -287,7 +283,7 @@ def register_linux_tools() -> None:
             examples=["service_manager('list')", "service_manager('status', 'nginx')"],
             keywords=["service", "systemctl", "daemon", "nginx", "docker", "start", "stop", "restart", "failed"],
             priority=80,
-            capabilities=["service_inspection", "service_management"],
+            capabilities=["service_management", "environment_discovery"],
         )),
         (process_manager, ToolMetadata(
             name="process_manager",
@@ -298,7 +294,7 @@ def register_linux_tools() -> None:
             examples=["process_manager('list')", "process_manager('search', 'python')"],
             keywords=["process", "ps", "top", "kill", "pid", "cpu", "memory"],
             priority=60,
-            capabilities=["process_analysis", "process_management"],
+            capabilities=["process_management", "environment_discovery"],
         )),
         (package_manager, ToolMetadata(
             name="package_manager",
@@ -310,18 +306,18 @@ def register_linux_tools() -> None:
             examples=["package_manager('search', 'nginx')"],
             keywords=["package", "apt", "dpkg", "install", "update", "dependency"],
             priority=60,
-            capabilities=["package_management", "software_analysis"],
+            capabilities=["package_management", "environment_discovery"],
         )),
         (log_reader, ToolMetadata(
             name="log_reader",
-            description="Read system logs (syslog, auth, kern, nginx, docker, journalctl, or arbitrary log file)",
-            category="linux",
+            description="Read system logs (syslog, auth, kern, journalctl, or arbitrary log file)",
+            category="filesystem_operation",
             risk_level=RiskLevel.LOW,
-            input_schema={"source": "syslog|auth|kern|nginx|docker|journal|<filepath>", "lines": "int", "filter_pattern": "string"},
-            examples=["log_reader('nginx', 100, 'error')", "log_reader('journal', 50, 'failed')"],
-            keywords=["log", "syslog", "journalctl", "error", "tail", "nginx", "auth", "kern"],
+            input_schema={"source": "syslog|auth|kern|journal|<filepath>", "lines": "int", "filter_pattern": "string"},
+            examples=["log_reader('/var/log/application.log', 100, 'error')", "log_reader('journal', 50, 'failed')"],
+            keywords=["log", "syslog", "journalctl", "error", "tail", "auth", "kern"],
             priority=50,
-            capabilities=["log_analysis"],
+            capabilities=["filesystem_operation", "environment_discovery"],
         )),
         (user_manager, ToolMetadata(
             name="user_manager",
@@ -332,7 +328,7 @@ def register_linux_tools() -> None:
             examples=["user_manager('who')", "user_manager('last')"],
             keywords=["user", "login", "who", "last", "session"],
             priority=50,
-            capabilities=["user_analysis", "security_analysis"],
+            capabilities=["environment_discovery"],
         )),
         (linux_diagnostic_execute, ToolMetadata(
             name="linux_diagnostic_execute",
@@ -343,7 +339,7 @@ def register_linux_tools() -> None:
             examples=["linux_diagnostic_execute('systemctl status nginx')", "linux_diagnostic_execute('nginx -t')"],
             keywords=["linux", "diagnostic", "command", "shell", "execute", "systemctl", "journalctl", "cat", "grep", "ps"],
             priority=10,
-            capabilities=["command_execution", "service_inspection", "configuration_validation", "log_analysis", "process_analysis"],
+            capabilities=["runtime_execution", "workspace_operation", "environment_discovery", "service_management", "process_management", "network_operation"],
             supported_intents=["SIMPLE_INFORMATION", "DIAGNOSIS"],
             safe_fast_path=False, # Arbitrary commands shouldn't fast-path blindly unless it's a dedicated tool
         )),
