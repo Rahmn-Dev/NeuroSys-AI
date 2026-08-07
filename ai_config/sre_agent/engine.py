@@ -27,6 +27,7 @@ from django.conf import settings
 from asgiref.sync import sync_to_async
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
+from .context import current_model_name
 from .discovery import ToolDiscoveryAgent
 from .events import (
     AgentEvent, evt_status, evt_exploring, evt_discovering, evt_planning,
@@ -36,7 +37,7 @@ from .events import (
     evt_creating_artifact, evt_restoring_artifact, evt_security_scan,
     evt_hypothesis, evt_resolution_plan,
     evt_parallel_start, evt_parallel_progress, evt_parallel_complete,
-    evt_approval_required,
+    evt_approval_required, AgentEventType
 )
 from .memory import LongTermMemory, ShortTermMemory, WorkspaceMemory
 from .safety import SafetyLayer, SafetyVerdict
@@ -55,7 +56,6 @@ def _ensure_tools_registered():
         return  # already registered
 
     from .tools.filesystem import register_filesystem_tools
-    from .tools.linux import register_linux_tools
     from .tools.docker import register_docker_tools
     from .tools.network import register_network_tools
     from .tools.shell import register_shell_tools
@@ -64,7 +64,6 @@ def _ensure_tools_registered():
     from .tools.terminal import register_terminal_tools
 
     register_filesystem_tools()
-    register_linux_tools()
     register_docker_tools()
     register_network_tools()
     register_shell_tools()
@@ -124,9 +123,13 @@ You have {tool_count} tools loaded for this task:
 - Never assume the user is working inside the project workspace.
 - Be precise and technical in your analysis.
 - Always show relevant command outputs to support your conclusions.
-- If a tool fails, try an alternative approach.
+- If a tool fails, NEVER give up. Try an alternative approach (e.g., if edit_file fails, use sed or echo via terminal).
+- ALWAYS read a file's content first before attempting to edit it so you have the exact text.
+- If a service fails, keep investigating logs, fixing config files, and restarting until it is successfully running.
+- ALWAYS verify the result of your actions (e.g., if you restart a service, check its status to ensure it actually started).
 - For destructive operations, explain what you will do BEFORE doing it.
 - Format your responses clearly with sections and bullet points.
+- CRITICAL: If you need root privileges, simply use `sudo <command>`. The sudo password is automatically injected by the system. NEVER attempt to pipe a password yourself (e.g., do NOT use `echo 'password' | sudo -S`).
 """
 
 
@@ -146,9 +149,11 @@ class SREAgentEngine:
 
     MAX_ITERATIONS = 15
 
-    def __init__(self, session_id: str = "", model_name: str = "mistral-large-latest"):
+    def __init__(self, session_id: str = "", model_name: str = "mistral-large-latest", rsa_private_key=None, encrypted_sudo_pwd: str = ""):
         self.session_id = session_id or str(uuid.uuid4())
         self.model_name = model_name
+        self.rsa_private_key = rsa_private_key
+        self.encrypted_sudo_pwd = encrypted_sudo_pwd
         self.short_memory = ShortTermMemory()
         self.safety = SafetyLayer()
         self.discovery = ToolDiscoveryAgent()
@@ -208,7 +213,7 @@ class SREAgentEngine:
                 max_tokens=2048,
             )
 
-    async def _run_internal(self, user_message: str, terminal_cwd: Optional[str] = None, active_workspace: Optional[str] = None, selected_file: Optional[str] = None, selected_file_name: Optional[str] = None) -> AsyncGenerator[AgentEvent, None]:
+    async def _run_internal(self, user_message: str, terminal_cwd: Optional[str] = None, active_workspace: Optional[str] = None, selected_file: Optional[str] = None, selected_file_name: Optional[str] = None, mode: str = "guided") -> AsyncGenerator[AgentEvent, None]:
         """
         Internal loop — runs the full agent loop and yields events.
         """
@@ -289,7 +294,8 @@ Output strictly the category name."""
         # --- Phase 3: Discover tools ---
         yield evt_discovering("Analyzing intent and discovering relevant tools...")
         ws_dict = workspace_ctx.to_dict() if workspace_ctx else {}
-        discovery_result = self.discovery.discover(user_message, workspace_context=ws_dict)
+        max_discovery_tools = 30 if mode == "autonomous" else 12
+        discovery_result = self.discovery.discover(user_message, workspace_context=ws_dict, max_tools=max_discovery_tools)
 
         yield evt_discovering(
             f"Intent: {discovery_result.intent_description}. Loaded {len(discovery_result.tools)} tools.",
@@ -333,7 +339,9 @@ Output strictly the category name."""
             cwd=terminal_cwd or "",
             user=whoami,
             hostname=socket.gethostname(),
-            environment="local" # Placeholder, could be derived from workspace_ctx
+            environment="local",
+            rsa_private_key=self.rsa_private_key,
+            encrypted_sudo_pwd=self.encrypted_sudo_pwd
         ))
         
         if terminal_cwd:
@@ -500,229 +508,263 @@ Reply STRICTLY 'CONTINUE' or 'NEW'."""
             findings_path = f".neurosys/sessions/{self.session_id}/investigations/{inv_id}/findings.json"
             history_path = f".neurosys/sessions/{self.session_id}/investigations/{inv_id}/execution_history.json"
 
-            async for event in agent.astream_events(initial_state, version="v2", config={"recursion_limit": 100}):
-                kind = event["event"]
-                name = event.get("name", "")
-                tags = event.get("tags", [])
-                
-                with open("/home/paul/project-ai/NeuroSys-AI/ai_config/logs_test.txt", "a") as f:
-                    f.write(f"kind={kind}, name={name}, tags={tags}\n")
-                
-                # Intercept StateGraph Node outputs
-                if kind == "on_chain_end":
-                    if name in ["fast_path_router", "direct_executor", "planner", "worker_scheduler", "aggregator", "goal_checker", "final_response"]:
-                        state_output = event["data"].get("output", {})
-                        if isinstance(state_output, dict):
-                            
-                            # Dump execution history if plan/tasks are present
-                            if artifact_mgr and "plan" in state_output and isinstance(state_output["plan"], dict):
-                                await artifact_mgr.upsert_artifact(history_path, json.dumps(state_output["plan"].get("tasks", []), indent=2), action_type="history")
-
-                            # Handle Requires Approval
-                            if state_output.get("requires_approval"):
-                                final_message = "I need your permission to execute a high-risk command. Please reply with 'approve' to continue, or 'deny' to cancel."
-                                yield evt_error("Safety Block: Approval Required")
-                                
-                            # UX Transparency: Thinking
-                            if state_output.get("thinking"):
-                                yield evt_thinking(state_output["thinking"])
-
-                            # UX Transparency: Hypothesis
-                            if state_output.get("hypothesis"):
-                                yield evt_hypothesis(state_output["hypothesis"])
-
-                            # UX Transparency: Resolution Plan
-                            if state_output.get("resolution_plan"):
-                                yield evt_resolution_plan(state_output["resolution_plan"])
-
-                            # Worker scheduler completion events
-                            if name == "worker_scheduler" and "parallel_results" in state_output:
-                                p_results = state_output["parallel_results"]
-                                total = len(p_results)
-                                task_summaries = [r.get("task_id", "") for r in p_results]
-                                yield evt_parallel_start(total, task_summaries)
-                                total_duration = sum(r.get("duration", 0) for r in p_results)
-                                yield evt_parallel_complete(total, total_duration)
-
-                            # Handle Final Report — always emit, never guard on final_message
-                            if name == "final_response" and state_output.get("final_report"):
-                                final_message = state_output["final_report"]
-                                yield evt_message_chunk(final_message)
-                                
-                                if artifact_mgr:
-                                    artifact_name = state_output.get("artifact_name", "report.md")
-                                    # Ensure artifact_name doesn't contain directory traversal
-                                    safe_name = os.path.basename(artifact_name)
-                                    artifact_path = f".neurosys/sessions/{self.session_id}/artifacts/{safe_name}"
-                                    await artifact_mgr.upsert_artifact(artifact_path, final_message, action_type="report")
-
-                                # Mark Investigation and tasks as completed in DB
-                                inv_id = plan_data.get("investigation_id") if isinstance(plan_data, dict) else None
-                                if inv_id:
-                                    await sync_to_async(lambda: Investigation.objects.filter(id=inv_id).update(status="completed"))()
-                                    await sync_to_async(lambda: InvestigationTask.objects.filter(investigation_id=inv_id).update(status="completed"))()
-
-
-                            # Sync Findings
-                            if "findings" in state_output:
-                                from .events import evt_findings
-                                new_findings = state_output["findings"]
-                                findings_data = new_findings
-                                yield evt_findings(new_findings)
-                                
-                                if artifact_mgr:
-                                    findings_path = f".neurosys/sessions/{self.session_id}/findings.json"
-                                    await artifact_mgr.upsert_artifact(findings_path, json.dumps(new_findings, indent=2), action_type="finding")
-                                
-                                # Sync Findings to DB
-                                inv_id = plan_data.get("investigation_id") if isinstance(plan_data, dict) else None
-                                if not inv_id and isinstance(new_findings, dict):
-                                    inv_id = new_findings.get("investigation_id")
-                                if inv_id:
-                                    new_f_list = new_findings.get("findings", []) if isinstance(new_findings, dict) else new_findings
-                                    await sync_to_async(lambda: InvestigationFinding.objects.filter(investigation_id=inv_id).delete())()
-                                    for f in new_f_list:
-                                        await sync_to_async(InvestigationFinding.objects.create)(
-                                            investigation_id=inv_id,
-                                            content=f
-                                        )
-
-                            # Sync Plan
-                            if "plan" in state_output:
-                                from .events import evt_task_plan, evt_task_updated
-                                new_plan = state_output["plan"]
-                                new_tasks = new_plan.get("tasks", [])
-                                old_tasks = plan_data.get("tasks", []) if isinstance(plan_data, dict) else []
-                                
-                                for idx, p in enumerate(new_tasks):
-                                    old_p = old_tasks[idx] if idx < len(old_tasks) else {}
-                                    if old_p and old_p.get("status") != p.get("status"):
-                                        yield evt_task_updated({
-                                            "task_id": idx,
-                                            "task": p.get("description", p.get("title", p.get("task", ""))),
-                                            "old_status": old_p.get("status"),
-                                            "new_status": p.get("status")
-                                        })
-                                plan_data = new_plan
-                                yield evt_task_plan(new_plan)
-                                
-                                if artifact_mgr:
-                                    await artifact_mgr.upsert_artifact(task_plan_path, json.dumps(new_plan, indent=2), action_type="plan")
-                                
-                                # Sync Tasks to DB
-                                inv_id = new_plan.get("investigation_id")
-                                if inv_id:
-                                    await sync_to_async(
-                                        lambda: Investigation.objects.get_or_create(
-                                            id=inv_id,
-                                            defaults={"session_id": self.session_id, "title": user_message[:40]}
-                                        )
-                                    )()
-                                    await sync_to_async(lambda: InvestigationTask.objects.filter(investigation_id=inv_id).delete())()
-                                    for idx, t in enumerate(new_tasks):
-                                        await sync_to_async(InvestigationTask.objects.create)(
-                                            investigation_id=inv_id,
-                                            title=t.get("description", t.get("title", t.get("task", ""))),
-                                            status=t.get("status", "pending"),
-                                            task_order=idx
-                                        )
-
-                elif kind == "on_chat_model_stream":
-                    if "agent_llm" in tags:
-                        chunk = event["data"].get("chunk")
-                        if chunk:
-                            content = getattr(chunk, "content", "")
-                            if isinstance(content, str) and content:
-                                final_message += content
-                                yield evt_message_chunk(final_message)
-                            elif isinstance(content, list):
+            if mode == "autonomous":
+                from .react_engine import ReactEngine
+                current_model_name.set(self.model_name)
+                react_engine = ReactEngine(llm, discovery_result.tools, system_prompt, self.session_id)
+                async for event in react_engine.astream(initial_state):
+                    if event.type == AgentEventType.MESSAGE_CHUNK:
+                        final_message += event.content
+                    elif event.type == AgentEventType.TOOL_START:
+                        tool_name = event.metadata.get("tool_name", "unknown")
+                        self._tools_used.append(tool_name)
+                        args = event.metadata.get("args", {})
+                        if tool_name in ["write_file", "edit_file"] and artifact_mgr:
+                            path = args.get("path") or args.get("file_path") or args.get("target_file") or args.get("file")
+                            if path:
                                 try:
-                                    text_part = "".join(c.get("text", "") if isinstance(c, dict) else str(c) for c in content)
-                                    if text_part:
-                                        final_message += text_part
+                                    ws_base = workspace_ctx.path if workspace_ctx else os.getcwd()
+                                    abs_path = os.path.join(ws_base, path) if not os.path.isabs(path) else path
+                                    is_backup = any(b in path.lower() for b in [".bak", ".backup", ".orig", ".old", "copy"])
+                                    action_type = "backup" if is_backup else ("edit" if tool_name == "edit_file" else "create")
+                                    if tool_name == "write_file":
+                                        new_content = args.get("content", "")
+                                    else:
+                                        old_c = ""
+                                        if os.path.exists(abs_path):
+                                            with open(abs_path, "r", encoding="utf-8", errors="ignore") as f:
+                                                old_c = f.read()
+                                        new_content = old_c.replace(args.get("old_text", ""), args.get("new_text", ""), 1)
+                                    from .events import evt_creating_artifact
+                                    yield evt_creating_artifact(f"Creating artifact for {os.path.basename(path)}")
+                                    await artifact_mgr.create_artifact(path, new_content, action_type=action_type)
+                                except Exception:
+                                    pass
+                    yield event
+            else:
+                async for event in agent.astream_events(initial_state, version="v2", config={"recursion_limit": 100}):
+                    kind = event["event"]
+                    name = event.get("name", "")
+                    tags = event.get("tags", [])
+                
+                    with open("/home/paul/project-ai/NeuroSys-AI/ai_config/logs_test.txt", "a") as f:
+                        f.write(f"kind={kind}, name={name}, tags={tags}\n")
+                
+                    # Intercept StateGraph Node outputs
+                    if kind == "on_chain_end":
+                        if name in ["fast_path_router", "direct_executor", "planner", "worker_scheduler", "aggregator", "goal_checker", "final_response"]:
+                            state_output = event["data"].get("output", {})
+                            if isinstance(state_output, dict):
+                            
+                                # Dump execution history if plan/tasks are present
+                                if artifact_mgr and "plan" in state_output and isinstance(state_output["plan"], dict):
+                                    await artifact_mgr.upsert_artifact(history_path, json.dumps(state_output["plan"].get("tasks", []), indent=2), action_type="history")
+
+                                # Handle Requires Approval
+                                if state_output.get("requires_approval"):
+                                    final_message = "I need your permission to execute a high-risk command. Please reply with 'approve' to continue, or 'deny' to cancel."
+                                    yield evt_error("Safety Block: Approval Required")
+                                
+                                # UX Transparency: Thinking
+                                if state_output.get("thinking"):
+                                    yield evt_thinking(state_output["thinking"])
+
+                                # UX Transparency: Hypothesis
+                                if state_output.get("hypothesis"):
+                                    yield evt_hypothesis(state_output["hypothesis"])
+
+                                # UX Transparency: Resolution Plan
+                                if state_output.get("resolution_plan"):
+                                    yield evt_resolution_plan(state_output["resolution_plan"])
+
+                                # Worker scheduler completion events
+                                if name == "worker_scheduler" and "parallel_results" in state_output:
+                                    p_results = state_output["parallel_results"]
+                                    total = len(p_results)
+                                    task_summaries = [r.get("task_id", "") for r in p_results]
+                                    yield evt_parallel_start(total, task_summaries)
+                                    total_duration = sum(r.get("duration", 0) for r in p_results)
+                                    yield evt_parallel_complete(total, total_duration)
+
+                                # Handle Final Report — always emit, never guard on final_message
+                                if name == "final_response" and state_output.get("final_report"):
+                                    final_message = state_output["final_report"]
+                                    yield evt_message_chunk(final_message)
+                                
+                                    if artifact_mgr:
+                                        artifact_name = state_output.get("artifact_name", "report.md")
+                                        # Ensure artifact_name doesn't contain directory traversal
+                                        safe_name = os.path.basename(artifact_name)
+                                        artifact_path = f".neurosys/sessions/{self.session_id}/artifacts/{safe_name}"
+                                        await artifact_mgr.upsert_artifact(artifact_path, final_message, action_type="report")
+
+                                    # Mark Investigation and tasks as completed in DB
+                                    inv_id = plan_data.get("investigation_id") if isinstance(plan_data, dict) else None
+                                    if inv_id:
+                                        await sync_to_async(lambda: Investigation.objects.filter(id=inv_id).update(status="completed"))()
+                                        await sync_to_async(lambda: InvestigationTask.objects.filter(investigation_id=inv_id).update(status="completed"))()
+
+
+                                # Sync Findings
+                                if "findings" in state_output:
+                                    from .events import evt_findings
+                                    new_findings = state_output["findings"]
+                                    findings_data = new_findings
+                                    yield evt_findings(new_findings)
+                                
+                                    if artifact_mgr:
+                                        findings_path = f".neurosys/sessions/{self.session_id}/findings.json"
+                                        await artifact_mgr.upsert_artifact(findings_path, json.dumps(new_findings, indent=2), action_type="finding")
+                                
+                                    # Sync Findings to DB
+                                    inv_id = plan_data.get("investigation_id") if isinstance(plan_data, dict) else None
+                                    if not inv_id and isinstance(new_findings, dict):
+                                        inv_id = new_findings.get("investigation_id")
+                                    if inv_id:
+                                        new_f_list = new_findings.get("findings", []) if isinstance(new_findings, dict) else new_findings
+                                        await sync_to_async(lambda: InvestigationFinding.objects.filter(investigation_id=inv_id).delete())()
+                                        for f in new_f_list:
+                                            await sync_to_async(InvestigationFinding.objects.create)(
+                                                investigation_id=inv_id,
+                                                content=f
+                                            )
+
+                                # Sync Plan
+                                if "plan" in state_output:
+                                    from .events import evt_task_plan, evt_task_updated
+                                    new_plan = state_output["plan"]
+                                    new_tasks = new_plan.get("tasks", [])
+                                    old_tasks = plan_data.get("tasks", []) if isinstance(plan_data, dict) else []
+                                
+                                    for idx, p in enumerate(new_tasks):
+                                        old_p = old_tasks[idx] if idx < len(old_tasks) else {}
+                                        if old_p and old_p.get("status") != p.get("status"):
+                                            yield evt_task_updated({
+                                                "task_id": idx,
+                                                "task": p.get("description", p.get("title", p.get("task", ""))),
+                                                "old_status": old_p.get("status"),
+                                                "new_status": p.get("status")
+                                            })
+                                    plan_data = new_plan
+                                    yield evt_task_plan(new_plan)
+                                
+                                    if artifact_mgr:
+                                        await artifact_mgr.upsert_artifact(task_plan_path, json.dumps(new_plan, indent=2), action_type="plan")
+                                
+                                    # Sync Tasks to DB
+                                    inv_id = new_plan.get("investigation_id")
+                                    if inv_id:
+                                        await sync_to_async(
+                                            lambda: Investigation.objects.get_or_create(
+                                                id=inv_id,
+                                                defaults={"session_id": self.session_id, "title": user_message[:40]}
+                                            )
+                                        )()
+                                        await sync_to_async(lambda: InvestigationTask.objects.filter(investigation_id=inv_id).delete())()
+                                        for idx, t in enumerate(new_tasks):
+                                            await sync_to_async(InvestigationTask.objects.create)(
+                                                investigation_id=inv_id,
+                                                title=t.get("description", t.get("title", t.get("task", ""))),
+                                                status=t.get("status", "pending"),
+                                                task_order=idx
+                                            )
+
+                    elif kind == "on_chat_model_stream":
+                        if "agent_llm" in tags:
+                            chunk = event["data"].get("chunk")
+                            if chunk:
+                                content = getattr(chunk, "content", "")
+                                if isinstance(content, str) and content:
+                                    final_message += content
+                                    yield evt_message_chunk(final_message)
+                                elif isinstance(content, list):
+                                    try:
+                                        text_part = "".join(c.get("text", "") if isinstance(c, dict) else str(c) for c in content)
+                                        if text_part:
+                                            final_message += text_part
+                                            yield evt_message_chunk(final_message)
+                                    except:
+                                        pass
+
+                    elif kind == "on_chat_model_end":
+                        if "agent_llm" in tags:
+                            msg = event["data"].get("output")
+                            if msg:
+                                tool_calls = getattr(msg, "tool_calls", [])
+                                if tool_calls:
+                                    if final_message.strip():
+                                        yield evt_thinking(final_message)
+                                    final_message = ""
+                                else:
+                                    # If streaming populated final_message incrementally, good.
+                                    # If not (invoke path), emit from the complete output now.
+                                    full_content = getattr(msg, "content", "")
+                                    if full_content and not final_message.strip():
+                                        final_message = full_content
                                         yield evt_message_chunk(final_message)
-                                except:
+
+                    elif kind == "on_tool_start":
+                        tool_name = name
+                        args = event["data"].get("input", {})
+
+                        # Safety check
+                        meta = ToolRegistry().get_metadata(tool_name)
+                        if meta:
+                            check = self.safety.check(meta, args)
+
+                            if check.verdict == SafetyVerdict.BLOCKED:
+                                yield evt_safety_blocked(tool_name, check.reason)
+                                self.short_memory.add("observation", f"BLOCKED: {tool_name} - {check.reason}")
+                                continue
+
+                            if check.verdict == SafetyVerdict.APPROVAL_REQUIRED:
+                                cmd_str = str(args.get("command", "")) or str(args.get("path", "")) or str(args)[:100]
+                                yield evt_approval_required(tool_name, cmd_str, check.reason)
+
+                            if check.verdict == SafetyVerdict.WARN:
+                                yield evt_safety_warn(tool_name, check.reason)
+
+                        # Emit tool start event
+                        cmd_str = str(args.get("command", "")) or str(args.get("path", "")) or str(args)[:100]
+                        yield evt_tool_start(tool_name, args)
+                        self.short_memory.add("tool_call", f"{tool_name}({cmd_str})")
+                        self._tools_used.append(tool_name)
+                    
+                        # Intercept file modifications to create artifacts
+                        if tool_name in ["write_file", "edit_file"] and artifact_mgr:
+                            path = args.get("path") or args.get("file_path") or args.get("target_file") or args.get("file")
+                            if path:
+                                try:
+                                    ws_base = workspace_ctx.path if workspace_ctx else os.getcwd()
+                                    abs_path = os.path.join(ws_base, path) if not os.path.isabs(path) else path
+                                
+                                    is_backup = any(b in path.lower() for b in [".bak", ".backup", ".orig", ".old", "copy"])
+                                    action_type = "backup" if is_backup else ("edit" if tool_name == "edit_file" else "create")
+
+                                    if tool_name == "write_file":
+                                        new_content = args.get("content", "")
+                                    else:
+                                        old_c = ""
+                                        if os.path.exists(abs_path):
+                                            with open(abs_path, "r", encoding="utf-8", errors="ignore") as f:
+                                                old_c = f.read()
+                                        new_content = old_c.replace(args.get("old_text", ""), args.get("new_text", ""), 1)
+                                
+                                    from .events import evt_creating_artifact
+                                    yield evt_creating_artifact(f"Creating artifact for {os.path.basename(path)}")
+                                    await artifact_mgr.create_artifact(path, new_content, action_type=action_type)
+                                except Exception as e:
                                     pass
 
-                elif kind == "on_chat_model_end":
-                    if "agent_llm" in tags:
-                        msg = event["data"].get("output")
-                        if msg:
-                            tool_calls = getattr(msg, "tool_calls", [])
-                            if tool_calls:
-                                if final_message.strip():
-                                    yield evt_thinking(final_message)
-                                final_message = ""
-                            else:
-                                # If streaming populated final_message incrementally, good.
-                                # If not (invoke path), emit from the complete output now.
-                                full_content = getattr(msg, "content", "")
-                                if full_content and not final_message.strip():
-                                    final_message = full_content
-                                    yield evt_message_chunk(final_message)
+                    elif kind == "on_tool_end":
+                        result = str(event["data"].get("output", "No output"))
+                        yield evt_tool_end(name, result)
+                        self.short_memory.add("observation", f"{name} result: {result[:300]}")
 
-                elif kind == "on_tool_start":
-                    tool_name = name
-                    args = event["data"].get("input", {})
-
-                    # Safety check
-                    meta = ToolRegistry().get_metadata(tool_name)
-                    if meta:
-                        check = self.safety.check(meta, args)
-
-                        if check.verdict == SafetyVerdict.BLOCKED:
-                            yield evt_safety_blocked(tool_name, check.reason)
-                            self.short_memory.add("observation", f"BLOCKED: {tool_name} - {check.reason}")
-                            continue
-
-                        if check.verdict == SafetyVerdict.APPROVAL_REQUIRED:
-                            cmd_str = str(args.get("command", "")) or str(args.get("path", "")) or str(args)[:100]
-                            yield evt_approval_required(tool_name, cmd_str, check.reason)
-
-                        if check.verdict == SafetyVerdict.WARN:
-                            yield evt_safety_warn(tool_name, check.reason)
-
-                    # Emit tool start event
-                    cmd_str = str(args.get("command", "")) or str(args.get("path", "")) or str(args)[:100]
-                    yield evt_tool_start(tool_name, args)
-                    self.short_memory.add("tool_call", f"{tool_name}({cmd_str})")
-                    self._tools_used.append(tool_name)
-                    
-                    # Intercept file modifications to create artifacts
-                    if tool_name in ["write_file", "edit_file"] and artifact_mgr:
-                        path = args.get("path") or args.get("file_path") or args.get("target_file") or args.get("file")
-                        if path:
-                            try:
-                                ws_base = workspace_ctx.path if workspace_ctx else os.getcwd()
-                                abs_path = os.path.join(ws_base, path) if not os.path.isabs(path) else path
-                                
-                                is_backup = any(b in path.lower() for b in [".bak", ".backup", ".orig", ".old", "copy"])
-                                action_type = "backup" if is_backup else ("edit" if tool_name == "edit_file" else "create")
-
-                                if tool_name == "write_file":
-                                    new_content = args.get("content", "")
-                                else:
-                                    old_c = ""
-                                    if os.path.exists(abs_path):
-                                        with open(abs_path, "r", encoding="utf-8", errors="ignore") as f:
-                                            old_c = f.read()
-                                    new_content = old_c.replace(args.get("old_text", ""), args.get("new_text", ""), 1)
-                                
-                                from .events import evt_creating_artifact
-                                yield evt_creating_artifact(f"Creating artifact for {os.path.basename(path)}")
-                                await artifact_mgr.create_artifact(path, new_content, action_type=action_type)
-                            except Exception as e:
-                                pass
-
-                elif kind == "on_tool_end":
-                    result = str(event["data"].get("output", "No output"))
-                    yield evt_tool_end(name, result)
-                    self.short_memory.add("observation", f"{name} result: {result[:300]}")
-
-                elif kind == "on_custom_event":
-                    if event.get("name") == "worker_activity":
-                        from .events import evt_worker_activity
-                        yield evt_worker_activity(event["data"].get("workers", []))
+                    elif kind == "on_custom_event":
+                        if event.get("name") == "worker_activity":
+                            from .events import evt_worker_activity
+                            yield evt_worker_activity(event["data"].get("workers", []))
 
         except Exception as e:
             import traceback
@@ -787,13 +829,13 @@ Reply STRICTLY 'CONTINUE' or 'NEW'."""
         except Exception:
             pass
 
-    async def run(self, user_message: str, terminal_cwd: Optional[str] = None, active_workspace: Optional[str] = None, selected_file: Optional[str] = None, selected_file_name: Optional[str] = None) -> AsyncGenerator[AgentEvent, None]:
+    async def run(self, user_message: str, terminal_cwd: Optional[str] = None, active_workspace: Optional[str] = None, selected_file: Optional[str] = None, selected_file_name: Optional[str] = None, mode: str = "guided") -> AsyncGenerator[AgentEvent, None]:
         """Main entry point — wraps internal loop to persist events and tool logs."""
         tool_start_times = {}
         tool_args = {}
         events_history = []
         
-        async for event in self._run_internal(user_message, terminal_cwd, active_workspace, selected_file, selected_file_name):
+        async for event in self._run_internal(user_message, terminal_cwd, active_workspace, selected_file, selected_file_name, mode):
             events_history.append(event.to_dict())
             await self._log_event(event)
             

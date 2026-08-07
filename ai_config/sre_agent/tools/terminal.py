@@ -18,12 +18,30 @@ def terminal_execute(command: str, timeout: int = 30) -> str:
     """Execute a Linux command safely, capturing stdout, stderr, and exit code.
     Use this for general system capabilities when specific diagnostic tools are unavailable."""
     import json
+    
+    pwd_to_inject = None
+    if command.strip().startswith("sudo "):
+        try:
+            from ..context import current_session_context
+            from ..crypto import decrypt_rsa_oaep
+            ctx = current_session_context.get()
+            if ctx and ctx.encrypted_sudo_pwd and ctx.rsa_private_key:
+                pwd_to_inject = decrypt_rsa_oaep(ctx.rsa_private_key, ctx.encrypted_sudo_pwd)
+                # Replace 'sudo ' with 'sudo -S '
+                command = command.replace("sudo ", "sudo -S ", 1)
+        except Exception as e:
+            pass # Ignore decryption errors, fallback to hanging/timeout
+            
     try:
         start_time = time.time()
         p = subprocess.Popen(
-            command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            command, shell=True, stdin=subprocess.PIPE if pwd_to_inject else None, 
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
-        stdout, stderr = p.communicate(timeout=timeout)
+        if pwd_to_inject:
+            stdout, stderr = p.communicate(input=pwd_to_inject + "\n", timeout=timeout)
+        else:
+            stdout, stderr = p.communicate(timeout=timeout)
         duration = time.time() - start_time
         
         if len(stdout) > 4000: stdout = stdout[:4000] + "\n... (truncated)"

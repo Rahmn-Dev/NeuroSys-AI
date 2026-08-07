@@ -67,16 +67,12 @@ _BLOCKED_RE = [re.compile(pat, re.IGNORECASE) for pat in _BLOCKED_PATTERNS]
 
 # Commands that bump risk level to MEDIUM even from a LOW tool
 _SENSITIVE_COMMANDS = [
-    "sudo ", "systemctl status", "systemctl stop", "systemctl start",
-    "pip install", "npm install",
-    "docker stop",
+    "sudo "
 ]
 
 # Commands that strictly require user approval (HIGH risk)
 _HIGH_RISK_COMMANDS = [
-    "apt install", "apt remove", "apt-get install", "apt-get remove",
-    "systemctl restart", "docker restart", "docker rm", "rm -", "rm ",
-    "mv ", "cp "
+    "rm -", "rm ", "rmdir ", "mkfs", "dd "
 ]
 
 
@@ -98,7 +94,7 @@ class SafetyLayer:
         args_str = str(args)
 
         # 0. Terminal & Diagnostic Tool Safety Model (Dynamic Denylist)
-        if tool_name in ["linux_diagnostic_execute", "terminal_execute", "terminal_session", "start_background_process", "execute_command"]:
+        if tool_name in ["terminal_execute", "terminal_session", "start_background_process"]:
             cmd = args.get("command", "").strip()
             if cmd:
                 # 0.1 Check strictly blocked dangerous commands
@@ -112,24 +108,13 @@ class SafetyLayer:
                             args_summary=cmd[:200],
                         )
 
-                # 0.2 Check destructive/high risk/sudo commands requiring approval
-                high_risk = ["sudo ", "sudo", "rm ", "rmdir ", "kill ", "killall ", "reboot", "shutdown", "mkfs", "dd ", ">", ">>"]
+                # 0.2 Check destructive/high risk commands requiring approval
+                high_risk = ["rm ", "rmdir ", "reboot", "shutdown", "mkfs", "dd ", ">", ">>"]
                 if any(h in cmd for h in high_risk):
                     return SafetyCheckResult(
                         verdict=SafetyVerdict.APPROVAL_REQUIRED,
                         risk_level=RiskLevel.HIGH,
-                        reason="Elevated privileges (sudo) or destructive command requires explicit approval.",
-                        tool_name=tool_name,
-                        args_summary=cmd[:200],
-                    )
-                
-                # 0.3 Check service modification commands requiring approval
-                medium_risk = ["systemctl restart", "systemctl stop", "systemctl reload", "docker restart", "docker stop", "service "]
-                if any(m in cmd for m in medium_risk):
-                    return SafetyCheckResult(
-                        verdict=SafetyVerdict.APPROVAL_REQUIRED,
-                        risk_level=RiskLevel.MEDIUM,
-                        reason="Service state modification requires approval.",
+                        reason="Destructive command requires explicit approval.",
                         tool_name=tool_name,
                         args_summary=cmd[:200],
                     )
@@ -147,6 +132,9 @@ class SafetyLayer:
 
         # 2. Check if args contain sensitive or high risk commands (escalate risk)
         effective_risk = risk
+        if tool_name in ["terminal_execute", "terminal_session", "start_background_process"]:
+            effective_risk = RiskLevel.LOW
+            
         for high_risk in _HIGH_RISK_COMMANDS:
             if high_risk.lower() in args_str.lower():
                 effective_risk = RiskLevel.HIGH

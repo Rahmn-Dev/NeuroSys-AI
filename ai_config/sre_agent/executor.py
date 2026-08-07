@@ -64,9 +64,9 @@ class PythonToolExecutor(ExecutorInterface):
             return "package_manager"
         elif capability == "network_operation":
             # For now, fallback to diagnostic execute if specific tool not found
-            return "linux_diagnostic_execute" 
+            return "terminal_execute" 
         elif capability in ["runtime_execution", "command_execution"]:
-            return "linux_diagnostic_execute"
+            return "terminal_execute"
         elif capability in ["workspace_operation", "filesystem_operation"]:
             if action in ["read_file", "read"]:
                 return "read_file"
@@ -79,7 +79,7 @@ class PythonToolExecutor(ExecutorInterface):
             elif action in ["inspect_project", "inspect_environment", "list_directory"]:
                 return "list_directory"
             elif action in ["run_command", "build_project"]:
-                return "linux_diagnostic_execute"
+                return "terminal_execute"
         elif capability == "environment_discovery":
             if action in ["system_info", "inspect_runtime"]:
                 return "system_info"
@@ -88,7 +88,7 @@ class PythonToolExecutor(ExecutorInterface):
             elif action == "read_file":
                 return "read_file"
             # Default discovery command
-            return "linux_diagnostic_execute"
+            return "terminal_execute"
             
         # Fallback search through registry capabilities
         for name, entry in self.registry._entries.items():
@@ -119,7 +119,7 @@ class PythonToolExecutor(ExecutorInterface):
             args["action"] = action
             args["package"] = target
             
-        elif tool_name == "linux_diagnostic_execute":
+        elif tool_name == "terminal_execute":
             # For direct execution, the action/target usually implies a shell command.
             if kwargs and "command" in kwargs:
                 args["command"] = kwargs["command"]

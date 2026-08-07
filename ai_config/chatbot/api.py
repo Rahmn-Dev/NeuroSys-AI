@@ -40,6 +40,15 @@ class ChatSessionViewSet(viewsets.ModelViewSet):
         session.delete()
         return Response({'status': 'Chat session deleted'}, status=status.HTTP_204_NO_CONTENT)
 
+    @action(detail=False, methods=['post'])
+    def bulk_delete(self, request):
+        session_ids = request.data.get('session_ids', [])
+        if not isinstance(session_ids, list):
+            return Response({'error': 'session_ids must be a list'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        deleted_count, _ = models.ChatSession.objects.filter(id__in=session_ids).delete()
+        return Response({'status': f'{deleted_count} sessions deleted'}, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['get'])
     def investigations(self, request, pk=None):
         session = self.get_object()

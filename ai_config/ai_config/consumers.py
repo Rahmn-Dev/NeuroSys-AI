@@ -1248,6 +1248,17 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
 
     async def connect(self):
         await self.accept()
+        
+        # Generate RSA Key Pair for E2E Sudo Auth
+        from sre_agent.crypto import generate_rsa_key_pair
+        self.rsa_private_key, public_pem = generate_rsa_key_pair()
+        self.encrypted_sudo_pwd = ""
+        
+        await self.send(text_data=json.dumps({
+            "type": "sudo_key_exchange",
+            "public_key": public_pem
+        }))
+        
         await self.send(text_data=json.dumps({
             "type": "status",
             "content": "🚀 Connected to NeuroSysAI SRE Agent."
@@ -1272,6 +1283,12 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
             await self._handle_message(data)
         elif msg_type == "approval":
             await self._handle_approval(data)
+        elif msg_type == "set_sudo_pwd":
+            self.encrypted_sudo_pwd = data.get("encrypted_password", "")
+            await self.send(text_data=json.dumps({
+                "type": "status",
+                "content": "🔒 Sudo password securely received (End-to-End Encrypted)."
+            }))
         else:
             await self.send(text_data=json.dumps({
                 "type": "error",
@@ -1290,18 +1307,25 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
         selected_file = data.get("selected_file", None)
         selected_file_name = data.get("selected_file_name", None)
         model_name = data.get("model", "mistral-large-latest")
+        mode = data.get("mode", "guided")
 
         try:
             from sre_agent.engine import SREAgentEngine
 
-            engine = SREAgentEngine(session_id=session_id, model_name=model_name)
+            engine = SREAgentEngine(
+                session_id=session_id, 
+                model_name=model_name,
+                rsa_private_key=self.rsa_private_key,
+                encrypted_sudo_pwd=self.encrypted_sudo_pwd
+            )
 
             async for event in engine.run(
                 user_message,
                 terminal_cwd=terminal_cwd,
                 active_workspace=active_workspace,
                 selected_file=selected_file,
-                selected_file_name=selected_file_name
+                selected_file_name=selected_file_name,
+                mode=mode
             ):
                 await self.send(text_data=json.dumps(event.to_dict()))
 

@@ -65,10 +65,6 @@
     box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.3);
   }
 
-
-
-
-
   .sre-border {
     border-color: var(--border-color) !important;
   }
@@ -81,7 +77,6 @@
     color: var(--text-secondary) !important;
   }
 
-  /* Message specific styles */
   .sre-msg-user {
     background: var(--accent) !important;
     color: #ffffff !important;
@@ -94,9 +89,6 @@
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
   }
 
-
-
-  /* Icons */
   .lucide {
     width: 16px;
     height: 16px;
@@ -104,7 +96,6 @@
     vertical-align: middle;
   }
 
-  /* Phase 6: Aesthetic Buttons & Collapsibles */
   .sre-btn-primary {
     background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%) !important;
     color: #ffffff !important;
@@ -214,37 +205,39 @@
     color: var(--text-secondary);
   }
 </style>
+
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
 <script src="https://unpkg.com/lucide@latest"></script>
-
-
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" />
 <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
-
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
 <div class="rbt-main-content area-left-expanded area-right-expanded"
-  style="backdrop-filter: blur(20px);     background: rgba(255, 255, 255, 0); display: block;margin-right: 1px; margin-bottom: 1px; margin-left: 100px; margin-top: 65px;">
+  style="backdrop-filter: blur(20px); background: rgba(255, 255, 255, 0); display: block; margin-right: 1px; margin-bottom: 1px; margin-left: 100px; margin-top: 65px;">
 
   <div id="sre-agent-app" class="sre-layout"
-    style="backdrop-filter: blur(20px);     background: rgba(255, 255, 255, 0); display:flex; flex-direction:column; height:calc(100vh - 80px);">
+    style="backdrop-filter: blur(20px); background: rgba(255, 255, 255, 0); display: flex; flex-direction: column; height: calc(100vh - 80px);">
+
     <!-- Header bar -->
     <div class="sre-panel"
-      style="background: var(--bg-main); display:flex; align-items:center; justify-content:space-between; padding:12px 20px; border-bottom:1px solid var(--border-color); position:relative; z-index:50;">
-      <div style="display:flex; align-items:center; gap:10px;">
+      style="background: var(--bg-main); display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-bottom: 1px solid var(--border-color); position: relative; z-index: 50;">
+      <div style="display: flex; align-items: center; gap: 10px;">
         <button id="toggle-sidebar-btn"
           onclick="document.getElementById('history-sidebar').style.display='flex'; this.style.display='none';"
           title="Open History"
-          style="background:transparent; border:none; color:var(--text-secondary); cursor:pointer; padding:6px; display:none; align-items:center; justify-content:center; border-radius:8px; transition:all 0.2s;"
+          style="background: transparent; border: none; color: var(--text-secondary); cursor: pointer; padding: 6px; display: none; align-items: center; justify-content: center; border-radius: 8px; transition: all 0.2s;"
           onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='transparent'">
-          <i class="fa-solid fa-bars" style="font-size:16px;"></i>
+          <i class="fa-solid fa-bars" style="font-size: 16px;"></i>
         </button>
 
-        <h2 class="sre-text-strong" style="margin:0; font-size:16px; font-weight:600;">NeuroSysAI SRE Workspace</h2>
+        <h2 class="sre-text-strong" style="margin: 0; font-size: 16px; font-weight: 600;">NeuroSysAI SRE Workspace</h2>
         <span id="connection-badge"
-          style="font-size:11px; padding:2px 8px; border-radius:10px; background:#1f6feb33; color:#58a6ff;">Connecting...</span>
+          style="font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #1f6feb33; color: #58a6ff;">Connecting...</span>
+          
+        <button id="sudo-auth-btn" class="sre-input" onclick="document.getElementById('sudo-modal').style.display='flex';" style="background: var(--bg-panel); color: #f85149; border: 1px solid var(--border-color); font-size: 12px; padding: 4px 12px; border-radius: 20px; cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: 600; margin-left: 15px;"><i class="fa-solid fa-lock"></i> Set Sudo Password</button>
       </div>
-      <div style="display:flex; align-items:center; gap:8px;">
+      <div style="display: flex; align-items: center; gap: 8px;">
         <select id="model-selector" class="sre-input"
           style="appearance: none; -webkit-appearance: none; font-size: 12px; padding: 6px 16px; padding-right: 28px; border-radius: 20px; cursor: pointer; outline: none; transition: all 0.2s ease; font-weight: 500; background-image: url('data:image/svg+xml;utf8,<svg fill=\'%238b949e\' height=\'20\' viewBox=\'0 0 24 24\' width=\'20\' xmlns=\'http://www.w3.org/2000/svg\'><path d=\'M7 10l5 5 5-5z\'/></svg>'); background-repeat: no-repeat; background-position-x: calc(100% - 6px); background-position-y: 50%;">
           <option value="mistral-large-latest">Mistral Large</option>
@@ -254,52 +247,77 @@
           <option value="mistral:latest">Local Mistral (Ollama)</option>
           <option value="qwen2.5-coder:latest">Local Qwen2.5 Coder (Ollama)</option>
         </select>
-        <span style="width:8px;height:8px;border-radius:50%;background:#3fb950;" id="status-dot"></span>
+        <select id="mode-selector" class="sre-input"
+          style="appearance: none; -webkit-appearance: none; font-size: 12px; padding: 6px 16px; padding-right: 28px; border-radius: 20px; cursor: pointer; outline: none; transition: all 0.2s ease; font-weight: 500; background-image: url('data:image/svg+xml;utf8,<svg fill=\'%238b949e\' height=\'20\' viewBox=\'0 0 24 24\' width=\'20\' xmlns=\'http://www.w3.org/2000/svg\'><path d=\'M7 10l5 5 5-5z\'/></svg>'); background-repeat: no-repeat; background-position-x: calc(100% - 6px); background-position-y: 50%;">
+          <option value="guided">Guided Mode (LangGraph)</option>
+          <option value="autonomous">Autonomous Mode (ReAct)</option>
+        </select>
+        <span style="width: 8px; height: 8px; border-radius: 50%; background: #3fb950;" id="status-dot"></span>
       </div>
     </div>
 
     <!-- Main split container -->
-    <div style="display:flex; flex:1; overflow-x:auto; overflow-y:hidden;">
+    <div style="display: flex; flex: 1; overflow-x: auto; overflow-y: hidden;">
 
       <!-- 1. History Sidebar -->
       <div id="history-sidebar" class="sre-panel"
-        style="    backdrop-filter: blur(20px);
-    background: rgba(255, 255, 255, 0);width: 250px; border-right:1px solid rgba(255,255,255,0.08); display:flex; flex-direction:column; margin: 8px; margin-right: 0;">
+        style="backdrop-filter: blur(20px); background: rgba(255, 255, 255, 0); width: 250px; border-right: 1px solid rgba(255,255,255,0.08); display: flex; flex-direction: column; margin: 8px; margin-right: 0;">
         <div
-          style="    border: 1px solid rgb(132 132 132 / 16%);
-    border-top-left-radius: 16px;
-    border-top-right-radius: 16px;
-    padding:12px; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center;">
-          <button onclick="startNewChat()" title="New Chat"
-            style="background: var(--bg-main); color:var(--text-primary); padding:8px; border:1px solid rgba(255,255,255,0.1); border-radius:10px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s;"
-            onmouseover="this.style.background='rgba(255,255,255,0.1)'"
-            onmouseout="this.style.background='var(--bg-main)'">
-            <i class="fa-solid fa-plus" style="font-size:14px; padding:2px;"></i>
-          </button>
+          style="border: 1px solid rgb(132 132 132 / 16%); border-top-left-radius: 16px; border-top-right-radius: 16px; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; gap: 8px;">
+            <button onclick="window.startNewChat()" title="New Chat"
+              style="background: var(--bg-main); color: var(--text-primary); padding: 8px; border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
+              onmouseover="this.style.background='rgba(255,255,255,0.1)'"
+              onmouseout="this.style.background='var(--bg-main)'">
+              <i class="fa-solid fa-plus" style="font-size: 14px; padding: 2px; pointer-events: none;"></i>
+            </button>
+            <button onclick="toggleBulkEditMode()" title="Bulk Delete"
+              style="background: var(--bg-main); color: var(--text-primary); padding: 8px; border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
+              onmouseover="this.style.background='rgba(255,255,255,0.1)'"
+              onmouseout="this.style.background='var(--bg-main)'">
+              <i class="fa-solid fa-list-check" style="font-size: 14px; padding: 2px; pointer-events: none;"></i>
+            </button>
+          </div>
           <button
             onclick="document.getElementById('history-sidebar').style.display='none'; document.getElementById('toggle-sidebar-btn').style.display='flex';"
             title="Close History"
-            style="background: var(--bg-main);     color: var(--text-secondary);     padding: 8px;     border-radius: 10px;     cursor: pointer;     display: flex;     align-items: center;     justify-content: center;     transition: 0.2s;     border: 1px solid rgba(255, 255, 255, 0.1);"
+            style="background: var(--bg-main); color: var(--text-secondary); padding: 8px; border-radius: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; border: 1px solid rgba(255, 255, 255, 0.1);"
             onmouseover="this.style.background='rgba(255,255,255,0.05)'"
             onmouseout="this.style.background='var(--bg-main)'">
-            <i class="fa-solid fa-chevron-left" style="font-size:14px; padding:2px;"></i>
+            <i class="fa-solid fa-chevron-left" style="font-size: 14px; padding: 2px; pointer-events: none;"></i>
           </button>
         </div>
-        <div id="history-list" style="    border: 1px solid rgb(132 132 132 / 16%);
-    flex:1; overflow-y:auto; padding:8px; display:flex; flex-direction:column; gap:6px;">
+        <div id="bulk-action-bar"
+          style="display: none; padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.08); justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2);">
+          <label
+            style="color: var(--text-secondary); font-size: 12px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+            <input type="checkbox" id="bulk-select-all" onclick="selectAllHistory(this.checked)"
+              style="appearance: auto; -webkit-appearance: auto; accent-color: var(--purple); width: 14px; height: 14px; cursor: pointer;">
+            Select All
+          </label>
+          <div style="display: flex; gap: 6px;">
+            <button onclick="toggleBulkEditMode()"
+              style="background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary); padding: 4px 8px; border-radius: 6px; font-size: 12px; cursor: pointer; transition: 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='transparent'">Cancel</button>
+            <button onclick="deleteSelectedHistory()"
+              style="background: var(--error); border: none; color: white; padding: 4px 8px; border-radius: 6px; font-size: 12px; cursor: pointer; transition: 0.2s;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'"><i
+                class="fa-solid fa-trash" style="margin-right: 4px; pointer-events: none;"></i>Delete</button>
+          </div>
+        </div>
+        <div id="history-list"
+          style="border: 1px solid rgb(132 132 132 / 16%); flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px;">
           <!-- history items populated by JS -->
         </div>
       </div>
 
       <!-- 2. Chat Column -->
       <div class="sre-layout"
-        style="backdrop-filter: blur(20px);     background: rgba(255, 255, 255, 0);flex: 1; display:flex; flex-direction:column; border: none; min-width: 400px; position: relative;">
+        style="backdrop-filter: blur(20px); background: rgba(255, 255, 255, 0); flex: 1; display: flex; flex-direction: column; border: none; min-width: 400px; position: relative;">
         <div id="chat-messages"
-          style="flex:1; overflow-y:auto; padding:20px; padding-bottom: 140px; display:flex; flex-direction:column; gap:12px;">
+          style="flex: 1; overflow-y: auto; padding: 20px; padding-bottom: 140px; display: flex; flex-direction: column; gap: 12px;">
           <div class="agent-msg sre-panel"
-            style="background: var(--bg-main);border:1px solid var(--border-color); border-radius:12px; padding:16px; max-width:80%;">
-            <div class="sre-text-secondary" style="font-size:13px; margin-bottom:6px;">NeuroSysAI SRE Agent</div>
-            <div class="sre-text-primary" style="line-height:1.6;">
+            style="background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; max-width: 80%;">
+            <div class="sre-text-secondary" style="font-size: 13px; margin-bottom: 6px;">NeuroSysAI SRE Agent</div>
+            <div class="sre-text-primary" style="line-height: 1.6;">
               Hello! I am the NeuroSysAI SRE Workspace.
             </div>
           </div>
@@ -307,20 +325,20 @@
 
         <!-- Floating Input Bar -->
         <div
-          style="position: absolute; bottom: 0; left: 0; right: 0; padding: 24px; pointer-events: none; background: linear-gradient(to top, var(--bg-main) 30%, transparent); display:flex; flex-direction:column; align-items:center;">
+          style="position: absolute; bottom: 0; left: 0; right: 0; padding: 24px; pointer-events: none; background: linear-gradient(to top, var(--bg-main) 30%, transparent); display: flex; flex-direction: column; align-items: center;">
           <div id="context-attachments"
-            style="pointer-events: auto; display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px; width:100%; max-width:800px; min-height: 0;">
+            style="pointer-events: auto; display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; width: 100%; max-width: 800px; min-height: 0;">
             <!-- Chips injected by JS -->
           </div>
           <form id="chat-form"
-            style="pointer-events: auto; display:flex; align-items:flex-end; gap:12px; background: rgb(255 255 255 / 0%); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border:1px solid rgba(255,255,255,0.15); box-shadow: 0 12px 40px rgba(0,0,0,0.4); border-radius:28px; padding:8px 12px; transition:border-color 0.2s; width: 100%; max-width: 800px; margin: 0 auto;"
+            style="pointer-events: auto; display: flex; align-items: flex-end; gap: 12px; background: rgb(255 255 255 / 0%); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 12px 40px rgba(0,0,0,0.4); border-radius: 28px; padding: 8px 12px; transition: border-color 0.2s; width: 100%; max-width: 800px; margin: 0 auto;"
             tabindex="0" onfocusin="this.style.borderColor='var(--accent)'"
             onfocusout="this.style.borderColor='rgba(255,255,255,0.15)'">
             <textarea id="chat-input" placeholder="Ask anything" class="sre-input sre-text-strong"
-              style="flex:1; background:transparent; border:none; font-size:15px; outline:none; resize:none; overflow-y:auto; padding:12px 12px; line-height:1.5; min-height:46px; max-height:200px; box-sizing:border-box;"
+              style="flex: 1; background: transparent; border: none; font-size: 15px; outline: none; resize: none; overflow-y: auto; padding: 12px 12px; line-height: 1.5; min-height: 46px; max-height: 200px; box-sizing: border-box;"
               rows="1"></textarea>
             <button type="submit" id="send-btn" title="Kirim"
-              style="background:var(--accent); color:#ffffff; border:none; border-radius:50%; width:44px; height:44px; display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; transition:all 0.2s; margin-bottom: 2px;">
+              style="background: var(--accent); color: #ffffff; border: none; border-radius: 50%; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; transition: all 0.2s; margin-bottom: 2px;">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                 stroke-linecap="round" stroke-linejoin="round" style="margin-left: -2px;">
                 <line x1="22" y1="2" x2="11" y2="13"></line>
@@ -333,86 +351,164 @@
 
       <!-- Right Panel Resizer -->
       <div id="panel-resizer"
-        style="width:4px; cursor:col-resize; background:rgba(255,255,255,0.05); margin:8px 4px 8px 0; border-radius:4px; transition:background 0.2s; z-index:10;"
+        style="width: 4px; cursor: col-resize; background: rgba(255,255,255,0.05); margin: 8px 4px 8px 0; border-radius: 4px; transition: background 0.2s; z-index: 10;"
         onmouseover="this.style.background='var(--accent)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'">
       </div>
 
-      <!-- 3. Right Column: Tabs (Terminal, Explorer, Artifacts) -->
+      <!-- 3. Right Column: Tabs -->
       <div class="sre-panel" id="right-panel"
-        style="backdrop-filter: blur(20px);     background: rgba(255, 255, 255, 0); width: 35%; display:flex; flex-direction:column; min-width: 300px; max-width: 80vw; margin: 8px; margin-left: 0;">
+        style="backdrop-filter: blur(20px); background: rgba(255, 255, 255, 0); width: 35%; display: flex; flex-direction: column; min-width: 300px; max-width: 80vw; margin: 8px; margin-left: 0;">
         <div class="sre-layout"
-          style="      border: 1px solid rgb(132 132 132 / 16%);  backdrop-filter: blur(20px);
-    background: rgba(255, 255, 255, 0);display:flex; border-bottom:1px solid rgba(255,255,255,0.08); border-top-left-radius: 16px; border-top-right-radius: 16px; overflow:hidden;">
-          <div class="tab-btn active sre-text-primary" onclick="switchTab('investigation')"
-            style="flex:1; display:flex; align-items:center; justify-content:center; gap:6px; text-align:center; padding:12px 10px; font-size:13px; cursor:pointer; border-bottom:2px solid var(--accent); transition: background 0.2s;">
-            <i class="fa-solid fa-microscope" style="font-size:14px;"></i> Investigation
+          style="border: 1px solid rgb(132 132 132 / 16%); backdrop-filter: blur(20px); background: rgba(255, 255, 255, 0); display: flex; border-bottom: 1px solid rgba(255,255,255,0.08); border-top-left-radius: 16px; border-top-right-radius: 16px; overflow: hidden;">
+          <div class="tab-btn active sre-text-primary" onclick="window.switchTab('investigation')"
+            style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; text-align: center; padding: 12px 10px; font-size: 13px; cursor: pointer; border-bottom: 2px solid var(--accent); transition: background 0.2s;">
+            <i class="fa-solid fa-microscope" style="font-size: 14px;"></i> Investigation
           </div>
-          <div class="tab-btn sre-text-secondary" onclick="switchTab('terminal')"
-            style="flex:1; display:flex; align-items:center; justify-content:center; gap:6px; text-align:center; padding:12px 10px; font-size:13px; cursor:pointer; transition: background 0.2s;">
-            <i class="fa-solid fa-terminal" style="font-size:14px;"></i> Terminal
+          <div class="tab-btn sre-text-secondary" onclick="window.switchTab('terminal')"
+            style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; text-align: center; padding: 12px 10px; font-size: 13px; cursor: pointer; transition: background 0.2s;">
+            <i class="fa-solid fa-terminal" style="font-size: 14px;"></i> Terminal
           </div>
-          <div class="tab-btn sre-text-secondary" onclick="switchTab('explorer')"
-            style="flex:1; display:flex; align-items:center; justify-content:center; gap:6px; text-align:center; padding:12px 10px; font-size:13px; cursor:pointer; transition: background 0.2s;">
-            <i class="fa-solid fa-folder" style="font-size:14px;"></i> Explorer
+          <div class="tab-btn sre-text-secondary" onclick="window.switchTab('explorer')"
+            style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; text-align: center; padding: 12px 10px; font-size: 13px; cursor: pointer; transition: background 0.2s;">
+            <i class="fa-solid fa-folder" style="font-size: 14px;"></i> Explorer
           </div>
-          <div class="tab-btn sre-text-secondary" onclick="switchTab('artifacts')"
-            style="flex:1; display:flex; align-items:center; justify-content:center; gap:6px; text-align:center; padding:12px 10px; font-size:13px; cursor:pointer; transition: background 0.2s;">
-            <i class="fa-solid fa-box" style="font-size:14px;"></i> Artifacts
+          <div class="tab-btn sre-text-secondary" onclick="window.switchTab('artifacts')"
+            style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; text-align: center; padding: 12px 10px; font-size: 13px; cursor: pointer; transition: background 0.2s;">
+            <i class="fa-solid fa-box" style="font-size: 14px;"></i> Artifacts
           </div>
         </div>
 
         <!-- Investigation Tab -->
         <div id="tab-investigation" class="tab-content"
-          style="flex:1; display:flex; flex-direction:column; padding:0; overflow-y:auto; font-size:13px; background:var(--bg-main);">
-          <div id="worker-activity-container" style="display:flex; flex-direction:column; border-bottom:1px solid var(--border-color);"></div>
-          <div id="investigation-timeline-container" style="display:flex; flex-direction:column;">
-            <div style="    background: var(--bg-main); padding:16px; color:var(--text-secondary); font-style:italic;">
-              No investigations yet.</div>
+          style="flex: 1; display: flex; flex-direction: column; padding: 0; overflow-y: auto; font-size: 13px; background: var(--bg-main);">
+          <div id="worker-activity-container"
+            style="display: flex; flex-direction: column; border-bottom: 1px solid var(--border-color);"></div>
+          <div id="investigation-timeline-container" style="display: flex; flex-direction: column;">
+            <div style="background: var(--bg-main); padding: 16px; color: var(--text-secondary); font-style: italic;">
+              No investigations yet.
+            </div>
           </div>
         </div>
 
         <!-- Terminal Tab -->
         <div id="tab-terminal" class="tab-content"
-          style="flex:1; display:none; flex-direction:column; background:#000; position:relative; padding:10px;">
-          <!-- <button onclick="if(window.fitTerminal) window.fitTerminal();" title="Fit Terminal Size"
-            style="position:absolute; top:8px; right:16px; z-index:10; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:#ccc; cursor:pointer; font-size:11px; display:flex; align-items:center; gap:4px; padding:4px 8px; border-radius:4px; transition:0.2s; backdrop-filter:blur(4px);"
-            onmouseover="this.style.background='rgba(255,255,255,0.2)'" onmouseout="this.style.background='rgba(255,255,255,0.1)'">
-            <i class="fa-solid fa-expand"></i> Fit Size
-          </button> -->
-          <div id="terminal-container" style="flex:1; overflow:hidden;"></div>
+          style="flex: 1; display: none; flex-direction: column; background: #000; position: relative; padding: 10px;">
+          <div id="terminal-container" style="flex: 1; overflow: hidden;"></div>
         </div>
 
         <!-- Explorer Tab -->
         <div id="tab-explorer" class="sre-panel tab-content"
-          style="backdrop-filter: blur(20px);     background: rgba(255, 255, 255, 0); display:none; flex-direction:column; overflow-y:auto; flex:1;">
-          <div style="padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); ">
+          style="backdrop-filter: blur(20px); background: rgba(255, 255, 255, 0); display: none; flex-direction: column; overflow-y: auto; flex: 1;">
+          <div style="padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.1);">
             <div style="font-size: 12px; opacity: 0.7; margin-bottom: 4px; font-weight: 600;">Workspace Context</div>
             <select id="workspace-selector" class="sre-input"
               style="width: 100%; font-size: 12px; padding: 6px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text-primary); border-radius: 4px;"
-              onchange="onWorkspaceSelectorChange()">
+              onchange="window.onWorkspaceSelectorChange()">
               <option value="auto">Auto (Follow Terminal CWD)</option>
               <option value="/home/paul/project-ai/NeuroSys-AI">NeuroSysAI Project</option>
-              <option value="/">Root (/) </option>
+              <option value="/">Root (/)</option>
               <option value="custom">Custom Path...</option>
             </select>
           </div>
-          <div id="explorer-tree" style="padding: 16px; font-family: monospace; font-size:13px; line-height:1.6;">
+          <div id="explorer-tree" style="padding: 16px; font-family: monospace; font-size: 13px; line-height: 1.6;">
             Membangun struktur direktori...
           </div>
         </div>
 
         <!-- Artifacts Tab -->
         <div id="tab-artifacts" class="tab-content"
-          style="    background: var(--bg-main); flex:1; display:none; flex-direction:column; padding:10px; overflow-y:auto; font-size:13px;">
+          style="background: var(--bg-main); flex: 1; display: none; flex-direction: column; padding: 10px; overflow-y: auto; font-size: 13px;">
           <div id="artifacts-list" class="sre-text-primary">Loading artifacts...</div>
         </div>
-
       </div>
     </div>
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<!-- ============================================================ -->
+<!-- FUNGSI GLOBAL - Ditempatkan di LUAR IIFE                     -->
+<!-- ============================================================ -->
+<script>
+  // ============================================
+  // 1. FUNGSI BULK EDIT (Global)
+  // ============================================
+  let isBulkEditMode = false;
+
+  function toggleBulkEditMode() {
+    isBulkEditMode = !isBulkEditMode;
+    const bulkBar = document.getElementById('bulk-action-bar');
+    if (bulkBar) bulkBar.style.display = isBulkEditMode ? 'flex' : 'none';
+
+    const checkboxes = document.querySelectorAll('.history-checkbox');
+    checkboxes.forEach(cb => {
+      cb.style.display = isBulkEditMode ? 'inline-block' : 'none';
+      cb.checked = false;
+    });
+
+    const selectAllBtn = document.getElementById('bulk-select-all');
+    if (selectAllBtn) selectAllBtn.checked = false;
+  }
+
+  function selectAllHistory(checked) {
+    const checkboxes = document.querySelectorAll('.history-checkbox');
+    checkboxes.forEach(cb => {
+      cb.checked = checked;
+    });
+  }
+
+  function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+      const cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
+        }
+      }
+    }
+    return cookieValue;
+  }
+
+  async function deleteSelectedHistory() {
+    const checkboxes = document.querySelectorAll('.history-checkbox:checked');
+    const sessionIds = Array.from(checkboxes).map(cb => cb.value);
+
+    if (sessionIds.length === 0) {
+      alert('Tidak ada sesi yang dipilih.');
+      return;
+    }
+
+    if (!confirm('Apakah Anda yakin ingin menghapus ' + sessionIds.length + ' sesi?')) return;
+
+    try {
+      const res = await fetch('/api/v1/chat-sessions/bulk_delete/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCookie('csrftoken') || ''
+        },
+        body: JSON.stringify({ session_ids: sessionIds })
+      });
+
+      if (res.ok) {
+        toggleBulkEditMode();
+        window.location.reload();
+      } else {
+        const errData = await res.json();
+        alert('Gagal menghapus riwayat: ' + (errData.error || res.status));
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Terjadi kesalahan saat menghubungi server.');
+    }
+  }
+</script>
+
+<!-- ============================================================ -->
+<!-- IIFE UTAMA                                                    -->
+<!-- ============================================================ -->
 <script>
   (function () {
     const messagesDiv = document.getElementById('chat-messages');
@@ -442,14 +538,14 @@
         chip.style.cssText = 'background: rgb(30 41 59 / 3%); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px; padding: 8px 12px; font-size: 13px; color: var(--text-primary); display: flex; align-items: flex-start; gap: 12px; cursor: default; box-shadow: 0 4px 12px rgba(0,0,0,0.2);';
 
         chip.innerHTML = `
-          <div style="display:flex; flex-direction:column; gap:2px;">
-            <div style="font-weight: 600; display:flex; align-items:center; gap:6px;">
-              <i class="fas fa-file-alt" style="color:var(--accent);"></i> ${fileName}
-            </div>
-            <div style="font-size: 11px; opacity: 0.6; font-family: monospace;">${window.selectedFile}</div>
-          </div>
-          <span style="cursor: pointer; opacity: 0.7; font-size: 16px; margin-top: -2px;" onclick="clearSelectedFile()" title="Remove file context">&times;</span>
-        `;
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                    <div style="font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                        <i class="fas fa-file-alt" style="color: var(--accent);"></i> ${fileName}
+                    </div>
+                    <div style="font-size: 11px; opacity: 0.6; font-family: monospace;">${window.selectedFile}</div>
+                </div>
+                <span style="cursor: pointer; opacity: 0.7; font-size: 16px; margin-top: -2px;" onclick="window.clearSelectedFile()" title="Remove file context">&times;</span>
+            `;
         container.appendChild(chip);
       }
     }
@@ -464,6 +560,7 @@
     function connect() {
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
       ws = new WebSocket(`${protocol}//${location.host}/ws/sre-agent/`);
+      window.sreAgentWs = ws;
 
       ws.onopen = () => {
         badge.textContent = 'Connected';
@@ -491,15 +588,17 @@
       const type = data.type;
 
       switch (type) {
+        case 'sudo_key_exchange':
+          window.serverRsaPublicKey = data.public_key;
+          break;
+          
         case 'session_id':
           sessionId = data.content;
           break;
 
         case 'session_title':
-          // Update the UI title
           const titleContent = data.content;
           document.title = titleContent;
-          // Update sidebar if the history item exists
           const historyItem = document.getElementById('history-item-' + sessionId);
           if (historyItem) {
             const titleEl = historyItem.querySelector('.sre-history-title');
@@ -518,9 +617,9 @@
         case 'discovering_tools':
           let toolsHtml = data.content;
           if (data.tools && data.tools.length) {
-            toolsHtml += '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">';
+            toolsHtml += '<div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px;">';
             data.tools.forEach(t => {
-              toolsHtml += `<span style="font-size:11px;background:#21262d;padding:2px 8px;border-radius:4px;color:#79c0ff;">${t}</span>`;
+              toolsHtml += `<span style="font-size: 11px; background: #21262d; padding: 2px 8px; border-radius: 4px; color: #79c0ff;">${t}</span>`;
             });
             toolsHtml += '</div>';
           }
@@ -545,12 +644,12 @@
 
         case 'tool_end':
           const result = (data.result || '').substring(0, 1000);
-          addAgentStep('Result', `<pre class="sre-layout" style="padding:8px;border-radius:6px;overflow-x:auto;font-size:12px;max-height:200px;overflow-y:auto;margin:4px 0;border:1px solid var(--border-color);">${escapeHtml(result)}</pre>`, 'var(--success)', 'check-circle', data.step_id, true);
+          addAgentStep('Result', `<pre class="sre-layout" style="padding: 8px; border-radius: 6px; overflow-x: auto; font-size: 12px; max-height: 200px; overflow-y: auto; margin: 4px 0; border: 1px solid var(--border-color);">${escapeHtml(result)}</pre>`, 'var(--success)', 'check-circle', data.step_id, true);
           break;
 
         case 'approval_required':
           addAgentStep('Approval Required', data.content, 'var(--warning)', 'lock');
-          showApprovalModal(data.tool, data.args || data.command, data.content);
+          // showApprovalModal(data.tool, data.args || data.command, data.content);
           break;
 
         case 'safety_blocked':
@@ -561,15 +660,16 @@
           addAgentStep('Warning', data.content, 'var(--warning)', 'alert-triangle');
           break;
 
-
         case 'creating_artifact':
           addAgentStep('Creating Artifact', data.content, 'var(--success)', 'file-code-2');
           loadArtifacts();
           break;
+
         case 'restoring_artifact':
           addAgentStep('Restoring Artifact', data.content, 'var(--warning)', 'history');
           loadArtifacts();
           break;
+
         case 'security_scan':
           addAgentStep('Security Scan', data.content, 'var(--purple)', 'shield-check');
           break;
@@ -577,13 +677,14 @@
         case 'parallel_start':
           addAgentStep('Parallel Execution', `⚡ ${data.content || 'Executing tasks in parallel...'}`, '#00d4ff', 'layers');
           break;
+
         case 'parallel_progress':
           addAgentStep('Progress', data.content || 'Tasks progressing...', '#00d4ff', 'loader');
           break;
+
         case 'parallel_complete':
           addAgentStep('Parallel Complete', `✅ ${data.content || 'All tasks completed.'}`, 'var(--success)', 'check-circle');
           break;
-
 
         case 'investigation_started':
           if (activeInvestigationId && investigations[activeInvestigationId]) {
@@ -633,9 +734,8 @@
         case 'task_updated':
           const taskData = data.task || (data.metadata && data.metadata.task);
           if (taskData) {
-            const p = taskData;
-            if (p.new_status === 'completed') {
-              addAgentStep('Task Completed', p.task, 'var(--success)', 'check-circle');
+            if (taskData.new_status === 'completed') {
+              addAgentStep('Task Completed', taskData.task, 'var(--success)', 'check-circle');
             }
           }
           break;
@@ -694,41 +794,40 @@
           if (activeDash) { activeDash.removeAttribute('id'); }
 
           const endTime = new Date();
-          // Find start time of the session (using the first message or rough estimate)
           const startTime = window.sessionStartTime || new Date(Date.now() - (data.duration || 0) * 1000);
           const dur = data.duration ? data.duration.toFixed(1) : ((endTime - startTime) / 1000).toFixed(1);
 
           const auditHtml = `
-            <div class="sre-agent-step accordion-item mb-3 mt-3" style="border:1px solid var(--border-color); border-radius:8px; overflow:hidden;">
-              <h2 class="accordion-header" style="margin:0;">
-                <button class="accordion-button" type="button" style="padding:12px 16px; background:rgba(46,160,67,0.1); border:none; box-shadow:none; width:100%; display:flex; align-items:center;">
-                  <div style="display:flex;align-items:center;gap:8px;">
-                    <span style="color:var(--success);">${getIcon('check-all')}</span>
-                    <strong style="color:var(--success);">Task Execution Completed</strong>
-                  </div>
-                </button>
-              </h2>
-              <div class="accordion-collapse collapse show">
-                <div class="accordion-body" style="padding:16px; font-size:13px; background:var(--bg-panel);">
-                   <p style="margin-top:0; margin-bottom:12px;">${data.content}</p>
-                   <table style="width:100%; border-collapse:collapse; font-size:12px; border:1px solid var(--border-color);">
-                     <tr style="background:#21262d;"><th style="padding:6px; border:1px solid var(--border-color); text-align:left;">Audit Trail</th><th style="padding:6px; border:1px solid var(--border-color); text-align:left;">Details</th></tr>
-                     <tr><td style="padding:6px; border:1px solid var(--border-color);">Status</td><td style="padding:6px; border:1px solid var(--border-color); color:var(--success);"><strong>COMPLETED</strong></td></tr>
-                     <tr><td style="padding:6px; border:1px solid var(--border-color);">Start Time</td><td style="padding:6px; border:1px solid var(--border-color);">${startTime.toLocaleTimeString()}</td></tr>
-                     <tr><td style="padding:6px; border:1px solid var(--border-color);">End Time</td><td style="padding:6px; border:1px solid var(--border-color);">${endTime.toLocaleTimeString()}</td></tr>
-                     <tr><td style="padding:6px; border:1px solid var(--border-color);">Total Execution Time</td><td style="padding:6px; border:1px solid var(--border-color);">${dur} seconds</td></tr>
-                   </table>
-                </div>
-              </div>
-            </div>
-          `;
+                    <div class="sre-agent-step accordion-item mb-3 mt-3" style="border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
+                        <h2 class="accordion-header" style="margin: 0;">
+                            <button class="accordion-button" type="button" style="padding: 12px 16px; background: rgba(46,160,67,0.1); border: none; box-shadow: none; width: 100%; display: flex; align-items: center;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span style="color: var(--success);">${getIcon('check-all')}</span>
+                                    <strong style="color: var(--success);">Task Execution Completed</strong>
+                                </div>
+                            </button>
+                        </h2>
+                        <div class="accordion-collapse collapse show">
+                            <div class="accordion-body" style="padding: 16px; font-size: 13px; background: var(--bg-panel);">
+                                <p style="margin-top: 0; margin-bottom: 12px;">${data.content}</p>
+                                <table style="width: 100%; border-collapse: collapse; font-size: 12px; border: 1px solid var(--border-color);">
+                                    <tr style="background: #21262d;"><th style="padding: 6px; border: 1px solid var(--border-color); text-align: left;">Audit Trail</th><th style="padding: 6px; border: 1px solid var(--border-color); text-align: left;">Details</th></tr>
+                                    <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Status</td><td style="padding: 6px; border: 1px solid var(--border-color); color: var(--success);"><strong>COMPLETED</strong></td></tr>
+                                    <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Start Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${startTime.toLocaleTimeString()}</td></tr>
+                                    <tr><td style="padding: 6px; border: 1px solid var(--border-color);">End Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${endTime.toLocaleTimeString()}</td></tr>
+                                    <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Total Execution Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${dur} seconds</td></tr>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                `;
           messagesDiv.innerHTML += auditHtml;
 
           currentAIMsg = null;
           isProcessing = false;
           sendBtn.disabled = false;
           sendBtn.style.opacity = '1';
-          sendBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:-2px;"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`;
+          sendBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left: -2px;"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`;
           break;
 
         case 'error':
@@ -737,14 +836,13 @@
           isProcessing = false;
           sendBtn.disabled = false;
           sendBtn.style.opacity = '1';
-          sendBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:-2px;"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`;
+          sendBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left: -2px;"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`;
           currentAIMsg = null;
           break;
       }
 
       scrollToBottom();
     }
-
 
     // --- UI helpers ---
     function getIcon(name) {
@@ -763,7 +861,7 @@
     function addUserMessage(text) {
       const div = document.createElement('div');
       div.className = 'sre-msg-user';
-      div.style.cssText = 'align-self:flex-end;border-radius:12px;padding:12px 16px;max-width:70%;font-size:14px;line-height:1.5;margin-bottom:8px;';
+      div.style.cssText = 'align-self: flex-end; border-radius: 12px; padding: 12px 16px; max-width: 70%; font-size: 14px; line-height: 1.5; margin-bottom: 8px;';
 
       const contextRegex = /\n\n\[Context Attached: (file:\/\/[^\]]+)\]/g;
       const matches = [...text.matchAll(contextRegex)];
@@ -775,11 +873,11 @@
           const fileUrl = match[1];
           const fileName = fileUrl.split('/').pop();
           html += `<div style="margin-top: 8px; display: inline-flex; flex-direction: column; background: rgba(0,0,0,0.15); padding: 6px 10px; border-radius: 8px; font-size: 11px; border: 1px solid rgba(0,0,0,0.1);">
-              <div style="font-weight: 600; display: flex; align-items: center; gap: 6px;">
-                 <i class="fas fa-file-alt" style="color: #fff;"></i> ${escapeHtml(fileName)}
-              </div>
-              <div style="opacity: 0.7; font-family: monospace; margin-top: 2px;">${escapeHtml(fileUrl)}</div>
-           </div>`;
+                    <div style="font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                        <i class="fas fa-file-alt" style="color: #fff;"></i> ${escapeHtml(fileName)}
+                    </div>
+                    <div style="opacity: 0.7; font-family: monospace; margin-top: 2px;">${escapeHtml(fileUrl)}</div>
+                </div>`;
         });
       }
 
@@ -791,18 +889,17 @@
     function addAIMessage(content) {
       const div = document.createElement('div');
       div.className = 'agent-msg sre-msg-ai';
-      div.style.cssText = 'border-radius:12px;padding:16px;max-width:85%;margin-bottom:8px;';
+      div.style.cssText = 'border-radius: 12px; padding: 16px; max-width: 85%; margin-bottom: 8px;';
       div.innerHTML = `
-      <div style="font-size:12px;margin-bottom:8px;display:flex;align-items:center;gap:6px;" class="sre-text-secondary">
-         <span>NeuroSysAI</span>
-      </div>
-      <div class="ai-content sre-text-primary" style="line-height:1.6;font-size:14px;">${marked.parse(content || '')}</div>
-      `;
+            <div style="font-size: 12px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;" class="sre-text-secondary">
+                <span>NeuroSysAI</span>
+            </div>
+            <div class="ai-content sre-text-primary" style="line-height: 1.6; font-size: 14px;">${marked.parse(content || '')}</div>
+        `;
       messagesDiv.appendChild(div);
       scrollToBottom();
       return div;
     }
-
 
     // --- Timers and UI ---
     let stepTimers = {};
@@ -823,7 +920,6 @@
       if (iconContainer && forceSuccess) {
         iconContainer.innerHTML = getIcon('check-circle');
         iconContainer.style.color = 'var(--success-text)';
-        // Remove spinner class if any
         const svg = iconContainer.querySelector('svg');
         if (svg) svg.classList.remove('fa-spin');
       }
@@ -844,7 +940,6 @@
         }
       }
 
-      // If a new step starts, complete the previous generic step
       if (lastGenericStepId && lastGenericStepId !== stepId && !isEnd) {
         stopStep(lastGenericStepId);
         lastGenericStepId = null;
@@ -868,29 +963,28 @@
         stepDiv.style.borderRadius = '8px';
         stepDiv.style.overflow = 'hidden';
 
-        let timerHtml = `<span id="timer-${stepId}" class="sre-timer ms-2" style="min-width:45px; text-align:right;">0.0s</span>`;
+        let timerHtml = `<span id="timer-${stepId}" class="sre-timer ms-2" style="min-width: 45px; text-align: right;">0.0s</span>`;
 
         stepDiv.innerHTML = `
-            <h2 class="accordion-header" id="heading-${stepId}" style="margin:0;">
-                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${stepId}" aria-expanded="true" aria-controls="collapse-${stepId}" style="padding:10px 14px; background:rgba(0,0,0,0.02); border:none; box-shadow:none; width:100%; display:flex; align-items:center; justify-content:space-between;">
-                    <div style="display:flex;align-items:center;gap:8px;">
-                        <span id="icon-${stepId}" style="color:${color};display:flex;align-items:center;">
-                           <div class="spinner-border spinner-border-sm" role="status" style="width:14px;height:14px;border-width:2px;"></div>
-                        </span>
-                        <span style="color:${color};font-weight:600;">${label}</span>
+                <h2 class="accordion-header" id="heading-${stepId}" style="margin: 0;">
+                    <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${stepId}" aria-expanded="true" aria-controls="collapse-${stepId}" style="padding: 10px 14px; background: rgba(0,0,0,0.02); border: none; box-shadow: none; width: 100%; display: flex; align-items: center; justify-content: space-between;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span id="icon-${stepId}" style="color: ${color}; display: flex; align-items: center;">
+                                <div class="spinner-border spinner-border-sm" role="status" style="width: 14px; height: 14px; border-width: 2px;"></div>
+                            </span>
+                            <span style="color: ${color}; font-weight: 600;">${label}</span>
+                        </div>
+                        ${timerHtml}
+                    </button>
+                </h2>
+                <div id="collapse-${stepId}" class="accordion-collapse collapse show" aria-labelledby="heading-${stepId}">
+                    <div id="step-content-${stepId}" class="accordion-body sre-text-secondary" style="padding: 10px 14px; border-top: 1px solid var(--border-color); font-size: 13px;">
+                        ${contentHtml}
                     </div>
-                    ${timerHtml}
-                </button>
-            </h2>
-            <div id="collapse-${stepId}" class="accordion-collapse collapse show" aria-labelledby="heading-${stepId}">
-                <div id="step-content-${stepId}" class="accordion-body sre-text-secondary" style="padding:10px 14px; border-top:1px solid var(--border-color); font-size:13px;">
-                    ${contentHtml}
                 </div>
-            </div>
-          `;
+            `;
         messagesDiv.appendChild(stepDiv);
 
-        // Start timer for all newly created steps
         if (!isEnd) {
           stepTimers[stepId] = {
             startTime: Date.now(),
@@ -904,10 +998,9 @@
           };
         }
       } else {
-        // Update existing step (e.g. tool_end)
         const contentDiv = document.getElementById('step-content-' + stepId);
         if (contentDiv) {
-          contentDiv.innerHTML += `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border-color);">${contentHtml}</div>`;
+          contentDiv.innerHTML += `<div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border-color);">${contentHtml}</div>`;
         }
 
         if (isEnd) {
@@ -924,14 +1017,11 @@
       if (window.lucide) window.lucide.createIcons();
     }
 
-    // Override old addAgentStep logic inside handleEvent to use step_id
-
-
     function addSystemMsg(text, iconName = 'info') {
       const div = document.createElement('div');
       div.className = 'sre-text-secondary';
-      div.style.cssText = 'text-align:center;font-size:12px;padding:8px;display:flex;justify-content:center;align-items:center;gap:6px;';
-      div.innerHTML = `<span style="opacity:0.7">${getIcon(iconName)}</span> <span>${text}</span>`;
+      div.style.cssText = 'text-align: center; font-size: 12px; padding: 8px; display: flex; justify-content: center; align-items: center; gap: 6px;';
+      div.innerHTML = `<span style="opacity: 0.7">${getIcon(iconName)}</span> <span>${text}</span>`;
       messagesDiv.appendChild(div);
       scrollToBottom();
     }
@@ -947,7 +1037,7 @@
 
       const invKeys = Object.keys(investigations);
       if (invKeys.length === 0) {
-        container.innerHTML = `<div style="padding:16px; color:var(--text-secondary); font-style:italic;">No investigations yet.</div>`;
+        container.innerHTML = `<div style="padding: 16px; color: var(--text-secondary); font-style: italic;">No investigations yet.</div>`;
         return;
       }
 
@@ -960,75 +1050,74 @@
         let planHtml = '';
         if (inv.plan && inv.plan.length > 0) {
           planHtml = inv.plan.map(p => {
-            const icon = p.status === 'completed' ? `<span style="color:var(--success)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg></span>` : `<span style="color:var(--text-secondary)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle></svg></span>`;
-            return `<div style="display:flex;align-items:start;gap:8px;">${icon} <span style="${p.status === 'completed' ? 'text-decoration:line-through;opacity:0.6;' : ''}">${escapeHtml(p.description || p.task || '')}</span></div>`;
+            const icon = p.status === 'completed' ? `<span style="color: var(--success)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg></span>` : `<span style="color: var(--text-secondary)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle></svg></span>`;
+            return `<div style="display: flex; align-items: start; gap: 8px;">${icon} <span style="${p.status === 'completed' ? 'text-decoration: line-through; opacity: 0.6;' : ''}">${escapeHtml(p.description || p.task || '')}</span></div>`;
           }).join('');
         } else {
-          planHtml = `<div class="sre-text-secondary" style="font-style:italic;">No tasks yet</div>`;
+          planHtml = `<div class="sre-text-secondary" style="font-style: italic;">No tasks yet</div>`;
         }
 
         let findingsHtml = '';
         if (inv.findings && inv.findings.length > 0) {
           findingsHtml = inv.findings.map(f => {
-            let icon = `<span style="color:var(--success);margin-top:2px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>`;
+            let icon = `<span style="color: var(--success); margin-top: 2px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>`;
             let content = escapeHtml(f);
-            
+
             const match = f.match(/^\[(.*?)\]\[(.*?)\]\s*(.*)$/);
             if (match) {
-                const worker = escapeHtml(match[1]);
-                const level = escapeHtml(match[2]);
-                const text = escapeHtml(match[3]);
-                
-                let badgeColor = 'var(--text-secondary)';
-                if (level === 'FAILURE' || level === 'ERROR') badgeColor = 'var(--error)';
-                if (level === 'SUCCESS' || level === 'INFO') badgeColor = 'var(--success)';
-                if (level === 'WARNING') badgeColor = 'var(--warning)';
-                
-                content = `<span style="font-size:10px; background:${badgeColor}22; color:${badgeColor}; padding:2px 6px; border-radius:4px; margin-right:6px; font-weight:600;">${level}</span>
-                           <span style="color:var(--text-secondary); font-weight:600; margin-right:6px;">[${worker}]</span>
-                           <span>${text}</span>`;
+              const worker = escapeHtml(match[1]);
+              const level = escapeHtml(match[2]);
+              const text = escapeHtml(match[3]);
+
+              let badgeColor = 'var(--text-secondary)';
+              if (level === 'FAILURE' || level === 'ERROR') badgeColor = 'var(--error)';
+              if (level === 'SUCCESS' || level === 'INFO') badgeColor = 'var(--success)';
+              if (level === 'WARNING') badgeColor = 'var(--warning)';
+
+              content = `<span style="font-size: 10px; background: ${badgeColor}22; color: ${badgeColor}; padding: 2px 6px; border-radius: 4px; margin-right: 6px; font-weight: 600;">${level}</span>
+                            <span style="color: var(--text-secondary); font-weight: 600; margin-right: 6px;">[${worker}]</span>
+                            <span>${text}</span>`;
             }
 
-            return `<div style="display:flex;align-items:start;gap:8px; line-height:1.4;">
-                      ${!match ? icon : ''}
-                      <div style="flex:1; word-break:break-word;">${content}</div>
+            return `<div style="display: flex; align-items: start; gap: 8px; line-height: 1.4;">
+                        ${!match ? icon : ''}
+                        <div style="flex: 1; word-break: break-word;">${content}</div>
                     </div>`;
           }).join('');
         } else {
-          findingsHtml = `<div class="sre-text-secondary" style="font-style:italic;">No findings yet</div>`;
+          findingsHtml = `<div class="sre-text-secondary" style="font-style: italic;">No findings yet</div>`;
         }
 
         html += `
-            <div style="border-bottom:1px solid var(--border-color);">
-              <details ${isOpen ? 'open' : ''} style="cursor:default;">
-                <summary style="cursor:pointer; font-weight:600; padding:12px 16px; display:flex; gap:8px; align-items:center; user-select:none; background:var(--bg-panel);">
-                   <span style="flex:1;">${escapeHtml(inv.title)}</span>
-                   <span style="font-size:10px; padding:2px 6px; border-radius:10px; background:${badgeColor}22; color:${badgeColor}; text-transform:uppercase;">${inv.status}</span>
-                </summary>
-                <div style="padding: 16px; background:var(--bg-main);">
-                   <div style="font-weight:600; margin-bottom:12px; color:var(--text-primary); display:flex; align-items:center; gap:6px;">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
-                      Task Plan
-                   </div>
-                   <div style="display:flex; flex-direction:column; gap:8px;">${planHtml}</div>
-                   
-                   <div style="font-weight:600; margin-bottom:12px; margin-top:20px; color:var(--text-primary); display:flex; align-items:center; gap:6px;">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                      Findings
-                   </div>
-                   <div style="display:flex; flex-direction:column; gap:8px;">${findingsHtml}</div>
+                <div style="border-bottom: 1px solid var(--border-color);">
+                    <details ${isOpen ? 'open' : ''} style="cursor: default;">
+                        <summary style="cursor: pointer; font-weight: 600; padding: 12px 16px; display: flex; gap: 8px; align-items: center; user-select: none; background: var(--bg-panel);">
+                            <span style="flex: 1;">${escapeHtml(inv.title)}</span>
+                            <span style="font-size: 10px; padding: 2px 6px; border-radius: 10px; background: ${badgeColor}22; color: ${badgeColor}; text-transform: uppercase;">${inv.status}</span>
+                        </summary>
+                        <div style="padding: 16px; background: var(--bg-main);">
+                            <div style="font-weight: 600; margin-bottom: 12px; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+                                Task Plan
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 8px;">${planHtml}</div>
+                            
+                            <div style="font-weight: 600; margin-bottom: 12px; margin-top: 20px; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                                Findings
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 8px;">${findingsHtml}</div>
+                        </div>
+                    </details>
                 </div>
-              </details>
-            </div>
             `;
       });
 
       container.innerHTML = html;
 
-      // Auto-switch to Investigation tab if hidden
       const invTab = document.getElementById('tab-investigation');
       if (invTab && invTab.style.display === 'none') {
-        switchTab('investigation');
+        window.switchTab('investigation');
       }
     }
 
@@ -1043,43 +1132,43 @@
       }
 
       container.style.display = 'flex';
-      let html = `<div style="padding:12px 16px; font-weight:600; color:var(--text-primary); background:var(--bg-panel); display:flex; align-items:center; gap:8px;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spin-anim" style="color:var(--accent);"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>
-        Active Workers
-      </div>
-      <div style="padding:12px 16px; display:flex; flex-direction:column; gap:16px;">`;
+      let html = `<div style="padding: 12px 16px; font-weight: 600; color: var(--text-primary); background: var(--bg-panel); display: flex; align-items: center; gap: 8px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spin-anim" style="color: var(--accent);"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>
+            Active Workers
+        </div>
+        <div style="padding: 12px 16px; display: flex; flex-direction: column; gap: 16px;">`;
 
-      activeWorkers.forEach((w, index) => {
+      activeWorkers.forEach((w) => {
         let toolHtml = '';
         if (w.last_tool) {
-            toolHtml += `<div style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--success);">
-               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-               ${escapeHtml(w.last_tool)}
-            </div>`;
+          toolHtml += `<div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--success);">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    ${escapeHtml(w.last_tool)}
+                </div>`;
         }
-        
+
         let actionColor = w.current_action.toLowerCase().includes('executing') ? 'var(--warning)' : 'var(--text-secondary)';
-        let currentActionHtml = `<div style="display:flex; align-items:center; gap:6px; font-size:12px; color:${actionColor}; margin-top:4px;">
-           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spin-anim"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>
-           ${escapeHtml(w.current_action)}
-        </div>`;
+        let currentActionHtml = `<div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: ${actionColor}; margin-top: 4px;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spin-anim"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>
+                ${escapeHtml(w.current_action)}
+            </div>`;
 
         html += `
-          <div style="background:var(--bg-main); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:12px; box-shadow:0 2px 8px rgba(0,0,0,0.2);">
-            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-               <div style="font-weight:600; color:var(--text-primary); font-size:13px;">Worker ${w.id.substring(0,4).toUpperCase()}</div>
-               <div style="display:flex; gap:6px;">
-                  <span style="font-size:10px; background:rgba(255,255,255,0.1); padding:2px 6px; border-radius:4px; color:var(--text-secondary);" title="Findings Count">${w.findings_count} findings</span>
-                  <span style="font-size:10px; background:rgba(63, 185, 80, 0.2); padding:2px 6px; border-radius:4px; color:var(--success);" title="Evidence Count">${w.evidence_count} evidence</span>
-               </div>
-            </div>
-            <div style="font-size:12px; color:var(--text-secondary); margin-bottom:8px; font-style:italic;">
-               Goal: ${escapeHtml(w.goal)}
-            </div>
-            ${toolHtml}
-            ${currentActionHtml}
-          </div>
-        `;
+                <div style="background: var(--bg-main); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <div style="font-weight: 600; color: var(--text-primary); font-size: 13px;">Worker ${w.id.substring(0, 4).toUpperCase()}</div>
+                        <div style="display: flex; gap: 6px;">
+                            <span style="font-size: 10px; background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; color: var(--text-secondary);" title="Findings Count">${w.findings_count} findings</span>
+                            <span style="font-size: 10px; background: rgba(63, 185, 80, 0.2); padding: 2px 6px; border-radius: 4px; color: var(--success);" title="Evidence Count">${w.evidence_count} evidence</span>
+                        </div>
+                    </div>
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; font-style: italic;">
+                        Goal: ${escapeHtml(w.goal)}
+                    </div>
+                    ${toolHtml}
+                    ${currentActionHtml}
+                </div>
+            `;
       });
       html += `</div>`;
       container.innerHTML = html;
@@ -1088,6 +1177,7 @@
     function scrollToBottom() {
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
+
     // --- Form submit ---
     form.addEventListener('submit', (e) => {
       e.preventDefault();
@@ -1100,7 +1190,7 @@
 
       addUserMessage(msg);
       input.value = '';
-      input.style.height = 'auto'; // Reset height
+      input.style.height = 'auto';
       isProcessing = true;
       currentAIMsg = null;
       sendBtn.disabled = true;
@@ -1115,7 +1205,8 @@
         active_workspace: window.customWorkspaceOverride || window.currentTerminalCwd || '',
         selected_file: window.selectedFile || '',
         selected_file_name: window.selectedFile ? window.selectedFile.split('/').pop() : '',
-        model: document.getElementById('model-selector').value
+        model: document.getElementById('model-selector').value,
+        mode: document.getElementById('mode-selector').value
       }));
     });
 
@@ -1131,8 +1222,6 @@
         form.dispatchEvent(new Event('submit'));
       }
     });
-
-    // --- Terminal ---
 
     // --- Tabs ---
     window.switchTab = function (tabName, el) {
@@ -1151,7 +1240,6 @@
         targetEl.style.color = '#c9d1d9';
         targetEl.style.borderBottom = '2px solid #58a6ff';
       } else {
-        // Fallback: try to find the button
         document.querySelectorAll('.tab-btn').forEach(b => {
           if (b.getAttribute('onclick') && b.getAttribute('onclick').includes("'" + tabName + "'")) {
             b.style.color = '#c9d1d9';
@@ -1168,9 +1256,9 @@
       if (tabName === 'explorer') loadExplorer();
       if (tabName === 'artifacts') loadArtifacts();
       if (tabName === 'terminal' && window.fitTerminal) {
-        setTimeout(window.fitTerminal, 50); // Ensure size fits when tab becomes visible
+        setTimeout(window.fitTerminal, 50);
       }
-    }
+    };
 
     // --- History ---
     async function loadHistory() {
@@ -1188,9 +1276,14 @@
           const dateStr = new Date(sess.created_at).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
           el.innerHTML = `
-            <div class="sre-history-title">${sess.title || 'Sesi Obrolan'}</div>
-            <div class="sre-history-date">${dateStr}</div>
-          `;
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" class="history-checkbox" value="${sess.id}" onclick="event.stopPropagation()" style="display: ${isBulkEditMode ? 'inline-block' : 'none'}; appearance: auto; -webkit-appearance: auto; accent-color: var(--purple); width: 16px; height: 16px; cursor: pointer; flex-shrink: 0;">
+                        <div style="flex: 1; min-width: 0;">
+                            <div class="sre-history-title">${sess.title || 'Sesi Obrolan'}</div>
+                            <div class="sre-history-date">${dateStr}</div>
+                        </div>
+                    </div>
+                `;
           el.onclick = () => {
             document.querySelectorAll('.sre-history-item').forEach(i => i.classList.remove('active'));
             el.classList.add('active');
@@ -1207,7 +1300,6 @@
           if (el) el.classList.add('active');
           loadSession(sessionId);
         } else {
-          // New chat
           sessionId = null;
           window.startNewChat();
         }
@@ -1220,20 +1312,20 @@
       sessionId = null;
       document.querySelectorAll('.sre-history-item').forEach(i => i.classList.remove('active'));
       messagesDiv.innerHTML = `
-          <div class="agent-msg sre-panel"
-            style="background: var(--bg-main);border:1px solid var(--border-color); border-radius:12px; padding:16px; max-width:80%;">
-            <div class="sre-text-secondary" style="font-size:13px; margin-bottom:6px;"> NeuroSysAI SRE Agent</div>
-            <div class="sre-text-primary" style="line-height:1.6;">
-              Hello! Please start a new chat session.
+            <div class="agent-msg sre-panel"
+                style="background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; max-width: 80%;">
+                <div class="sre-text-secondary" style="font-size: 13px; margin-bottom: 6px;"> NeuroSysAI SRE Agent</div>
+                <div class="sre-text-primary" style="line-height: 1.6;">
+                    Hello! Please start a new chat session.
+                </div>
             </div>
-          </div>
         `;
       investigations = {};
       activeInvestigationId = null;
       renderInvestigationTimeline();
-      document.getElementById('artifacts-list').innerHTML = '<div class="sre-text-secondary" style="font-style:italic;padding:16px;">No artifacts for this session</div>';
+      document.getElementById('artifacts-list').innerHTML = '<div class="sre-text-secondary" style="font-style: italic; padding: 16px;">No artifacts for this session</div>';
       window.history.pushState({}, '', window.location.pathname);
-    }
+    };
 
     async function loadSession(id) {
       sessionId = id;
@@ -1245,7 +1337,6 @@
         investigations = {};
         activeInvestigationId = null;
 
-        // Fetch DB-backed investigations timeline
         const invRes = await fetch(`/api/v1/chat-sessions/${id}/investigations/`);
         if (invRes.ok) {
           const invData = await invRes.json();
@@ -1291,6 +1382,7 @@
         console.error('Failed to load session', e);
       }
     }
+
     // --- Explorer Logic ---
     window.customWorkspaceOverride = null;
 
@@ -1320,7 +1412,7 @@
     async function loadExplorer() {
       try {
         const targetPath = window.customWorkspaceOverride || window.currentTerminalCwd;
-        if (!targetPath) return; // Wait until CWD is known
+        if (!targetPath) return;
 
         const cwdParam = `?path=${encodeURIComponent(targetPath)}`;
         const res = await fetch(`/api/v1/workspace/tree/${cwdParam}`);
@@ -1328,7 +1420,6 @@
         const container = document.getElementById('explorer-tree');
         container.innerHTML = '';
 
-        // Render CWD header
         if (targetPath) {
           let header = document.createElement('div');
           header.style.padding = '8px 4px';
@@ -1336,7 +1427,7 @@
           header.style.borderBottom = '1px solid var(--border-color)';
           header.style.fontWeight = 'bold';
           header.style.wordBreak = 'break-all';
-          header.innerHTML = `<span style="color:var(--accent)">Workspace:</span> ${targetPath}`;
+          header.innerHTML = `<span style="color: var(--accent)">Workspace:</span> ${targetPath}`;
           container.appendChild(header);
         }
 
@@ -1359,7 +1450,6 @@
                 renderTree(node.children, childContainer);
                 details.appendChild(childContainer);
               } else if (node.has_children) {
-                // Lazy load stub
                 details.addEventListener('toggle', async function (e) {
                   if (details.open && !details.dataset.loaded) {
                     details.dataset.loaded = 'true';
@@ -1408,7 +1498,7 @@
     async function loadArtifacts() {
       try {
         if (!sessionId) {
-          document.getElementById('artifacts-list').innerHTML = '<div class="sre-text-secondary" style="font-style:italic;padding:16px;">No artifacts for this session</div>';
+          document.getElementById('artifacts-list').innerHTML = '<div class="sre-text-secondary" style="font-style: italic; padding: 16px;">No artifacts for this session</div>';
           return;
         }
         const res = await fetch(`/api/v1/workspace/artifacts/?session_id=${sessionId}`);
@@ -1417,19 +1507,19 @@
         container.innerHTML = '';
 
         if (!data || data.length === 0) {
-          container.innerHTML = '<div class="sre-text-secondary" style="font-style:italic;padding:16px;">No artifacts generated yet for this session.</div>';
+          container.innerHTML = '<div class="sre-text-secondary" style="font-style: italic; padding: 16px;">No artifacts generated yet for this session.</div>';
           return;
         }
 
         data.forEach(art => {
           let el = document.createElement('div');
           el.className = 'sre-layout';
-          el.style.cssText = 'padding:12px; border:1px solid var(--border-color, #30363d); border-radius:8px; margin-bottom:10px; background:var(--bg-main, #161b22);';
-          
+          el.style.cssText = 'padding: 12px; border: 1px solid var(--border-color, #30363d); border-radius: 8px; margin-bottom: 10px; background: var(--bg-main, #161b22);';
+
           let badgeColor = '#58a6ff';
           let badgeBg = 'rgba(88, 166, 255, 0.15)';
           let typeLabel = art.action_type ? art.action_type.toUpperCase() : 'ARTIFACT';
-          
+
           if (art.action_type === 'create') {
             badgeColor = '#3fb950'; badgeBg = 'rgba(63, 185, 80, 0.15)'; typeLabel = 'FILE CREATED';
           } else if (art.action_type === 'edit') {
@@ -1449,22 +1539,22 @@
 
           let rollbackBtn = '';
           if (['edit', 'create', 'backup'].includes(art.action_type)) {
-            rollbackBtn = `<button onclick="rollbackArtifact(${art.id})" style="background:rgba(218, 54, 51, 0.2); color:#f85149; border:1px solid rgba(218, 54, 51, 0.4); border-radius:4px; padding:3px 8px; font-size:11px; cursor:pointer; transition:all 0.2s;">↩ Rollback File</button>`;
+            rollbackBtn = `<button onclick="window.rollbackArtifact(${art.id})" style="background: rgba(218, 54, 51, 0.2); color: #f85149; border: 1px solid rgba(218, 54, 51, 0.4); border-radius: 4px; padding: 3px 8px; font-size: 11px; cursor: pointer; transition: all 0.2s;">↩ Rollback File</button>`;
           }
 
           el.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-              <span style="font-size:10px; font-weight:700; padding:2px 8px; border-radius:12px; color:${badgeColor}; background:${badgeBg}; letter-spacing:0.5px;">${typeLabel}</span>
-              <span style="font-size:10px; opacity:0.6;">${timeStr}</span>
-            </div>
-            <div style="font-weight:600; font-size:12px; margin-bottom:6px; color:var(--text-primary); word-break:break-all;">📄 ${escapeHtml(art.file_path)}</div>
-            <pre style="background:#090d13; color:#c9d1d9; padding:8px; border-radius:6px; overflow-x:auto; font-size:11px; max-height:140px; border:1px solid rgba(255,255,255,0.05); font-family:monospace; line-height:1.4;">${escapeHtml(contentToShow)}</pre>
-            ${rollbackBtn ? `<div style="margin-top:8px; display:flex; justify-content:flex-end;">${rollbackBtn}</div>` : ''}
-          `;
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <span style="font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 12px; color: ${badgeColor}; background: ${badgeBg}; letter-spacing: 0.5px;">${typeLabel}</span>
+                        <span style="font-size: 10px; opacity: 0.6;">${timeStr}</span>
+                    </div>
+                    <div style="font-weight: 600; font-size: 12px; margin-bottom: 6px; color: var(--text-primary); word-break: break-all;">📄 ${escapeHtml(art.file_path)}</div>
+                    <pre style="background: #090d13; color: #c9d1d9; padding: 8px; border-radius: 6px; overflow-x: auto; font-size: 11px; max-height: 140px; border: 1px solid rgba(255,255,255,0.05); font-family: monospace; line-height: 1.4;">${escapeHtml(contentToShow)}</pre>
+                    ${rollbackBtn ? `<div style="margin-top: 8px; display: flex; justify-content: flex-end;">${rollbackBtn}</div>` : ''}
+                `;
           container.appendChild(el);
         });
       } catch (e) {
-        document.getElementById('artifacts-list').innerHTML = '<div class="sre-text-secondary" style="font-style:italic;padding:16px;">Error loading artifacts.</div>';
+        document.getElementById('artifacts-list').innerHTML = '<div class="sre-text-secondary" style="font-style: italic; padding: 16px;">Error loading artifacts.</div>';
       }
     }
 
@@ -1480,12 +1570,12 @@
       } catch (e) {
         alert('Error rollback');
       }
-    }
+    };
 
     // --- Terminal ---
     function initTerminal() {
       if (typeof Terminal === 'undefined') {
-        document.getElementById('terminal-container').innerHTML = '<div style="color:#f85149; padding:20px;">Tidak dapat membuka terminal karena dependency xterm.js belum tersedia.</div>';
+        document.getElementById('terminal-container').innerHTML = '<div style="color: #f85149; padding: 20px;">Tidak dapat membuka terminal karena dependency xterm.js belum tersedia.</div>';
         return;
       }
 
@@ -1540,11 +1630,11 @@
             if (window.currentTerminalCwd !== msg.cwd) {
               window.currentTerminalCwd = msg.cwd;
               localStorage.setItem('sre_terminal_cwd', msg.cwd);
-              loadExplorer(); // dynamically fetch tree for new cwd
+              loadExplorer();
             }
           }
         } catch (err) {
-          term.write(e.data); // Fallback for raw text
+          term.write(e.data);
         }
       };
 
@@ -1575,18 +1665,18 @@
         isResizing = true;
         document.body.style.cursor = 'col-resize';
         panelResizer.style.background = 'var(--accent)';
-        e.preventDefault(); // Prevent text selection
+        e.preventDefault();
       });
 
       document.addEventListener('mousemove', (e) => {
         if (!isResizing) return;
 
         const containerRect = rightPanel.parentElement.getBoundingClientRect();
-        const newWidth = containerRect.right - e.clientX - 12; // 12px for margins
+        const newWidth = containerRect.right - e.clientX - 12;
 
         if (newWidth > 300 && newWidth < containerRect.width * 0.8) {
           rightPanel.style.width = newWidth + 'px';
-          rightPanel.style.flex = 'none'; // Ensure flex:1 on chat column handles the rest
+          rightPanel.style.flex = 'none';
           if (window.fitTerminal) {
             window.fitTerminal();
           }
@@ -1673,33 +1763,6 @@
     background: transparent;
   }
 
-  /* Phase 6: Aesthetic Buttons & Collapsibles */
-  .sre-btn-primary {
-    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%) !important;
-    color: #ffffff !important;
-    border-radius: 9999px !important;
-    box-shadow: 0 4px 12px rgba(9, 105, 218, 0.2);
-    transition: all 0.2s ease;
-  }
-
-  .sre-btn-primary:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 16px rgba(9, 105, 218, 0.3);
-  }
-
-  .sre-btn-success {
-    background: linear-gradient(135deg, var(--success) 0%, #2ea043 100%) !important;
-    color: #ffffff !important;
-    border-radius: 9999px !important;
-    box-shadow: 0 4px 12px rgba(45, 164, 78, 0.2);
-    transition: all 0.2s ease;
-  }
-
-  .sre-btn-success:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 16px rgba(45, 164, 78, 0.3);
-  }
-
   .sre-agent-step {
     background: var(--bg-panel);
     opacity: 0.95;
@@ -1781,4 +1844,89 @@
     color: var(--text-secondary);
   }
 </style>
+
+<!-- Sudo Password Modal -->
+<div id="sudo-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); backdrop-filter: blur(5px); z-index: 9999; align-items: center; justify-content: center;">
+  <div style="background: var(--bg-main); padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); width: 350px; display: flex; flex-direction: column; gap: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+    <div style="display: flex; align-items: center; gap: 10px; color: #f85149;">
+      <i class="fa-solid fa-shield-halved" style="font-size: 20px;"></i>
+      <h3 style="margin: 0; font-size: 16px;">Sudo Privilege Access</h3>
+    </div>
+    <p style="font-size: 12px; color: var(--text-secondary); margin: 0; line-height: 1.4;">Enter your sudo password to allow the agent to run privileged commands. This is <b>End-to-End Encrypted (RSA-OAEP)</b> and is only stored in memory for this session.</p>
+    <input type="password" id="sudo-password-input" placeholder="Password" class="sre-input" style="width: 100%; padding: 10px; border-radius: 6px;">
+    <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 5px;">
+      <button onclick="document.getElementById('sudo-modal').style.display='none'" class="btn btn-secondary btn-sm">Cancel</button>
+      <button onclick="submitSudoPassword()" class="btn btn-success btn-sm">Encrypt & Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  window.serverRsaPublicKey = null;
+
+  // Helper: str2ab
+  function str2ab(str) {
+    const buf = new ArrayBuffer(str.length);
+    const bufView = new Uint8Array(buf);
+    for (let i = 0, strLen = str.length; i < strLen; i++) {
+      bufView[i] = str.charCodeAt(i);
+    }
+    return buf;
+  }
+  
+  function pemToArrayBuffer(pem) {
+    const b64Lines = pem.replace("-----BEGIN PUBLIC KEY-----", "")
+                        .replace("-----END PUBLIC KEY-----", "")
+                        .replace(/\s+/g, "");
+    const binaryString = window.atob(b64Lines);
+    return str2ab(binaryString);
+  }
+  
+  async function submitSudoPassword() {
+    const pwdInput = document.getElementById('sudo-password-input');
+    const pwd = pwdInput.value;
+    if (!pwd) return;
+    if (!window.serverRsaPublicKey) {
+      alert("RSA Public Key not received from server yet. Please wait.");
+      return;
+    }
+    
+    if (!window.crypto || !window.crypto.subtle) {
+      alert("Cryptography API not available. This feature requires a secure context (HTTPS or localhost).");
+      return;
+    }
+    
+    try {
+      const keyBuffer = pemToArrayBuffer(window.serverRsaPublicKey);
+      const importedKey = await window.crypto.subtle.importKey(
+        "spki",
+        keyBuffer,
+        { name: "RSA-OAEP", hash: "SHA-256" },
+        false,
+        ["encrypt"]
+      );
+      const encodedPwd = new TextEncoder().encode(pwd);
+      const encryptedBuf = await window.crypto.subtle.encrypt(
+        { name: "RSA-OAEP" },
+        importedKey,
+        encodedPwd
+      );
+      const encryptedBase64 = window.btoa(String.fromCharCode.apply(null, new Uint8Array(encryptedBuf)));
+      
+      window.sreAgentWs.send(JSON.stringify({
+        type: 'set_sudo_pwd',
+        encrypted_password: encryptedBase64
+      }));
+      
+      document.getElementById('sudo-auth-btn').style.color = '#3fb950';
+      document.getElementById('sudo-auth-btn').innerHTML = '<i class="fa-solid fa-shield-check"></i> Sudo Active';
+      document.getElementById('sudo-modal').style.display = 'none';
+      pwdInput.value = '';
+    } catch (err) {
+      console.error("Encryption failed:", err);
+      alert("Failed to encrypt password: " + (err.message || err.toString()));
+    }
+  }
+</script>
+
 {% endblock %}

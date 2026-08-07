@@ -1,0 +1,176 @@
+import json
+import time
+import uuid
+import traceback
+from typing import AsyncGenerator
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
+from langchain_core.tools import tool
+from .events import *
+
+@tool
+def finish_task(summary: str) -> str:
+    """Use this tool ONLY when the main goal is 100% achieved and verified. Call this to finish your task."""
+    return "Task Finished"
+
+class ReactEngine:
+    def __init__(self, llm, tools, system_prompt, session_id):
+        self.llm = llm
+        self.tools = list(tools)
+        self.tools.append(finish_task)
+        self.system_prompt = system_prompt
+        self.session_id = session_id
+        
+        self.tool_map = {t.name: t for t in self.tools}
+        if hasattr(self.llm, "bind_tools"):
+            try:
+                self.llm_with_tools = self.llm.bind_tools(self.tools, tool_choice="any")
+            except Exception:
+                self.llm_with_tools = self.llm.bind_tools(self.tools)
+        else:
+            self.llm_with_tools = self.llm
+
+    async def astream(self, initial_state: dict) -> AsyncGenerator[str, None]:
+        goal = initial_state.get("goal", "")
+        terminal_cwd = initial_state.get("terminal_cwd", "")
+        messages = initial_state.get("messages", [])
+        
+        react_system_prompt = f"""You are the General Manager Agent of a Hierarchical Multi-Agent System (ReAct Mode) running on the server.
+Your absolute goal is to complete the user's request as quickly and directly as possible.
+
+Current Working Directory: {terminal_cwd}
+
+CRITICAL RULES:
+1. You are NOT a chatbot or an advisor. DO NOT tell the user to run commands manually. You must fix the issue yourself using your tools.
+2. If the user asks a question, YOU MUST RUN TOOLS to find the real answer.
+3. You can delegate tasks using the 'spawn_subagent' tool. IMPORTANT: 'file-picker' and 'basher' are NOT tool names. You MUST call `spawn_subagent` and set the `agent_type` argument to "basher" or "file-picker":
+   - spawn_subagent(agent_type="basher", params={{"command": "..."}})
+   - spawn_subagent(agent_type="file-picker", params={{"query": "..."}})
+4. When you delegate tasks, you can do it in parallel.
+5. If you need to edit a file, use your file editing tools directly.
+6. Do NOT wait for a planner or aggregator. YOU are fully autonomous.
+7. If a tool fails, NEVER give up. Try an alternative approach (e.g., if edit_file fails, use sed or echo via terminal).
+8. ALWAYS read a file's content first before attempting to edit it so you have the exact text.
+9. If a service fails, keep investigating logs, fixing config files, and restarting until it is successfully running.
+10. ALWAYS verify the result of your actions (e.g., if you restart a service, check its status to ensure it actually started).
+11. CRITICAL: If you need root privileges, simply use `sudo <command>`. The sudo password is automatically injected by the system. NEVER attempt to pipe a password yourself (e.g., do NOT use `echo 'password' | sudo -S`).
+12. YOU HAVE FULL PERMISSION to edit system and configuration files, and restart services to fix the issue. DO NOT ask for permission.
+13. NEVER provide code blocks or commands for the user to run. If you think a command needs to be run, YOU MUST RUN IT YOURSELF using `terminal_execute` or `spawn_subagent`.
+14. Do NOT stop or give up until the problem is 100% fixed and verified to be working.
+15. AUTOMATIC FIX MANDATE: Even if the user asks a question like "why is X down?", your goal as an SRE Agent is NEVER just to answer the question. You MUST find the root cause, FIX IT, restart the service, and verify it is running before concluding your task!
+16. DO NOT output raw JSON blocks to call tools (e.g. `{{ "command": "read_file", ... }}`). You MUST use the native tool calling capability provided by the API.
+
+- **Use <think></think> tags for reasoning:** When you need to understand command output, plan your next action, or decide which tool to use, wrap your internal reasoning inside <think></think> tags BEFORE calling any tools.
+
+You are running in an autonomous background loop. The ONLY way to complete the task is by calling the `finish_task` tool. 
+
+CRITICAL DIRECTIVE - ACTION OVER NARRATION:
+You MUST invoke a tool on EVERY SINGLE TURN. Do NOT explain what you are going to do. Do NOT apologize. Do NOT say "I will now read the file." JUST CALL THE TOOL. 
+If you need to think, use `<think>...</think>` tags, and IMMEDIATELY follow it with a tool call. If you do not invoke a tool, the system will fail.
+Do NOT stop calling tools until you are ready to call `finish_task`.
+"""
+        
+        history = [m for m in messages if not isinstance(m, SystemMessage)]
+        history.insert(0, SystemMessage(content=react_system_prompt))
+        
+        yield evt_planning("Starting Autonomous ReAct Mode...")
+        
+        max_iterations = 100
+        iteration = 0
+        
+        while iteration < max_iterations:
+            iteration += 1
+            yield evt_thinking(f"Iteration {iteration}: Reasoning next action...")
+            
+            try:
+                response = await self.llm_with_tools.ainvoke(history)
+                history.append(response)
+                
+                content_val = response.content
+                final_msg = ""
+                if isinstance(content_val, str):
+                    final_msg = content_val
+                elif isinstance(content_val, list):
+                    final_msg = "".join(part.get("text", "") for part in content_val if isinstance(part, dict) and part.get("type") == "text")
+                
+                if final_msg:
+                    import re
+                    think_blocks = re.findall(r'<think>(.*?)</think>', final_msg, re.DOTALL)
+                    for block in think_blocks:
+                        yield evt_thinking(f"Internal Thought:\n{block.strip()}")
+                        
+                    ui_text = re.sub(r'<think>.*?</think>', '', final_msg, flags=re.DOTALL).strip()
+                    if ui_text:
+                        yield evt_message_chunk(ui_text + "\n\n")
+                        
+                if not response.tool_calls:
+                    # Programmatic enforcement: don't let it suggest commands
+                    lower_msg = final_msg.lower()
+                    if "sudo " in lower_msg or "systemctl" in lower_msg or "```bash" in lower_msg or "run the following" in lower_msg:
+                        yield evt_thinking("System intercepted a suggestion. Forcing agent to execute it...")
+                        history.append(HumanMessage(content="SYSTEM INSTRUCTION: You just suggested commands for the user to run. This is strictly forbidden (Rule 13). You MUST run these commands YOURSELF using your tools (terminal_execute or spawn_subagent). Do it now."))
+                        continue
+                        
+                    # Programmatic enforcement: intercept raw JSON tool calls
+                    if "{" in final_msg and '"command"' in final_msg and "read_file" in final_msg:
+                        yield evt_thinking("System intercepted a raw JSON tool call. Reminding agent...")
+                        history.append(HumanMessage(content="SYSTEM INSTRUCTION: You just outputted a raw JSON string to call a tool. This is forbidden (Rule 16). You MUST use the native API tool calling feature instead of writing JSON in your message. Try again."))
+                        continue
+                        
+                    yield evt_thinking("Agent stopped without calling finish_task. Forcing loop continuation...")
+                    history.append(HumanMessage(content="SYSTEM INSTRUCTION: You did not call any tools. You are running in a background loop. You MUST call tools to continue working, or call 'finish_task' if the goal is completely achieved. Do NOT wait for user input."))
+                    continue
+                
+                should_exit_loop = False
+                for tc in response.tool_calls:
+                    tool_name = tc["name"]
+                    tool_args = tc["args"]
+                    tool_call_id = tc["id"]
+                    
+                    if tool_name == "finish_task":
+                        summary = tool_args.get("summary", "Goal Achieved.")
+                        yield evt_message_chunk(f"\n\n✅ **Task Completed**: {summary}")
+                        history.append(ToolMessage(content="Task completed successfully.", name=tool_name, tool_call_id=tool_call_id))
+                        should_exit_loop = True
+                        break
+                    
+                    # Clean UI: Do not show raw JSON arguments, just the intent
+                    if tool_name == "terminal_execute" and "command" in tool_args:
+                        yield evt_tool_start(tool_name, f"Executing command: {tool_args['command']}")
+                    elif tool_name == "spawn_subagent" and "agent_type" in tool_args:
+                        yield evt_tool_start(tool_name, f"Delegating to {tool_args['agent_type']}...")
+                    else:
+                        yield evt_tool_start(tool_name, f"Calling {tool_name}...")
+                    
+                    if tool_name in self.tool_map:
+                        tool = self.tool_map[tool_name]
+                        try:
+                            if hasattr(tool, "ainvoke"):
+                                tool_result = await tool.ainvoke(tool_args)
+                            else:
+                                tool_result = tool.invoke(tool_args)
+                            output_str = str(tool_result)[:4000]
+                        except Exception as e:
+                            output_str = f"Error executing {tool_name}: {str(e)}"
+                        
+                        yield evt_tool_end(tool_name, output_str)
+                        
+                        history.append(ToolMessage(
+                            content=output_str,
+                            name=tool_name,
+                            tool_call_id=tool_call_id
+                        ))
+                    else:
+                        history.append(ToolMessage(content=f"Error: Tool {tool_name} not found.", name=tool_name, tool_call_id=tool_call_id))
+                        
+                if should_exit_loop:
+                    break
+                    
+            except Exception as e:
+                error_trace = traceback.format_exc()
+                yield evt_error(f"ReAct Engine Error: {str(e)}")
+                yield evt_message_chunk(f"An error occurred during execution:\n```\n{error_trace}\n```")
+                break
+                
+        if iteration >= max_iterations:
+            yield evt_error("Max iterations reached in Autonomous Mode.")
+            yield evt_message_chunk("Investigation stopped: Reached maximum allowed iterations without concluding.")

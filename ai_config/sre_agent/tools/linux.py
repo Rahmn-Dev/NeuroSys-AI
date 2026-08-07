@@ -193,13 +193,6 @@ def user_manager(action: str = "who") -> str:
         return "Unknown action. Use: who, last, list."
 
 
-@tool
-def linux_diagnostic_execute(command: str) -> str:
-    """Execute a safe Linux diagnostic command via subprocess.
-    Allowed commands are restricted by the safety layer (e.g., systemctl status, journalctl, cat, grep, ps, etc)."""
-    return _run(command, timeout=20)
-
-
 # ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
@@ -329,18 +322,5 @@ def register_linux_tools() -> None:
             keywords=["user", "login", "who", "last", "session"],
             priority=50,
             capabilities=["environment_discovery"],
-        )),
-        (linux_diagnostic_execute, ToolMetadata(
-            name="linux_diagnostic_execute",
-            description="Execute safe Linux diagnostic commands (e.g. systemctl status, journalctl, cat, grep, ps)",
-            category="linux",
-            risk_level=RiskLevel.MEDIUM,
-            input_schema={"command": "string"},
-            examples=["linux_diagnostic_execute('systemctl status nginx')", "linux_diagnostic_execute('nginx -t')"],
-            keywords=["linux", "diagnostic", "command", "shell", "execute", "systemctl", "journalctl", "cat", "grep", "ps"],
-            priority=10,
-            capabilities=["runtime_execution", "workspace_operation", "environment_discovery", "service_management", "process_management", "network_operation"],
-            supported_intents=["SIMPLE_INFORMATION", "DIAGNOSIS"],
-            safe_fast_path=False, # Arbitrary commands shouldn't fast-path blindly unless it's a dedicated tool
         )),
     ])

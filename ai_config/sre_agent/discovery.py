@@ -121,13 +121,13 @@ class ToolDiscoveryAgent:
         registry = ToolRegistry()
         if registry.count() == 0:
             from .tools.filesystem import register_filesystem_tools
-            from .tools.linux import register_linux_tools
             from .tools.terminal import register_terminal_tools
             from .tools.shell import register_shell_tools
+            from .tools.delegation import register_delegation_tools
             register_filesystem_tools()
-            register_linux_tools()
             register_terminal_tools()
             register_shell_tools()
+            register_delegation_tools()
         self.registry = registry
 
     def classify_intent(self, user_message: str) -> str:
@@ -237,7 +237,7 @@ class ToolDiscoveryAgent:
                 unique_results.append((tool, meta))
 
         # Always include fundamental tools as fallbacks
-        for fallback_tool in ["safe_execute", "read_file", "get_current_directory"]:
+        for fallback_tool in ["safe_execute", "read_file", "get_current_directory", "spawn_subagent", "terminal_execute", "edit_file", "write_file", "list_directory"]:
             tool = self.registry.get_tool(fallback_tool)
             if tool and fallback_tool not in seen:
                 meta = self.registry.get_metadata(fallback_tool)

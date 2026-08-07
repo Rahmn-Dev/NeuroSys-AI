@@ -811,7 +811,7 @@ RULES:
   4. Generic environmental symptoms (e.g. permission denied, disk warnings, generic resource usage)
 - Generic environmental symptoms MUST NOT override a direct service failure root cause.
 - Read the AVAILABLE TOOLS carefully. Workers MUST ONLY select actions explicitly exposed by tool schemas. Never invent tool actions, parameters, or capabilities.
-- For service config tests, DO NOT invent actions for `service_manager`. You MUST use `linux_diagnostic_execute` to run the specific test command (e.g., `apache2ctl configtest` or equivalent).
+- For service config tests, DO NOT invent actions for `service_manager`. You MUST use `terminal_execute` to run the specific test command (e.g., `apache2ctl configtest` or equivalent).
 - Do NOT repeat a tool+args combination already in the ALREADY EXECUTED list. If you do, it will be BLOCKED.
 - If a diagnostic domain has already been satisfied and verified, move to the next logical domain.
 - RETRIEVAL PRIORITY: For SIMPLE_INFORMATION or data retrieval tasks, prioritize direct retrieval tools over investigative tools.
