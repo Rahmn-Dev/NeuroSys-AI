@@ -187,10 +187,11 @@ class SREAgentEngine:
             )
         elif self.model_name == "9router":
             from langchain_openai import ChatOpenAI
+            api_key = getattr(settings, "ROUTER_API_KEY", os.environ.get("ROUTER_API_KEY", ""))
             return ChatOpenAI(
-                model="9router",
+                model="SIPALING",
                 base_url="http://localhost:20128/v1",
-                api_key="9router",  # Dummy key usually required by langchain
+                api_key= api_key,  # Dummy key usually required by langchain
                 temperature=0.1,
                 max_tokens=4096,
             )

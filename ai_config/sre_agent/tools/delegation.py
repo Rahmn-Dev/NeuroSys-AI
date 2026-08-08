@@ -229,6 +229,166 @@ Your job is to translate a user's natural language request into a Linux `find` o
     except Exception as e:
         return f"Error executing file-picker: {e}"
 
+
+
+def _run_code_searcher(args: dict) -> str:
+    query = args.get("query")
+    if not query:
+        return "Error: 'query' is required for code-searcher"
+    
+    system_prompt = """You are a code-searcher agent. 
+Your job is to translate a user's natural language request into a Linux `grep` or `ripgrep` command to locate the relevant code within files, execute it, and return the findings."""
+    
+    llm = get_llm()
+    prompt = f"Generate ONLY a single bash command (grep or rg) to find code matching this query: '{query}'. Do not use formatting like ```bash. Just output the command. Search recursively in the current directory."
+    
+    response = llm.invoke([
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=prompt)
+    ])
+    
+    command = response.content.strip()
+    if command.startswith("```"):
+        lines = command.split("\n")
+        command = lines[1] if len(lines) > 1 else command.replace("```bash", "").replace("```", "")
+        
+    try:
+        p = subprocess.run(
+            command, shell=True, capture_output=True, text=True, timeout=15, start_new_session=True, stdin=subprocess.DEVNULL
+        )
+        if p.stdout.strip():
+            return f"Found code (using command '{command}'):\n{p.stdout.strip()[:4000]}"
+        elif p.stderr.strip():
+            return f"Error finding code (using command '{command}'):\n{p.stderr.strip()}"
+        else:
+            return f"No code found matching query using command '{command}'"
+    except Exception as e:
+        return f"Error executing code-searcher: {e}"
+
+
+def _run_thinker(args: dict) -> str:
+    context = args.get("context", "")
+    problem = args.get("problem", "")
+    if not problem:
+        return "Error: 'problem' is required for thinker"
+        
+    system_prompt = """You are the Thinker agent.
+Your job is to analyze complex problems and codebase context to produce a step-by-step implementation plan.
+Wrap your output entirely in <PLAN> and </PLAN> tags.
+Do NOT write actual code files, just write the logical steps.
+"""
+    
+    llm = get_llm()
+    prompt = f"Context:\n{context}\n\nProblem:\n{problem}\n\nPlease generate a <PLAN>."
+    
+    response = llm.invoke([
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=prompt)
+    ])
+    
+    return response.content
+
+
+def _run_editor(args: dict) -> str:
+    files = args.get("files", [])
+    instructions = args.get("instructions", "")
+    
+    if not files or not instructions:
+        return "Error: 'files' and 'instructions' are required for editor"
+        
+    # Read files to provide to the LLM
+    file_contents = ""
+    for fpath in files:
+        try:
+            with open(fpath, "r") as f:
+                file_contents += f"--- FILE: {fpath} ---\n{f.read()}\n\n"
+        except Exception as e:
+            file_contents += f"--- FILE: {fpath} (Error reading: {e}) ---\n\n"
+            
+    system_prompt = """You are the Editor agent.
+Your job is to implement code changes based on the user's instructions.
+You must output a JSON array of tool calls matching this schema to edit files.
+Return ONLY raw JSON, without markdown blocks.
+
+Schema:
+[
+  {
+    "action": "str_replace",
+    "path": "/path/to/file",
+    "old_string": "exact string to replace",
+    "new_string": "the new string"
+  },
+  {
+    "action": "write_file",
+    "path": "/path/to/new_file",
+    "content": "full new content"
+  }
+]
+"""
+    
+    llm = get_llm()
+    prompt = f"Target Files:\n{file_contents}\n\nInstructions:\n{instructions}\n\nOutput the JSON array of edits."
+    
+    response = llm.invoke([
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=prompt)
+    ])
+    
+    # Process edits
+    output = ""
+    try:
+        content = response.content.strip()
+        if content.startswith("```json"):
+            content = content[7:-3]
+        elif content.startswith("```"):
+            content = content[3:-3]
+            
+        edits = json.loads(content)
+        for edit in edits:
+            path = edit.get("path")
+            action = edit.get("action")
+            
+            if action == "write_file":
+                os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+                with open(path, "w") as f:
+                    f.write(edit.get("content", ""))
+                output += f"Successfully wrote {path}\n"
+            elif action == "str_replace":
+                old_s = edit.get("old_string", "")
+                new_s = edit.get("new_string", "")
+                with open(path, "r") as f:
+                    file_text = f.read()
+                if old_s in file_text:
+                    file_text = file_text.replace(old_s, new_s, 1)
+                    with open(path, "w") as f:
+                        f.write(file_text)
+                    output += f"Successfully replaced string in {path}\n"
+                else:
+                    output += f"Failed to find target string in {path}\n"
+        return output
+    except Exception as e:
+        return f"Editor failed to apply changes. LLM Output was: {response.content[:200]}\nError: {e}"
+
+
+def _run_code_reviewer(args: dict) -> str:
+    diff = args.get("diff", "")
+    
+    system_prompt = """You are the Code Reviewer agent.
+Your job is to review the code changes or file contents and provide constructive, critical feedback.
+Focus on logic errors, security issues, syntax errors, or missed edge cases.
+"""
+    
+    llm = get_llm()
+    prompt = f"Please review the following code changes/state:\n{diff}"
+    
+    response = llm.invoke([
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=prompt)
+    ])
+    
+    return response.content
+
+
 def register_delegation_tools() -> None:
     from .registry import ToolRegistry, ToolMetadata, RiskLevel
     registry = ToolRegistry()

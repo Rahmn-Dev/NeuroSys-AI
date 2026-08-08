@@ -20,7 +20,7 @@ SECRET_KEY = config("DJANGO_SECRET_KEY", default="default-secret-key")
 OPENAI_KEY = config("OPENAI_API_KEY", default="openai-key")
 GEMINI_KEY = config("GEMINI_API_KEY", default="gemini-key")
 MISTRAL_API_KEY = config("MISTRAL_API_KEY", default="mistral-key")
-ROUTER_API_KEY = config("9ROUTER_API_KEY", default="")
+ROUTER_API_KEY = config("ROUTER_API_KEY", default="")
 NVIDIA_API_KEY = config("NVIDIA_API_KEY", default="")
 
 # Quick-start development settings - unsuitable for production
