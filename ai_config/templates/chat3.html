@@ -60,6 +60,42 @@
     color: var(--text-primary) !important;
   }
 
+  /* Override bootstrap-select plugin hijacking on header dropdowns */
+  .bootstrap-select:has(#model-selector),
+  .bootstrap-select:has(#mode-selector),
+  div.bootstrap-select.sre-input {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: auto !important;
+    box-shadow: none !important;
+    display: inline-block !important;
+  }
+
+  select#model-selector, select#mode-selector {
+    display: inline-flex !important;
+    align-items: center !important;
+    opacity: 1 !important;
+    position: relative !important;
+    width: auto !important;
+    height: 32px !important;
+    box-sizing: border-box !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    z-index: 100 !important;
+    background-color: var(--bg-main) !important;
+    color: var(--text-primary) !important;
+  }
+
+
+  div.bootstrap-select > button.dropdown-toggle[data-id="model-selector"],
+  div.bootstrap-select > button.dropdown-toggle[data-id="mode-selector"],
+  div.bootstrap-select > div.dropdown-menu {
+    display: none !important;
+  }
+
+
   .sre-input:focus {
     border-color: var(--accent) !important;
     box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.3);
@@ -188,12 +224,29 @@
   }
 
   .sre-history-item.active {
+    background: rgba(31, 111, 235, 0.15);
     border-color: var(--accent);
-    background: var(--bg-panel);
-    border-left: 3px solid var(--accent);
   }
 
+  .sre-history-item.bulk-selected {
+    background: rgba(137, 87, 229, 0.15) !important;
+    border-color: var(--purple) !important;
+    box-shadow: 0 0 0 1px rgba(137, 87, 229, 0.4) !important;
+  }
+
+  .delete-single-history-btn {
+    opacity: 0;
+    transition: opacity 0.2s ease, color 0.2s ease;
+  }
+
+  .sre-history-item:hover .delete-single-history-btn {
+    opacity: 1;
+  }
+
+
   .sre-history-title {
+    font-size: 13px;
+    color: var(--text-strong);
     font-weight: 600;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -234,21 +287,31 @@
         <h2 class="sre-text-strong" style="margin: 0; font-size: 16px; font-weight: 600;">NeuroSysAI SRE Workspace</h2>
         <span id="connection-badge"
           style="font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #1f6feb33; color: #58a6ff;">Connecting...</span>
-          
-        <button id="sudo-auth-btn" class="sre-input" onclick="document.getElementById('sudo-modal').style.display='flex';" style="background: var(--bg-panel); color: #f85149; border: 1px solid var(--border-color); font-size: 12px; padding: 4px 12px; border-radius: 20px; cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: 600; margin-left: 15px;"><i class="fa-solid fa-lock"></i> Set Sudo Password</button>
+
+        <button id="sudo-auth-btn" class="sre-input"
+          onclick="document.getElementById('sudo-modal').style.display='flex';"
+          style="background: var(--bg-panel); color: #f85149; border: 1px solid var(--border-color); font-size: 12px; height: 32px; padding: 0 14px; border-radius: 20px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; margin-left: 15px; box-sizing: border-box; line-height: 1;"><i
+            class="fa-solid fa-lock"></i> Set Sudo Password</button>
       </div>
       <div style="display: flex; align-items: center; gap: 8px;">
         <select id="model-selector" class="sre-input"
-          style="appearance: none; -webkit-appearance: none; font-size: 12px; padding: 6px 16px; padding-right: 28px; border-radius: 20px; cursor: pointer; outline: none; transition: all 0.2s ease; font-weight: 500; background-image: url('data:image/svg+xml;utf8,<svg fill=\'%238b949e\' height=\'20\' viewBox=\'0 0 24 24\' width=\'20\' xmlns=\'http://www.w3.org/2000/svg\'><path d=\'M7 10l5 5 5-5z\'/></svg>'); background-repeat: no-repeat; background-position-x: calc(100% - 6px); background-position-y: 50%;">
+          style="appearance: none; -webkit-appearance: none; font-size: 12px; height: 32px; padding: 0 14px; padding-right: 28px; border-radius: 20px; cursor: pointer; outline: none; transition: all 0.2s ease; font-weight: 500; box-sizing: border-box; line-height: 1; background-image: url('data:image/svg+xml;utf8,<svg fill=\'%238b949e\' height=\'16\' viewBox=\'0 0 24 24\' width=\'16\' xmlns=\'http://www.w3.org/2000/svg\'><path d=\'M7 10l5 5 5-5z\'/></svg>'); background-repeat: no-repeat; background-position-x: calc(100% - 6px); background-position-y: 50%;">
+          <option value="OPENCODE">OpenCode Provider (9Router)</option>
+          <option value="GROQ">Groq Provider (9Router)</option>
           <option value="mistral-large-latest">Mistral Large</option>
-          <option value="deepseek-ai/deepseek-v4-flash">NVIDIA DeepSeek (deepseek-v4-pro)</option>
-          <option value="openai/gpt-oss-120b">GPT OSS 120B (NVIDIA)</option>
-          <option value="9router">9Router (Localhost 20128)</option>
           <option value="mistral:latest">Local Mistral (Ollama)</option>
           <option value="qwen2.5-coder:latest">Local Qwen2.5 Coder (Ollama)</option>
+          <option value="openai/gpt-oss-120b">GPT OSS 120B (NVIDIA)</option>
+          <option value="deepseek-ai/deepseek-v4-flash">DeepSeek V4 Pro (NVIDIA)</option>
         </select>
+        <button id="manage-models-btn" class="sre-input" onclick="openModelManagerModal()" title="Manage AI Models"
+          style="background: var(--bg-panel); color: var(--text-primary); border: 1px solid var(--border-color); font-size: 12px; height: 32px; padding: 0 14px; border-radius: 20px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-weight: 500; transition: all 0.2s ease; box-sizing: border-box; line-height: 1;"
+          onmouseover="this.style.borderColor='var(--accent)'"
+          onmouseout="this.style.borderColor='var(--border-color)'">
+          <i class="fa-solid fa-sliders"></i> Models
+        </button>
         <select id="mode-selector" class="sre-input"
-          style="appearance: none; -webkit-appearance: none; font-size: 12px; padding: 6px 16px; padding-right: 28px; border-radius: 20px; cursor: pointer; outline: none; transition: all 0.2s ease; font-weight: 500; background-image: url('data:image/svg+xml;utf8,<svg fill=\'%238b949e\' height=\'20\' viewBox=\'0 0 24 24\' width=\'20\' xmlns=\'http://www.w3.org/2000/svg\'><path d=\'M7 10l5 5 5-5z\'/></svg>'); background-repeat: no-repeat; background-position-x: calc(100% - 6px); background-position-y: 50%;">
+          style="appearance: none; -webkit-appearance: none; font-size: 12px; height: 32px; padding: 0 14px; padding-right: 28px; border-radius: 20px; cursor: pointer; outline: none; transition: all 0.2s ease; font-weight: 500; box-sizing: border-box; line-height: 1; background-image: url('data:image/svg+xml;utf8,<svg fill=\'%238b949e\' height=\'16\' viewBox=\'0 0 24 24\' width=\'16\' xmlns=\'http://www.w3.org/2000/svg\'><path d=\'M7 10l5 5 5-5z\'/></svg>'); background-repeat: no-repeat; background-position-x: calc(100% - 6px); background-position-y: 50%;">
           <option value="guided">Guided Mode (LangGraph)</option>
           <option value="autonomous">Autonomous Mode (ReAct)</option>
         </select>
@@ -288,21 +351,30 @@
           </button>
         </div>
         <div id="bulk-action-bar"
-          style="display: none; padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.08); justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2);">
-          <label
-            style="color: var(--text-secondary); font-size: 12px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
-            <input type="checkbox" id="bulk-select-all" onclick="selectAllHistory(this.checked)"
-              style="appearance: auto; -webkit-appearance: auto; accent-color: var(--purple); width: 14px; height: 14px; cursor: pointer;">
-            Select All
-          </label>
-          <div style="display: flex; gap: 6px;">
+          style="display: none; padding: 10px; border-bottom: 1px solid var(--border-color); background: var(--bg-panel); flex-direction: column; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <label style="color: var(--text-primary); font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
+              <input type="checkbox" id="bulk-select-all" onclick="selectAllHistory(this.checked)"
+                style="appearance: auto; -webkit-appearance: auto; accent-color: var(--purple); width: 15px; height: 15px; cursor: pointer;">
+              Select All
+            </label>
+            <span id="bulk-selected-count" style="font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: rgba(137, 87, 229, 0.15); color: var(--purple); border: 1px solid rgba(137, 87, 229, 0.3);">
+              0 selected
+            </span>
+          </div>
+          <div style="display: flex; gap: 6px; justify-content: flex-end;">
             <button onclick="toggleBulkEditMode()"
-              style="background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary); padding: 4px 8px; border-radius: 6px; font-size: 12px; cursor: pointer; transition: 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='transparent'">Cancel</button>
-            <button onclick="deleteSelectedHistory()"
-              style="background: var(--error); border: none; color: white; padding: 4px 8px; border-radius: 6px; font-size: 12px; cursor: pointer; transition: 0.2s;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'"><i
-                class="fa-solid fa-trash" style="margin-right: 4px; pointer-events: none;"></i>Delete</button>
+              style="background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary); padding: 4px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 500; transition: 0.2s;"
+              onmouseover="this.style.background='rgba(255,255,255,0.08)'"
+              onmouseout="this.style.background='transparent'">Cancel</button>
+            <button id="bulk-delete-btn" onclick="deleteSelectedHistory()"
+              style="background: var(--error); border: none; color: white; padding: 4px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 600; transition: 0.2s; display: flex; align-items: center; gap: 4px;"
+              onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+              <i class="fa-solid fa-trash" style="pointer-events: none;"></i> Delete
+            </button>
           </div>
         </div>
+
         <div id="history-list"
           style="border: 1px solid rgb(132 132 132 / 16%); flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px;">
           <!-- history items populated by JS -->
@@ -434,10 +506,42 @@
   // ============================================
   let isBulkEditMode = false;
 
+  function updateBulkSelectedCount() {
+    const totalCheckboxes = document.querySelectorAll('.history-checkbox');
+    const checkedCheckboxes = document.querySelectorAll('.history-checkbox:checked');
+    const countSpan = document.getElementById('bulk-selected-count');
+    const selectAllCb = document.getElementById('bulk-select-all');
+
+    if (countSpan) {
+      countSpan.textContent = `${checkedCheckboxes.length} selected`;
+    }
+
+    if (selectAllCb && totalCheckboxes.length > 0) {
+      selectAllCb.checked = checkedCheckboxes.length === totalCheckboxes.length;
+    }
+
+    // Update row highlighting for all items
+    totalCheckboxes.forEach(cb => {
+      const parentItem = cb.closest('.sre-history-item');
+      if (parentItem) {
+        if (cb.checked) {
+          parentItem.classList.add('bulk-selected');
+        } else {
+          parentItem.classList.remove('bulk-selected');
+        }
+      }
+    });
+  }
+
   function toggleBulkEditMode() {
     isBulkEditMode = !isBulkEditMode;
     const bulkBar = document.getElementById('bulk-action-bar');
     if (bulkBar) bulkBar.style.display = isBulkEditMode ? 'flex' : 'none';
+
+    const deleteSingleBtns = document.querySelectorAll('.delete-single-history-btn');
+    deleteSingleBtns.forEach(btn => {
+      btn.style.display = isBulkEditMode ? 'none' : '';
+    });
 
     const checkboxes = document.querySelectorAll('.history-checkbox');
     checkboxes.forEach(cb => {
@@ -447,6 +551,8 @@
 
     const selectAllBtn = document.getElementById('bulk-select-all');
     if (selectAllBtn) selectAllBtn.checked = false;
+
+    updateBulkSelectedCount();
   }
 
   function selectAllHistory(checked) {
@@ -454,6 +560,7 @@
     checkboxes.forEach(cb => {
       cb.checked = checked;
     });
+    updateBulkSelectedCount();
   }
 
   function getCookie(name) {
@@ -471,16 +578,40 @@
     return cookieValue;
   }
 
+  async function deleteSingleHistory(id) {
+    if (!confirm('Are you sure you want to delete this chat session?')) return;
+    try {
+      const res = await fetch(`/api/v1/chat-sessions/${id}/`, {
+        method: 'DELETE',
+        headers: {
+          'X-CSRFToken': getCookie('csrftoken') || ''
+        }
+      });
+      if (res.ok) {
+        if (typeof window.onSessionDeleted === 'function') {
+          window.onSessionDeleted(id);
+        } else {
+          window.location.reload();
+        }
+      } else {
+        alert('Failed to delete chat session.');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Error deleting chat session.');
+    }
+  }
+
   async function deleteSelectedHistory() {
     const checkboxes = document.querySelectorAll('.history-checkbox:checked');
     const sessionIds = Array.from(checkboxes).map(cb => cb.value);
 
     if (sessionIds.length === 0) {
-      alert('Tidak ada sesi yang dipilih.');
+      alert('No chat sessions selected.');
       return;
     }
 
-    if (!confirm('Apakah Anda yakin ingin menghapus ' + sessionIds.length + ' sesi?')) return;
+    if (!confirm(`Are you sure you want to delete ${sessionIds.length} selected chat session(s)?`)) return;
 
     try {
       const res = await fetch('/api/v1/chat-sessions/bulk_delete/', {
@@ -494,16 +625,21 @@
 
       if (res.ok) {
         toggleBulkEditMode();
-        window.location.reload();
+        if (typeof window.loadHistoryGlobal === 'function') {
+          window.loadHistoryGlobal();
+        } else {
+          window.location.reload();
+        }
       } else {
         const errData = await res.json();
-        alert('Gagal menghapus riwayat: ' + (errData.error || res.status));
+        alert('Failed to delete chat sessions: ' + (errData.error || res.status));
       }
     } catch (e) {
       console.error(e);
-      alert('Terjadi kesalahan saat menghubungi server.');
+      alert('An error occurred while contacting the server.');
     }
   }
+
 </script>
 
 <!-- ============================================================ -->
@@ -591,7 +727,7 @@
         case 'sudo_key_exchange':
           window.serverRsaPublicKey = data.public_key;
           break;
-          
+
         case 'session_id':
           sessionId = data.content;
           break;
@@ -1019,12 +1155,60 @@
 
     function addSystemMsg(text, iconName = 'info') {
       const div = document.createElement('div');
-      div.className = 'sre-text-secondary';
-      div.style.cssText = 'text-align: center; font-size: 12px; padding: 8px; display: flex; justify-content: center; align-items: center; gap: 6px;';
-      div.innerHTML = `<span style="opacity: 0.7">${getIcon(iconName)}</span> <span>${text}</span>`;
+      
+      if (text.includes('Connected to NeuroSysAI') || text.includes('🚀')) {
+        div.className = 'my-2 w-100';
+        div.style.cssText = 'width: 100%; max-width: 100%; box-sizing: border-box; align-self: stretch; flex-shrink: 0; border-radius: 14px; overflow: hidden; background: var(--bg-panel); border: 1px solid var(--border-color); padding: 14px 18px; margin: 12px 0; box-shadow: 0 4px 15px rgba(0,0,0,0.15);';
+        div.innerHTML = `
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(45, 164, 78, 0.12); border: 1px solid rgba(45, 164, 78, 0.3); display: flex; align-items: center; justify-content: center; color: var(--success-text); font-size: 16px; flex-shrink: 0;">
+                <i class="fa-solid fa-rocket"></i>
+              </div>
+              <div>
+                <div style="font-weight: 700; font-size: 13px; color: var(--text-strong);">Connected to NeuroSysAI SRE Agent</div>
+                <div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">Real-time WebSocket pipeline active & Ready for SRE tasks</div>
+              </div>
+            </div>
+            <span style="font-size: 10px; font-weight: 600; padding: 4px 10px; border-radius: 12px; background: rgba(45, 164, 78, 0.12); color: var(--success-text); border: 1px solid rgba(45, 164, 78, 0.3); white-space: nowrap; flex-shrink: 0;">
+              <i class="fa-solid fa-circle-check me-1"></i> Connected
+            </span>
+          </div>
+        `;
+      } else if (text.includes('Sudo password') || text.includes('🔒')) {
+        div.className = 'my-2 w-100';
+        div.style.cssText = 'width: 100%; max-width: 100%; box-sizing: border-box; align-self: stretch; flex-shrink: 0; border-radius: 14px; overflow: hidden; background: var(--bg-panel); border: 1px solid var(--border-color); padding: 14px 18px; margin: 12px 0; box-shadow: 0 4px 15px rgba(0,0,0,0.15);';
+        div.innerHTML = `
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(137, 87, 229, 0.12); border: 1px solid rgba(137, 87, 229, 0.3); display: flex; align-items: center; justify-content: center; color: var(--purple); font-size: 16px; flex-shrink: 0;">
+                <i class="fa-solid fa-shield-halved"></i>
+              </div>
+              <div>
+                <div style="font-weight: 700; font-size: 13px; color: var(--text-strong);">Sudo Authentication Secured</div>
+                <div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">End-to-End Encrypted (RSA-2048) in-memory session</div>
+              </div>
+            </div>
+            <span style="font-size: 10px; font-weight: 600; padding: 4px 10px; border-radius: 12px; background: rgba(137, 87, 229, 0.12); color: var(--purple); border: 1px solid rgba(137, 87, 229, 0.3); white-space: nowrap; flex-shrink: 0;">
+              <i class="fa-solid fa-lock me-1"></i> Encrypted
+            </span>
+          </div>
+        `;
+      } else {
+        div.style.cssText = 'width: 100%; align-self: stretch; text-align: center; font-size: 12px; padding: 6px 0; display: flex; justify-content: center; align-items: center; margin: 6px 0;';
+        div.innerHTML = `
+          <div style="display: inline-flex; align-items: center; gap: 8px; background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 20px; padding: 4px 14px; color: var(--text-secondary); box-shadow: 0 2px 6px rgba(0,0,0,0.06); font-size: 11px; font-weight: 500;">
+            <span style="color: var(--accent); display: flex; align-items: center;">${getIcon(iconName)}</span>
+            <span>${escapeHtml(text)}</span>
+          </div>
+        `;
+      }
+
       messagesDiv.appendChild(div);
       scrollToBottom();
     }
+
+
 
     // -- Investigation Timeline State --
     let investigations = {};
@@ -1262,35 +1446,69 @@
 
     // --- History ---
     async function loadHistory() {
+      window.loadHistoryGlobal = loadHistory;
+      window.onSessionDeleted = function(deletedId) {
+        if (deletedId === sessionId) {
+          window.startNewChat();
+        }
+        loadHistory();
+      };
+
       try {
         const res = await fetch('/api/v1/chat-sessions/');
         const data = await res.json();
         const list = document.getElementById('history-list');
         list.innerHTML = '';
         let sessions = data.results || data;
+
         sessions.forEach(sess => {
           let el = document.createElement('div');
           el.className = 'sre-history-item' + (sess.id === sessionId ? ' active' : '');
           el.id = 'history-item-' + sess.id;
 
-          const dateStr = new Date(sess.created_at).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+          const dateStr = new Date(sess.created_at).toLocaleString('en-US', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
           el.innerHTML = `
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <input type="checkbox" class="history-checkbox" value="${sess.id}" onclick="event.stopPropagation()" style="display: ${isBulkEditMode ? 'inline-block' : 'none'}; appearance: auto; -webkit-appearance: auto; accent-color: var(--purple); width: 16px; height: 16px; cursor: pointer; flex-shrink: 0;">
-                        <div style="flex: 1; min-width: 0;">
-                            <div class="sre-history-title">${sess.title || 'Sesi Obrolan'}</div>
-                            <div class="sre-history-date">${dateStr}</div>
-                        </div>
-                    </div>
-                `;
-          el.onclick = () => {
-            document.querySelectorAll('.sre-history-item').forEach(i => i.classList.remove('active'));
-            el.classList.add('active');
-            loadSession(sess.id);
+            <div style="display: flex; align-items: center; gap: 8px; width: 100%;">
+              <input type="checkbox" class="history-checkbox" value="${sess.id}" style="display: ${isBulkEditMode ? 'inline-block' : 'none'}; appearance: auto; -webkit-appearance: auto; accent-color: var(--purple); width: 16px; height: 16px; cursor: pointer; flex-shrink: 0;">
+              <div style="flex: 1; min-width: 0;">
+                <div class="sre-history-title">${escapeHtml(sess.title || 'Chat Session')}</div>
+                <div class="sre-history-date">${dateStr}</div>
+              </div>
+              <button class="delete-single-history-btn" title="Delete chat session" style="display: ${isBulkEditMode ? 'none' : 'inline-flex'}; background: transparent; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; transition: color 0.2s;" onmouseover="this.style.color='var(--error)'" onmouseout="this.style.color='var(--text-secondary)'" onclick="event.stopPropagation(); deleteSingleHistory('${sess.id}');">
+                <i class="fa-solid fa-trash-can" style="font-size: 12px; pointer-events: none;"></i>
+              </button>
+            </div>
+          `;
+
+          const checkbox = el.querySelector('.history-checkbox');
+          if (checkbox) {
+            checkbox.addEventListener('change', (e) => {
+              e.stopPropagation();
+              updateBulkSelectedCount();
+            });
+            checkbox.addEventListener('click', (e) => {
+              e.stopPropagation();
+            });
+          }
+
+          el.onclick = (e) => {
+            if (isBulkEditMode) {
+              if (checkbox) {
+                checkbox.checked = !checkbox.checked;
+                updateBulkSelectedCount();
+              }
+            } else {
+              document.querySelectorAll('.sre-history-item').forEach(i => i.classList.remove('active'));
+              el.classList.add('active');
+              loadSession(sess.id);
+            }
           };
+
           list.appendChild(el);
         });
+
+        updateBulkSelectedCount();
 
         const urlParams = new URLSearchParams(window.location.search);
         const urlSessionId = urlParams.get('session');
@@ -1308,24 +1526,31 @@
       }
     }
 
+
     window.startNewChat = function () {
       sessionId = null;
       document.querySelectorAll('.sre-history-item').forEach(i => i.classList.remove('active'));
       messagesDiv.innerHTML = `
-            <div class="agent-msg sre-panel"
-                style="background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; max-width: 80%;">
-                <div class="sre-text-secondary" style="font-size: 13px; margin-bottom: 6px;"> NeuroSysAI SRE Agent</div>
-                <div class="sre-text-primary" style="line-height: 1.6;">
-                    Hello! Please start a new chat session.
-                </div>
+        <div class="sre-panel p-3 my-2" style="background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 14px; max-width: 85%; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+            <div style="width: 28px; height: 28px; border-radius: 8px; background: rgba(31, 111, 235, 0.12); border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center; color: var(--accent); font-size: 13px;">
+              <i class="fa-solid fa-robot"></i>
             </div>
-        `;
+            <strong style="font-size: 13px; color: var(--text-strong);">NeuroSysAI SRE Assistant</strong>
+          </div>
+          <div style="font-size: 13px; color: var(--text-primary); line-height: 1.6;">
+            Hello! I am ready to assist you with SRE tasks, system monitoring, incident investigation, and infrastructure automation. Please type your command or inquiry below.
+          </div>
+        </div>
+      `;
+
       investigations = {};
       activeInvestigationId = null;
       renderInvestigationTimeline();
       document.getElementById('artifacts-list').innerHTML = '<div class="sre-text-secondary" style="font-style: italic; padding: 16px;">No artifacts for this session</div>';
       window.history.pushState({}, '', window.location.pathname);
     };
+
 
     async function loadSession(id) {
       sessionId = id;
@@ -1846,16 +2071,22 @@
 </style>
 
 <!-- Sudo Password Modal -->
-<div id="sudo-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); backdrop-filter: blur(5px); z-index: 9999; align-items: center; justify-content: center;">
-  <div style="background: var(--bg-main); padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); width: 350px; display: flex; flex-direction: column; gap: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+<div id="sudo-modal"
+  style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); backdrop-filter: blur(5px); z-index: 9999; align-items: center; justify-content: center;">
+  <div
+    style="background: var(--bg-main); padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); width: 350px; display: flex; flex-direction: column; gap: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
     <div style="display: flex; align-items: center; gap: 10px; color: #f85149;">
       <i class="fa-solid fa-shield-halved" style="font-size: 20px;"></i>
       <h3 style="margin: 0; font-size: 16px;">Sudo Privilege Access</h3>
     </div>
-    <p style="font-size: 12px; color: var(--text-secondary); margin: 0; line-height: 1.4;">Enter your sudo password to allow the agent to run privileged commands. This is <b>End-to-End Encrypted (RSA-OAEP)</b> and is only stored in memory for this session.</p>
-    <input type="password" id="sudo-password-input" placeholder="Password" class="sre-input" style="width: 100%; padding: 10px; border-radius: 6px;">
+    <p style="font-size: 12px; color: var(--text-secondary); margin: 0; line-height: 1.4;">Enter your sudo password to
+      allow the agent to run privileged commands. This is <b>End-to-End Encrypted (RSA-OAEP)</b> and is only stored in
+      memory for this session.</p>
+    <input type="password" id="sudo-password-input" placeholder="Password" class="sre-input"
+      style="width: 100%; padding: 10px; border-radius: 6px;">
     <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 5px;">
-      <button onclick="document.getElementById('sudo-modal').style.display='none'" class="btn btn-secondary btn-sm">Cancel</button>
+      <button onclick="document.getElementById('sudo-modal').style.display='none'"
+        class="btn btn-secondary btn-sm">Cancel</button>
       <button onclick="submitSudoPassword()" class="btn btn-success btn-sm">Encrypt & Save</button>
     </div>
   </div>
@@ -1873,15 +2104,15 @@
     }
     return buf;
   }
-  
+
   function pemToArrayBuffer(pem) {
     const b64Lines = pem.replace("-----BEGIN PUBLIC KEY-----", "")
-                        .replace("-----END PUBLIC KEY-----", "")
-                        .replace(/\s+/g, "");
+      .replace("-----END PUBLIC KEY-----", "")
+      .replace(/\s+/g, "");
     const binaryString = window.atob(b64Lines);
     return str2ab(binaryString);
   }
-  
+
   async function submitSudoPassword() {
     const pwdInput = document.getElementById('sudo-password-input');
     const pwd = pwdInput.value;
@@ -1890,12 +2121,12 @@
       alert("RSA Public Key not received from server yet. Please wait.");
       return;
     }
-    
+
     if (!window.crypto || !window.crypto.subtle) {
       alert("Cryptography API not available. This feature requires a secure context (HTTPS or localhost).");
       return;
     }
-    
+
     try {
       const keyBuffer = pemToArrayBuffer(window.serverRsaPublicKey);
       const importedKey = await window.crypto.subtle.importKey(
@@ -1912,12 +2143,12 @@
         encodedPwd
       );
       const encryptedBase64 = window.btoa(String.fromCharCode.apply(null, new Uint8Array(encryptedBuf)));
-      
+
       window.sreAgentWs.send(JSON.stringify({
         type: 'set_sudo_pwd',
         encrypted_password: encryptedBase64
       }));
-      
+
       document.getElementById('sudo-auth-btn').style.color = '#3fb950';
       document.getElementById('sudo-auth-btn').innerHTML = '<i class="fa-solid fa-shield-check"></i> Sudo Active';
       document.getElementById('sudo-modal').style.display = 'none';
@@ -1927,6 +2158,356 @@
       alert("Failed to encrypt password: " + (err.message || err.toString()));
     }
   }
+</script>
+
+<!-- Manage AI Models Modal -->
+<div id="ai-model-modal"
+  style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.45); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); z-index: 9999; align-items: center; justify-content: center;">
+  <div
+    style="background: var(--bg-panel); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 18px; width: 980px; max-width: 96%; max-height: 88vh; display: flex; flex-direction: column; box-shadow: 0 15px 45px rgba(0, 0, 0, 0.3); overflow: hidden;">
+    
+    <!-- Modal Header -->
+    <div style="padding: 16px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; background: var(--bg-main);">
+      <div class="d-flex align-items-center" style="gap: 12px;">
+        <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(31, 111, 235, 0.12); border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center; color: var(--accent); font-size: 15px;">
+          <i class="fa-solid fa-sliders"></i>
+        </div>
+        <div>
+          <h3 style="margin: 0; font-size: 16px; font-weight: 700; color: var(--text-strong);">AI Model Manager</h3>
+          <p style="margin: 0; font-size: 11px; color: var(--text-secondary);">Configure LLM providers, model IDs, and endpoints</p>
+        </div>
+      </div>
+      <button onclick="closeModelManagerModal()" class="btn btn-sm sre-input" style="border-radius: 50%; width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+        <i class="fa-solid fa-xmark" style="color: var(--text-secondary);"></i>
+      </button>
+    </div>
+
+    <!-- Modal Body -->
+    <div style="padding: 20px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 20px;">
+
+      <!-- Existing Models List -->
+      <div>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div class="d-flex align-items-center" style="gap: 8px;">
+            <h4 style="margin: 0; font-size: 14px; font-weight: 600; color: var(--text-primary);">Configured Models</h4>
+            <span id="model-count-badge" class="badge rounded-pill sre-input" style="font-size: 10px; font-weight: 500; padding: 4px 8px; color: var(--text-secondary);">0 models</span>
+          </div>
+          <button onclick="openAddAIModelForm()" class="sre-btn-primary btn btn-sm rounded-pill px-3 shadow-sm" style="font-weight: 600; font-size: 12px; border: none;">
+            <i class="fa-solid fa-plus me-1"></i> Add New Model
+          </button>
+        </div>
+
+        <div style="border: 1px solid var(--border-color); border-radius: 12px; overflow-x: auto; background: var(--bg-panel);">
+          <table class="table align-middle mb-0" style="font-size: 12px; color: var(--text-primary); width: 100%;">
+            <thead>
+              <tr style="border-bottom: 1px solid var(--border-color); background: var(--bg-main); color: var(--text-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">
+                <th style="padding: 10px 12px; width: 60px; text-align: center; white-space: nowrap;">Order</th>
+                <th style="padding: 10px 12px; white-space: nowrap;">Display Name</th>
+                <th style="padding: 10px 12px; white-space: nowrap;">Model ID</th>
+                <th style="padding: 10px 12px; white-space: nowrap;">Provider</th>
+                <th style="padding: 10px 12px; white-space: nowrap;">Endpoint (Base URL)</th>
+                <th style="padding: 10px 12px; text-align: center; white-space: nowrap; width: 110px;">Status</th>
+                <th style="padding: 10px 12px; text-align: right; white-space: nowrap; width: 110px;">Action</th>
+              </tr>
+            </thead>
+            <tbody id="ai-models-table-body">
+              <tr>
+                <td colspan="7" style="padding: 24px; text-align: center; color: var(--text-secondary);">
+                  <div class="spinner-border spinner-border-sm me-2" role="status" style="color: var(--accent);"></div> Loading configured models...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Add/Edit Model Form Card (Hidden by default) -->
+      <div id="ai-model-form-card" style="display: none; border: 1px solid var(--border-color); border-radius: 14px; padding: 18px; background: var(--bg-main);">
+        <div class="d-flex align-items-center" style="gap: 8px; margin-bottom: 16px;">
+          <i class="fa-solid fa-pen-ruler" style="font-size: 14px; color: var(--accent);"></i>
+          <h4 id="ai-model-form-title" style="margin: 0; font-size: 14px; font-weight: 700; color: var(--text-strong);">Add New Model</h4>
+        </div>
+        
+        <form id="ai-model-form" onsubmit="saveAIModelForm(event)">
+          <input type="hidden" id="model-edit-id" value="">
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label class="form-label mb-1" style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">Display Name</label>
+              <input type="text" id="model-name-input" placeholder="e.g. OpenCode Provider (9Router)" required class="sre-input" style="width: 100%; padding: 8px 12px; border-radius: 8px; font-size: 12px;">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label mb-1" style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">Model ID <span style="opacity: 0.7;">(Target sent to engine)</span></label>
+              <input type="text" id="model-id-input" placeholder="e.g. OPENCODE or GROQ" required class="sre-input" style="width: 100%; padding: 8px 12px; border-radius: 8px; font-size: 12px;">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label mb-1" style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">Provider</label>
+              <input type="text" id="model-provider-input" placeholder="e.g. 9router, nvidia, ollama, mistral" required class="sre-input" style="width: 100%; padding: 8px 12px; border-radius: 8px; font-size: 12px;">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label mb-1" style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">Base URL / Endpoint <span style="opacity: 0.7;">(Optional)</span></label>
+              <input type="text" id="model-baseurl-input" placeholder="e.g. http://localhost:20128/v1" class="sre-input" style="width: 100%; padding: 8px 12px; border-radius: 8px; font-size: 12px;">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label mb-1" style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">Display Order</label>
+              <input type="number" id="model-order-input" value="0" class="sre-input" style="width: 100%; padding: 8px 12px; border-radius: 8px; font-size: 12px;">
+            </div>
+            <div class="col-md-6 d-flex align-items-center">
+              <div class="form-check form-switch mt-3">
+                <input class="form-check-input" type="checkbox" id="model-active-input" checked style="cursor: pointer; accent-color: var(--accent);">
+                <label class="form-check-label ms-1" for="model-active-input" style="cursor: pointer; font-size: 12px; font-weight: 500; color: var(--text-primary);">Active Option</label>
+              </div>
+            </div>
+          </div>
+          <div class="d-flex justify-content-end gap-2 pt-3" style="border-top: 1px solid var(--border-color);">
+            <button type="button" onclick="closeAIModelForm()" class="btn btn-sm sre-input" style="border-radius: 20px; font-size: 12px; padding: 5px 16px;">Cancel</button>
+            <button type="submit" class="sre-btn-success btn btn-sm px-4 shadow-sm" style="border-radius: 20px; font-weight: 600; font-size: 12px; border: none;">
+              <i class="fa-solid fa-floppy-disk me-1"></i> Save Model
+            </button>
+          </div>
+        </form>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  let currentLoadedAIModels = [];
+
+  function purgeBootstrapSelect() {
+    if (window.jQuery && $.fn.selectpicker) {
+      try {
+        $('#model-selector, #mode-selector').selectpicker('destroy');
+      } catch (e) {}
+    }
+    ['model-selector', 'mode-selector'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        const parent = el.closest('.bootstrap-select');
+        if (parent) {
+          parent.parentNode.insertBefore(el, parent);
+          parent.remove();
+        }
+      }
+    });
+  }
+
+  async function loadAIModels() {
+    try {
+      const res = await fetch('/api/v1/ai-models/');
+      const data = await res.json();
+      if (data.status === 'success' && Array.isArray(data.models)) {
+        currentLoadedAIModels = data.models;
+        const selector = document.getElementById('model-selector');
+        if (!selector) return;
+        
+        const savedVal = localStorage.getItem('sre_selected_model');
+        const currentVal = selector.value;
+        const targetVal = savedVal || currentVal;
+
+        selector.innerHTML = '';
+
+        data.models.filter(m => m.is_active).forEach(m => {
+          const opt = document.createElement('option');
+          opt.value = m.model_id;
+          opt.textContent = m.name;
+          selector.appendChild(opt);
+        });
+
+        if (targetVal && Array.from(selector.options).some(o => o.value === targetVal)) {
+          selector.value = targetVal;
+        } else if (selector.options.length > 0) {
+          localStorage.setItem('sre_selected_model', selector.options[0].value);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load AI models:', err);
+    }
+    purgeBootstrapSelect();
+  }
+
+  function openModelManagerModal() {
+    document.getElementById('ai-model-modal').style.display = 'flex';
+    renderModelManagerTable();
+    closeAIModelForm();
+  }
+
+  function closeModelManagerModal() {
+    document.getElementById('ai-model-modal').style.display = 'none';
+    closeAIModelForm();
+  }
+
+  function openAddAIModelForm() {
+    resetAIModelForm();
+    const card = document.getElementById('ai-model-form-card');
+    card.style.display = 'block';
+    document.getElementById('ai-model-form-title').innerText = 'Add New Model';
+    setTimeout(() => {
+      const input = document.getElementById('model-name-input');
+      if (input) input.focus();
+    }, 50);
+  }
+
+  function closeAIModelForm() {
+    const card = document.getElementById('ai-model-form-card');
+    if (card) card.style.display = 'none';
+    resetAIModelForm();
+  }
+
+  function renderModelManagerTable() {
+    const tbody = document.getElementById('ai-models-table-body');
+    const badge = document.getElementById('model-count-badge');
+    if (badge) badge.innerText = `${currentLoadedAIModels.length} models`;
+
+    if (!tbody) return;
+    if (currentLoadedAIModels.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7" style="padding: 24px; text-align: center; color: var(--text-secondary);">No models configured. Click <b>Add New Model</b> to create one.</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = currentLoadedAIModels.map(m => `
+      <tr style="border-bottom: 1px solid var(--border-color);">
+        <td style="padding: 10px 12px; text-align: center; white-space: nowrap;">
+          <span style="font-family: monospace; font-size: 11px; color: var(--text-secondary); background: var(--bg-main); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">${m.order}</span>
+        </td>
+        <td style="padding: 10px 12px; font-weight: 600; color: var(--text-strong); white-space: nowrap;">${m.name}</td>
+        <td style="padding: 10px 12px; white-space: nowrap;">
+          <span style="font-family: monospace; color: var(--accent); background: var(--bg-main); padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 11px;">${m.model_id}</span>
+        </td>
+        <td style="padding: 10px 12px; white-space: nowrap;">
+          <span style="font-size: 10px; font-weight: 600; background: rgba(137, 87, 229, 0.12); color: var(--purple); padding: 3px 8px; border-radius: 12px; border: 1px solid rgba(137, 87, 229, 0.3);">${m.provider}</span>
+        </td>
+        <td style="padding: 10px 12px; font-family: monospace; font-size: 11px; color: var(--text-secondary); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+          ${m.base_url ? m.base_url : '<span style="opacity: 0.5; font-style: italic;">Default</span>'}
+        </td>
+        <td style="padding: 10px 12px; text-align: center; white-space: nowrap;">
+          ${m.is_active 
+            ? `<span style="font-size: 10px; font-weight: 600; color: var(--success-text); background: rgba(45, 164, 78, 0.12); border: 1px solid rgba(45, 164, 78, 0.3); padding: 3px 8px; border-radius: 12px;"><i class="fa-solid fa-circle-check me-1"></i>Active</span>`
+            : `<span style="font-size: 10px; font-weight: 600; color: var(--text-secondary); background: var(--bg-main); border: 1px solid var(--border-color); padding: 3px 8px; border-radius: 12px;"><i class="fa-solid fa-circle-xmark me-1"></i>Inactive</span>`
+          }
+        </td>
+        <td style="padding: 10px 12px; text-align: right; white-space: nowrap;">
+          <button onclick="editAIModel(${m.id})" class="btn btn-sm sre-input me-1" style="border-radius: 8px; padding: 3px 8px; font-size: 11px; color: var(--accent);" title="Edit Model">
+            <i class="fa-solid fa-pen-to-square"></i>
+          </button>
+          <button onclick="deleteAIModel(${m.id})" class="btn btn-sm sre-input" style="border-radius: 8px; padding: 3px 8px; font-size: 11px; color: var(--error);" title="Delete Model">
+            <i class="fa-solid fa-trash"></i>
+          </button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+
+
+
+
+  function resetAIModelForm() {
+    const editId = document.getElementById('model-edit-id');
+    if (editId) editId.value = '';
+    const nameInput = document.getElementById('model-name-input');
+    if (nameInput) nameInput.value = '';
+    const idInput = document.getElementById('model-id-input');
+    if (idInput) idInput.value = '';
+    const providerInput = document.getElementById('model-provider-input');
+    if (providerInput) providerInput.value = '9router';
+    const baseUrlInput = document.getElementById('model-baseurl-input');
+    if (baseUrlInput) baseUrlInput.value = '';
+    const orderInput = document.getElementById('model-order-input');
+    if (orderInput) orderInput.value = '0';
+    const activeInput = document.getElementById('model-active-input');
+    if (activeInput) activeInput.checked = true;
+  }
+
+  function editAIModel(id) {
+    const m = currentLoadedAIModels.find(x => x.id == id);
+    if (!m) return;
+    document.getElementById('model-edit-id').value = m.id;
+    document.getElementById('model-name-input').value = m.name;
+    document.getElementById('model-id-input').value = m.model_id;
+    document.getElementById('model-provider-input').value = m.provider;
+    document.getElementById('model-baseurl-input').value = m.base_url || '';
+    document.getElementById('model-order-input').value = m.order;
+    document.getElementById('model-active-input').checked = m.is_active;
+    document.getElementById('ai-model-form-title').innerText = 'Edit Model: ' + m.name;
+    
+    const card = document.getElementById('ai-model-form-card');
+    card.style.display = 'block';
+    setTimeout(() => {
+      const input = document.getElementById('model-name-input');
+      if (input) input.focus();
+    }, 50);
+  }
+
+  async function saveAIModelForm(e) {
+    e.preventDefault();
+    const id = document.getElementById('model-edit-id').value;
+    const payload = {
+      name: document.getElementById('model-name-input').value,
+      model_id: document.getElementById('model-id-input').value,
+      provider: document.getElementById('model-provider-input').value,
+      base_url: document.getElementById('model-baseurl-input').value,
+      order: parseInt(document.getElementById('model-order-input').value) || 0,
+      is_active: document.getElementById('model-active-input').checked
+    };
+
+    const url = id ? `/api/v1/ai-models/${id}/` : '/api/v1/ai-models/';
+    const method = id ? 'PUT' : 'POST';
+
+    try {
+      const res = await fetch(url, {
+        method: method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.status === 'success') {
+        await loadAIModels();
+        renderModelManagerTable();
+        closeAIModelForm();
+      } else {
+        alert('Error saving model: ' + (data.message || 'Unknown error'));
+      }
+    } catch (err) {
+      alert('Failed to save model: ' + err.toString());
+    }
+  }
+
+  async function deleteAIModel(id) {
+    if (!confirm('Are you sure you want to delete this model configuration?')) return;
+    try {
+      const res = await fetch(`/api/v1/ai-models/${id}/`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.status === 'success') {
+        await loadAIModels();
+        renderModelManagerTable();
+        closeAIModelForm();
+      } else {
+        alert('Error deleting model: ' + (data.message || 'Unknown error'));
+      }
+    } catch (err) {
+      alert('Failed to delete model: ' + err.toString());
+    }
+  }
+
+  // Load models on page load and bind change listener
+  document.addEventListener('DOMContentLoaded', function () {
+    const selector = document.getElementById('model-selector');
+    if (selector) {
+      const savedVal = localStorage.getItem('sre_selected_model');
+      if (savedVal && Array.from(selector.options).some(o => o.value === savedVal)) {
+        selector.value = savedVal;
+      }
+      selector.addEventListener('change', function () {
+        localStorage.setItem('sre_selected_model', this.value);
+      });
+    }
+    purgeBootstrapSelect();
+    loadAIModels();
+    setTimeout(purgeBootstrapSelect, 300);
+    setTimeout(purgeBootstrapSelect, 1000);
+  });
+
+
 </script>
 
 {% endblock %}

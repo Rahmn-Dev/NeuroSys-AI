@@ -340,3 +340,29 @@ class InvestigationFinding(models.Model):
 
     def __str__(self):
         return f"Finding for {self.investigation.id}"
+
+class AIModel(models.Model):
+    PROVIDER_CHOICES = [
+        ('9router', '9Router'),
+        ('nvidia', 'NVIDIA AI'),
+        ('ollama', 'Ollama Local'),
+        ('mistral', 'Mistral AI'),
+        ('openai', 'OpenAI'),
+        ('other', 'Other'),
+    ]
+
+    name = models.CharField(max_length=100, help_text="Display name for the model option")
+    model_id = models.CharField(max_length=100, help_text="Model identifier sent to engine (e.g. OPENCODE, GROQ, mistral-large-latest)")
+    provider = models.CharField(max_length=50, choices=PROVIDER_CHOICES, default='9router')
+    base_url = models.CharField(max_length=255, blank=True, null=True, help_text="Optional custom Base URL (e.g. http://localhost:20128/v1)")
+    is_active = models.BooleanField(default=True)
+    order = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['order', 'id']
+
+    def __str__(self):
+        return f"{self.name} ({self.model_id} - {self.provider})"
+

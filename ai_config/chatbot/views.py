@@ -671,3 +671,134 @@ def artifact_rollback_api(request, artifact_id):
         return Response({"error": "Rollback failed"}, status=500)
     except Exception as e:
         return Response({"error": str(e)}, status=500)
+
+from django.views.decorators.csrf import csrf_exempt
+from chatbot.models import AIModel
+
+DEFAULT_AI_MODELS = [
+    {"name": "OpenCode Provider (9Router)", "model_id": "OPENCODE", "provider": "9router", "order": 1},
+    {"name": "Groq Provider (9Router)", "model_id": "GROQ", "provider": "9router", "order": 2},
+    {"name": "Mistral Large", "model_id": "mistral-large-latest", "provider": "mistral", "order": 3},
+    {"name": "Local Mistral (Ollama)", "model_id": "mistral:latest", "provider": "ollama", "order": 4},
+    {"name": "Local Qwen2.5 Coder (Ollama)", "model_id": "qwen2.5-coder:latest", "provider": "ollama", "order": 5},
+
+]
+
+
+def seed_default_ai_models():
+    if AIModel.objects.count() == 0:
+        for item in DEFAULT_AI_MODELS:
+            AIModel.objects.create(**item)
+
+@csrf_exempt
+def ai_models_api(request):
+    if request.method == 'GET':
+        seed_default_ai_models()
+        models = AIModel.objects.all().order_by('order', 'id')
+        data = [
+            {
+                'id': m.id,
+                'name': m.name,
+                'model_id': m.model_id,
+                'provider': m.provider,
+                'base_url': m.base_url or '',
+                'is_active': m.is_active,
+                'order': m.order,
+            }
+            for m in models
+        ]
+        return JsonResponse({'status': 'success', 'models': data})
+    
+    elif request.method == 'POST':
+        try:
+            payload = json.loads(request.body)
+            name = payload.get('name', '').strip()
+            model_id = payload.get('model_id', '').strip()
+            provider = payload.get('provider', '9router').strip()
+            base_url = payload.get('base_url', '').strip() or None
+            is_active = payload.get('is_active', True)
+            order = int(payload.get('order', 0))
+
+            if not name or not model_id:
+                return JsonResponse({'status': 'error', 'message': 'Name and model_id are required.'}, status=400)
+
+            model_obj = AIModel.objects.create(
+                name=name,
+                model_id=model_id,
+                provider=provider,
+                base_url=base_url,
+                is_active=is_active,
+                order=order
+            )
+            return JsonResponse({
+                'status': 'success',
+                'model': {
+                    'id': model_obj.id,
+                    'name': model_obj.name,
+                    'model_id': model_obj.model_id,
+                    'provider': model_obj.provider,
+                    'base_url': model_obj.base_url or '',
+                    'is_active': model_obj.is_active,
+                    'order': model_obj.order
+                }
+            })
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed.'}, status=405)
+
+
+@csrf_exempt
+def ai_model_detail_api(request, pk):
+    try:
+        model_obj = AIModel.objects.get(pk=pk)
+    except AIModel.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Model not found.'}, status=404)
+
+    if request.method == 'GET':
+        return JsonResponse({
+            'status': 'success',
+            'model': {
+                'id': model_obj.id,
+                'name': model_obj.name,
+                'model_id': model_obj.model_id,
+                'provider': model_obj.provider,
+                'base_url': model_obj.base_url or '',
+                'is_active': model_obj.is_active,
+                'order': model_obj.order
+            }
+        })
+    elif request.method == 'PUT':
+        try:
+            payload = json.loads(request.body)
+            model_obj.name = payload.get('name', model_obj.name).strip()
+            model_obj.model_id = payload.get('model_id', model_obj.model_id).strip()
+            model_obj.provider = payload.get('provider', model_obj.provider).strip()
+            model_obj.base_url = payload.get('base_url', model_obj.base_url or '').strip() or None
+            if 'is_active' in payload:
+                model_obj.is_active = bool(payload['is_active'])
+            if 'order' in payload:
+                model_obj.order = int(payload['order'])
+            model_obj.save()
+
+            return JsonResponse({
+                'status': 'success',
+                'model': {
+                    'id': model_obj.id,
+                    'name': model_obj.name,
+                    'model_id': model_obj.model_id,
+                    'provider': model_obj.provider,
+                    'base_url': model_obj.base_url or '',
+                    'is_active': model_obj.is_active,
+                    'order': model_obj.order
+                }
+            })
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+    elif request.method == 'DELETE':
+        model_obj.delete()
+        return JsonResponse({'status': 'success', 'message': 'Model deleted successfully.'})
+
+    return JsonResponse({'status': 'error', 'message': 'Method not allowed.'}, status=405)
+

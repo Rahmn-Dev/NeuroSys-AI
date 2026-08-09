@@ -12,51 +12,68 @@ def get_llm():
     
     model_name = current_model_name.get()
     
-    if "deepseek" in model_name.lower():
-        from langchain_nvidia_ai_endpoints import ChatNVIDIA
-        api_key = getattr(settings, "NVIDIA_API_KEY", os.environ.get("NVIDIA_API_KEY", ""))
-        return ChatNVIDIA(
-            model=model_name,
-            api_key=api_key,
-            temperature=0.1,
-            top_p=0.95,
-            max_tokens=4096,
-            extra_body={"chat_template_kwargs":{"thinking":False}},
-        )
-    elif "gpt-oss-120b" in model_name.lower():
-        from langchain_nvidia_ai_endpoints import ChatNVIDIA
-        api_key = getattr(settings, "NVIDIA_API_KEY", os.environ.get("NVIDIA_API_KEY", ""))
-        return ChatNVIDIA(
-            model=model_name,
-            api_key=api_key,
-            temperature=0.1,
-            top_p=0.9,
-            max_tokens=4096,
-            extra_body={"chat_template_kwargs":{"thinking":False}},
-        )
-    elif model_name == "9router":
-        from langchain_openai import ChatOpenAI
-        return ChatOpenAI(
-            model="9router",
-            base_url="http://localhost:20128/v1",
-            api_key="9router",
-            temperature=0.1,
-            max_tokens=4096,
-        )
-    else:
+    provider = None
+    target_model = model_name
+    custom_base_url = None
+
+    try:
+        from chatbot.models import AIModel
+        db_model = AIModel.objects.filter(model_id=model_name).first()
+        if not db_model:
+            db_model = AIModel.objects.filter(name=model_name).first()
+        if db_model:
+            provider = (db_model.provider or "").lower().strip()
+            target_model = db_model.model_id
+            custom_base_url = db_model.base_url
+    except Exception:
+        pass
+
+    # 1. Ollama Native Client
+    if provider == 'ollama' or (target_model in ["mistral:latest", "qwen2.5-coder:latest"] and not custom_base_url):
         from langchain_ollama import ChatOllama
-        ollama_url = getattr(settings, "OLLAMA_URL", os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434"))
-        
-        # Fallback if an API model name slipped through to Ollama
-        if model_name == "mistral-large-latest":
-            model_name = "mistral:latest"
-            
+        ollama_url = custom_base_url or getattr(settings, "OLLAMA_URL", os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434"))
         return ChatOllama(
-            model=model_name,
+            model=target_model,
             base_url=ollama_url,
             temperature=0.1,
             num_ctx=8192
         )
+
+    # 2. Explicit Mistral AI Official API
+    elif provider == 'mistral' and not custom_base_url:
+        from langchain_mistralai import ChatMistralAI
+        api_key = getattr(settings, "MISTRAL_API_KEY", os.environ.get("MISTRAL_API_KEY", ""))
+        return ChatMistralAI(
+            model=target_model,
+            mistral_api_key=api_key,
+            temperature=0.1,
+            max_tokens=2048,
+        )
+
+    # 3. Default / 9Router / Custom Base URL / OpenAI-compatible API (Includes OPENCODE, GROQ, NVIDIA, DeepSeek, GPT-OSS)
+    else:
+        from langchain_openai import ChatOpenAI
+        
+        if model_name.startswith("9router:"):
+            real_model = model_name.split(":", 1)[1]
+        elif target_model and target_model != "9router":
+            real_model = target_model
+        else:
+            real_model = "OPENCODE"
+            
+        base_url = custom_base_url if (custom_base_url and custom_base_url.strip()) else "http://localhost:20128/v1"
+        api_key = getattr(settings, "ROUTER_API_KEY", os.environ.get("ROUTER_API_KEY", os.environ.get("OPENAI_API_KEY", "9router")))
+        
+        return ChatOpenAI(
+            model=real_model,
+            base_url=base_url,
+            api_key=api_key if api_key else "9router",
+            temperature=0.1,
+            max_tokens=4096,
+        )
+
+
+
 
 from typing import Union
 
