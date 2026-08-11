@@ -627,14 +627,19 @@ Reply STRICTLY 'CONTINUE' or 'NEW'."""
                                     findings_data = new_findings
                                     yield evt_findings(new_findings)
                                 
-                                    if artifact_mgr:
-                                        findings_path = f".neurosys/sessions/{self.session_id}/findings.json"
-                                        await artifact_mgr.upsert_artifact(findings_path, json.dumps(new_findings, indent=2), action_type="finding")
-                                
-                                    # Sync Findings to DB
+                                    # Resolve inv_id first
                                     inv_id = plan_data.get("investigation_id") if isinstance(plan_data, dict) else None
                                     if not inv_id and isinstance(new_findings, dict):
                                         inv_id = new_findings.get("investigation_id")
+                                
+                                    if artifact_mgr:
+                                        if inv_id:
+                                            findings_path = f".neurosys/sessions/{self.session_id}/investigations/{inv_id}/findings.json"
+                                        else:
+                                            findings_path = f".neurosys/sessions/{self.session_id}/artifacts/findings.json"
+                                        await artifact_mgr.upsert_artifact(findings_path, json.dumps(new_findings, indent=2), action_type="finding")
+                                
+                                    # Sync Findings to DB
                                     if inv_id:
                                         new_f_list = new_findings.get("findings", []) if isinstance(new_findings, dict) else new_findings
                                         await sync_to_async(lambda: InvestigationFinding.objects.filter(investigation_id=inv_id).delete())()

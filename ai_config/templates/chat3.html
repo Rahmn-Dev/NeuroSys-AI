@@ -1343,10 +1343,10 @@
 
       container.innerHTML = html;
 
-      const invTab = document.getElementById('tab-investigation');
-      if (invTab && invTab.style.display === 'none') {
-        window.switchTab('investigation');
-      }
+      // const invTab = document.getElementById('tab-investigation');
+      // if (invTab && invTab.style.display === 'none') {
+      //   window.switchTab('investigation');
+      // }
     }
 
     function renderWorkerActivity() {
@@ -1482,7 +1482,8 @@
       }
 
       if (tabName === 'explorer') loadExplorer();
-      if (tabName === 'artifacts') loadArtifacts();
+      if (tabName === 'artifacts') loadArtifacts();  // This already exists, keep it
+      if (tabName === 'investigation') renderInvestigationTimeline(); // Add this
       if (tabName === 'terminal' && window.fitTerminal) {
         setTimeout(window.fitTerminal, 50);
       }
@@ -1791,6 +1792,20 @@
         });
         window.isLoadingHistory = false;
         lucide.createIcons();
+        const visibleTab = document.querySelector('.tab-content[style*="display: flex"]') ||
+          document.getElementById('tab-investigation');
+        if (visibleTab) {
+          if (visibleTab.id === 'tab-artifacts') {
+            loadArtifacts();
+          } else if (visibleTab.id === 'tab-explorer') {
+            loadExplorer();
+          } else if (visibleTab.id === 'tab-investigation') {
+            renderInvestigationTimeline();
+          }
+        }
+
+        // Also pre-load artifacts in background so they're ready
+        loadArtifacts();
       } catch (e) {
         console.error('Failed to load session', e);
       }
@@ -1908,6 +1923,7 @@
     }
 
     // --- Artifacts ---
+    // Replace the existing renderServicesList function in loadArtifacts
     async function loadArtifacts() {
       try {
         if (!sessionId) {
@@ -1925,51 +1941,113 @@
         }
 
         data.forEach(art => {
-          let el = document.createElement('div');
-          el.className = 'sre-layout';
-          el.style.cssText = 'padding: 12px; border: 1px solid var(--border-color, #30363d); border-radius: 8px; margin-bottom: 10px; background: var(--bg-main, #161b22);';
-
           let badgeColor = '#58a6ff';
           let badgeBg = 'rgba(88, 166, 255, 0.15)';
+          let icon = 'fa-file';
           let typeLabel = art.action_type ? art.action_type.toUpperCase() : 'ARTIFACT';
 
           if (art.action_type === 'create') {
-            badgeColor = '#3fb950'; badgeBg = 'rgba(63, 185, 80, 0.15)'; typeLabel = 'FILE CREATED';
+            badgeColor = '#3fb950'; badgeBg = 'rgba(63, 185, 80, 0.15)'; icon = 'fa-file-circle-plus'; typeLabel = 'FILE CREATED';
           } else if (art.action_type === 'edit') {
-            badgeColor = '#d29922'; badgeBg = 'rgba(210, 153, 34, 0.15)'; typeLabel = 'FILE MODIFIED';
+            badgeColor = '#d29922'; badgeBg = 'rgba(210, 153, 34, 0.15)'; icon = 'fa-file-pen'; typeLabel = 'FILE MODIFIED';
           } else if (art.action_type === 'backup') {
-            badgeColor = '#a371f7'; badgeBg = 'rgba(163, 113, 247, 0.15)'; typeLabel = 'FILE BACKUP';
+            badgeColor = '#a371f7'; badgeBg = 'rgba(163, 113, 247, 0.15)'; icon = 'fa-file-shield'; typeLabel = 'FILE BACKUP';
           } else if (art.action_type === 'report') {
-            badgeColor = '#58a6ff'; badgeBg = 'rgba(88, 166, 255, 0.15)'; typeLabel = 'REPORT';
+            badgeColor = '#58a6ff'; badgeBg = 'rgba(88, 166, 255, 0.15)'; icon = 'fa-file-lines'; typeLabel = 'REPORT';
           } else if (art.action_type === 'plan') {
-            badgeColor = '#39c5cf'; badgeBg = 'rgba(57, 197, 207, 0.15)'; typeLabel = 'TASK PLAN';
+            badgeColor = '#39c5cf'; badgeBg = 'rgba(57, 197, 207, 0.15)'; icon = 'fa-list-check'; typeLabel = 'TASK PLAN';
           } else if (art.action_type === 'finding') {
-            badgeColor = '#f0883e'; badgeBg = 'rgba(240, 136, 62, 0.15)'; typeLabel = 'FINDINGS';
+            badgeColor = '#f0883e'; badgeBg = 'rgba(240, 136, 62, 0.15)'; icon = 'fa-magnifying-glass'; typeLabel = 'FINDINGS';
+          } else if (art.action_type === 'history') {
+            badgeColor = '#8b949e'; badgeBg = 'rgba(139, 148, 158, 0.15)'; icon = 'fa-clock-rotate-left'; typeLabel = 'HISTORY';
           }
 
-          let timeStr = art.created_at ? new Date(art.created_at).toLocaleTimeString() : '';
+          let timeStr = art.created_at ? new Date(art.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
           let contentToShow = art.diff || art.new_content || 'No content preview available';
+
+          // Get filename without path
+          const fileName = art.file_path ? art.file_path.split('/').pop() : 'unknown';
+
+          // Truncate content preview
+          const previewLines = contentToShow.split('\n').slice(0, 8).join('\n');
+          const hasMore = contentToShow.split('\n').length > 8;
 
           let rollbackBtn = '';
           if (['edit', 'create', 'backup'].includes(art.action_type)) {
-            rollbackBtn = `<button onclick="window.rollbackArtifact(${art.id})" style="background: rgba(218, 54, 51, 0.2); color: #f85149; border: 1px solid rgba(218, 54, 51, 0.4); border-radius: 4px; padding: 3px 8px; font-size: 11px; cursor: pointer; transition: all 0.2s;">↩ Rollback File</button>`;
+            rollbackBtn = `<button onclick="window.rollbackArtifact(${art.id})" style="background: rgba(218, 54, 51, 0.15); color: #f85149; border: 1px solid rgba(218, 54, 51, 0.3); border-radius: 6px; padding: 4px 10px; font-size: 11px; cursor: pointer; transition: all 0.2s; font-weight: 500;" onmouseover="this.style.background='rgba(218, 54, 51, 0.25)'" onmouseout="this.style.background='rgba(218, 54, 51, 0.15)'">↩ Rollback</button>`;
           }
 
+          const cardId = 'artifact-' + art.id;
+
+          const el = document.createElement('div');
+          el.style.cssText = 'margin-bottom: 12px;';
           el.innerHTML = `
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <span style="font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 12px; color: ${badgeColor}; background: ${badgeBg}; letter-spacing: 0.5px;">${typeLabel}</span>
-                        <span style="font-size: 10px; opacity: 0.6;">${timeStr}</span>
-                    </div>
-                    <div style="font-weight: 600; font-size: 12px; margin-bottom: 6px; color: var(--text-primary); word-break: break-all;">📄 ${escapeHtml(art.file_path)}</div>
-                    <pre style="background: #090d13; color: #c9d1d9; padding: 8px; border-radius: 6px; overflow-x: auto; font-size: 11px; max-height: 140px; border: 1px solid rgba(255,255,255,0.05); font-family: monospace; line-height: 1.4;">${escapeHtml(contentToShow)}</pre>
-                    ${rollbackBtn ? `<div style="margin-top: 8px; display: flex; justify-content: flex-end;">${rollbackBtn}</div>` : ''}
-                `;
+            <div style="background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 10px; overflow: hidden; transition: all 0.2s ease;">
+              <!-- Header - Clickable -->
+              <div onclick="toggleArtifactCard('${cardId}')" 
+                  style="cursor: pointer; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; user-select: none; transition: background 0.2s;"
+                  onmouseover="this.style.background='rgba(255,255,255,0.03)'" 
+                  onmouseout="this.style.background='transparent'">
+                <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;">
+                  <!-- Type Badge -->
+                  <span style="font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 12px; color: ${badgeColor}; background: ${badgeBg}; letter-spacing: 0.5px; flex-shrink: 0; white-space: nowrap;">
+                    <i class="fa-solid ${icon}" style="margin-right: 4px; font-size: 9px;"></i>${typeLabel}
+                  </span>
+                  <!-- Filename -->
+                  <span style="font-weight: 600; font-size: 13px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    📄 ${escapeHtml(fileName)}
+                  </span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+                  <span style="font-size: 10px; color: var(--text-secondary); opacity: 0.7;">${timeStr}</span>
+                  <i class="fa-solid fa-chevron-down" id="${cardId}-chevron" style="font-size: 10px; color: var(--text-secondary); transition: transform 0.2s;"></i>
+                </div>
+              </div>
+              
+              <!-- Collapsible Content -->
+              <div id="${cardId}-content" style="display: none; border-top: 1px solid var(--border-color);">
+                <!-- File Path (subtle) -->
+                <div style="padding: 8px 14px; background: rgba(0,0,0,0.1); font-size: 10px; color: var(--text-secondary); font-family: monospace; opacity: 0.7; border-bottom: 1px solid var(--border-color);">
+                  <i class="fa-solid fa-folder" style="margin-right: 4px;"></i>${escapeHtml(art.file_path || '')}
+                </div>
+                
+                <!-- Content Preview -->
+                <div style="padding: 12px 14px;">
+                  <pre style="background: #0d1117; color: #c9d1d9; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 11px; max-height: 200px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.06); font-family: 'JetBrains Mono', 'Fira Code', monospace; line-height: 1.5; margin: 0;">${escapeHtml(previewLines)}${hasMore ? '\n... (truncated)' : ''}</pre>
+                </div>
+                
+                ${rollbackBtn ? `
+                <!-- Actions -->
+                <div style="padding: 8px 14px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 6px;">
+                  ${rollbackBtn}
+                </div>
+                ` : ''}
+              </div>
+            </div>
+          `;
+
           container.appendChild(el);
         });
       } catch (e) {
         document.getElementById('artifacts-list').innerHTML = '<div class="sre-text-secondary" style="font-style: italic; padding: 16px;">Error loading artifacts.</div>';
       }
     }
+
+    // Add this toggle function globally
+    window.toggleArtifactCard = function (cardId) {
+      const content = document.getElementById(cardId + '-content');
+      const chevron = document.getElementById(cardId + '-chevron');
+
+      if (content && chevron) {
+        if (content.style.display === 'none') {
+          content.style.display = 'block';
+          chevron.style.transform = 'rotate(180deg)';
+        } else {
+          content.style.display = 'none';
+          chevron.style.transform = 'rotate(0deg)';
+        }
+      }
+    };
 
     window.rollbackArtifact = async function (id) {
       try {

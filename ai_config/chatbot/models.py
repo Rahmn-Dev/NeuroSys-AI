@@ -374,3 +374,21 @@ class SystemArchitectureCache(models.Model):
 
     def __str__(self):
         return f"System Architecture Cache ({self.updated_at})"
+
+import os
+import shutil
+from django.db.models.signals import post_delete
+
+@receiver(post_delete, sender=ChatSession)
+def delete_chat_session_files(sender, instance, **kwargs):
+    """
+    Deletes the physical session directory (.neurosys/sessions/{session_id}) 
+    when a ChatSession is deleted from the database.
+    """
+    session_dir = f".neurosys/sessions/{instance.id}"
+    if os.path.exists(session_dir):
+        try:
+            shutil.rmtree(session_dir)
+            print(f"Deleted session files: {session_dir}")
+        except Exception as e:
+            print(f"Error deleting session directory {session_dir}: {e}")
