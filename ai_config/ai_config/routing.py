@@ -12,5 +12,6 @@ websocket_urlpatterns = [
     path('ws/security/', consumers.SecurityConsumer.as_asgi()),
     path('ws/ai_intrusion_logs/', consumers.AiIntrusionLogConsumer.as_asgi()),
     path('ws/sre-agent/', consumers.SREAgentConsumer.as_asgi()),
+    path('ws/architecture/', consumers.ArchitectureConsumer.as_asgi()),
 ]
 

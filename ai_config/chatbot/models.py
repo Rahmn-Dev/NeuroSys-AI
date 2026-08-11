@@ -366,3 +366,11 @@ class AIModel(models.Model):
     def __str__(self):
         return f"{self.name} ({self.model_id} - {self.provider})"
 
+class SystemArchitectureCache(models.Model):
+    mermaid_diagram = models.TextField(blank=True, null=True)
+    services_json = models.TextField(blank=True, null=True)
+    insights_json = models.TextField(blank=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"System Architecture Cache ({self.updated_at})"

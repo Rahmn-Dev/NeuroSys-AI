@@ -1144,14 +1144,14 @@ react_prompt = PromptTemplate.from_template(REACT_PROMPT_TEMPLATE_STR)
 
 # Buat Agen ReAct
 # Fungsi create_react_agent mungkin memerlukan llm, tools, dan prompt
-try:
-    # react_agent = create_react_agent(llm=llm, tools=ALL_TOOLS, prompt=react_prompt)
-    from langgraph.prebuilt import create_react_agent
-    AGENT_EXECUTOR = create_react_agent(llm, tools=ALL_TOOLS)
-    print("LangChain ReAct AgentExecutor berhasil diinisialisasi.")
-except Exception as e:
-    print(f"GAGAL menginisialisasi LangChain AgentExecutor: {e}")
-    AGENT_EXECUTOR = None # Set ke None jika gagal
+# try:
+#     # react_agent = create_react_agent(llm=llm, tools=ALL_TOOLS, prompt=react_prompt)
+#     from langgraph.prebuilt import create_react_agent
+#     AGENT_EXECUTOR = create_react_agent(llm, tools=ALL_TOOLS)
+#     print("LangChain ReAct AgentExecutor berhasil diinisialisasi.")
+# except Exception as e:
+#     print(f"GAGAL menginisialisasi LangChain AgentExecutor: {e}")
+#     AGENT_EXECUTOR = None # Set ke None jika gagal
 
 # ... (fungsi parse_ollama_response tidak lagi relevan untuk alur utama ini) ...
 

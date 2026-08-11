@@ -77,18 +77,44 @@ def get_llm():
 
 from typing import Union
 
+def _save_subagent_artifact(agent_type: str, params: dict, result: str):
+    """Saves subagent execution history to AgentArtifact without requiring AI."""
+    try:
+        import os, time, json
+        from sre_agent.artifacts import ArtifactManager
+        from sre_agent.context import current_session_id
+        from asgiref.sync import async_to_sync
+
+        session_id = current_session_id.get() or "default"
+        mgr = ArtifactManager(workspace_path=os.getcwd(), session_id=session_id)
+        
+        timestamp = int(time.time())
+        file_path = f".neurosys/sessions/{session_id}/artifacts/subagent_{agent_type}_{timestamp}.md"
+        content = f"""# Subagent Execution Record ({agent_type.upper()})
+
+**Agent Type**: {agent_type}
+**Timestamp**: {time.strftime('%Y-%m-%d %H:%M:%S')}
+
+## Input Parameters
+```json
+{json.dumps(params, indent=2)}
+```
+
+## Output / Result
+```
+{result}
+```
+"""
+        async_to_sync(mgr.create_artifact)(file_path, content, action_type="subagent_execution")
+    except Exception as e:
+        print(f"[SubagentArtifact] Warning: Failed to record artifact: {e}")
+
 @tool
 def spawn_subagent(agent_type: str, params: Union[dict, str]) -> str:
     """
     Spawns a specialized sub-agent to perform a task.
-    agent_type must be either 'basher' or 'file-picker'.
+    agent_type must be one of: 'basher', 'file-picker', 'code-searcher', 'thinker', 'editor', 'code-reviewer'.
     params must be a JSON string.
-    
-    For 'basher':
-    params = {"command": "the shell command", "what_to_summarize": "optional summary instructions"}
-    
-    For 'file-picker':
-    params = {"query": "what to search for, e.g. nginx config"}
     """
     try:
         if isinstance(params, str):
@@ -98,12 +124,24 @@ def spawn_subagent(agent_type: str, params: Union[dict, str]) -> str:
     except Exception as e:
         return f"Error: params must be valid JSON or dictionary. {e}"
 
+    res = ""
     if agent_type == "basher":
-        return _run_basher(args)
+        res = _run_basher(args)
     elif agent_type == "file-picker":
-        return _run_file_picker(args)
+        res = _run_file_picker(args)
+    elif agent_type == "code-searcher":
+        res = _run_code_searcher(args)
+    elif agent_type == "thinker":
+        res = _run_thinker(args)
+    elif agent_type == "editor":
+        res = _run_editor(args)
+    elif agent_type == "code-reviewer":
+        res = _run_code_reviewer(args)
     else:
-        return f"Error: Unknown agent_type {agent_type}"
+        res = f"Error: Unknown agent_type {agent_type}"
+
+    _save_subagent_artifact(agent_type, args, res)
+    return res
 
 
 def _run_basher(args: dict) -> str:
@@ -306,6 +344,47 @@ Do NOT write actual code files, just write the logical steps.
     return response.content
 
 
+def _create_artifact_sync(workspace_path: str, session_id: str, file_path: str, new_content: str, action_type: str = "edit"):
+    import difflib
+    try:
+        from chatbot.models import WorkspaceInfo, AgentArtifact
+        ws, _ = WorkspaceInfo.objects.get_or_create(workspace_path=workspace_path)
+        abs_path = os.path.join(workspace_path, file_path) if not os.path.isabs(file_path) else file_path
+        
+        old_content = ""
+        if os.path.exists(abs_path):
+            try:
+                with open(abs_path, 'r', encoding='utf-8') as f:
+                    old_content = f.read()
+            except Exception:
+                pass
+                
+        diff = ""
+        if action_type in ["edit", "create"]:
+            try:
+                diff_lines = list(difflib.unified_diff(
+                    old_content.splitlines(keepends=True),
+                    new_content.splitlines(keepends=True),
+                    fromfile=f"a/{os.path.basename(abs_path)}",
+                    tofile=f"b/{os.path.basename(abs_path)}",
+                    n=3
+                ))
+                diff = "".join(diff_lines)
+            except Exception:
+                diff = ""
+                
+        AgentArtifact.objects.create(
+            workspace=ws,
+            session_id=session_id,
+            file_path=file_path,
+            action_type=action_type,
+            old_content=old_content,
+            new_content=new_content,
+            diff=diff
+        )
+    except Exception as e:
+        print(f"Error creating artifact synchronously: {e}")
+
 def _run_editor(args: dict) -> str:
     files = args.get("files", [])
     instructions = args.get("instructions", "")
@@ -361,14 +440,22 @@ Schema:
             content = content[3:-3]
             
         edits = json.loads(content)
+        from ..context import current_session_context
+        ctx = current_session_context.get()
+        workspace_path = ctx.workspace_path if ctx else ""
+        session_id = ctx.session_id if ctx else ""
+
         for edit in edits:
             path = edit.get("path")
             action = edit.get("action")
             
             if action == "write_file":
                 os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+                new_content = edit.get("content", "")
+                if workspace_path and session_id:
+                    _create_artifact_sync(workspace_path, session_id, path, new_content, "create")
                 with open(path, "w") as f:
-                    f.write(edit.get("content", ""))
+                    f.write(new_content)
                 output += f"Successfully wrote {path}\n"
             elif action == "str_replace":
                 old_s = edit.get("old_string", "")
@@ -376,9 +463,11 @@ Schema:
                 with open(path, "r") as f:
                     file_text = f.read()
                 if old_s in file_text:
-                    file_text = file_text.replace(old_s, new_s, 1)
+                    new_content = file_text.replace(old_s, new_s, 1)
+                    if workspace_path and session_id:
+                        _create_artifact_sync(workspace_path, session_id, path, new_content, "edit")
                     with open(path, "w") as f:
-                        f.write(file_text)
+                        f.write(new_content)
                     output += f"Successfully replaced string in {path}\n"
                 else:
                     output += f"Failed to find target string in {path}\n"
@@ -412,7 +501,7 @@ def register_delegation_tools() -> None:
     registry.bulk_register([
         (spawn_subagent, ToolMetadata(
             name="spawn_subagent",
-            description="Spawn a specialized sub-agent (basher or file-picker) to perform a task.",
+            description="Spawn a specialized sub-agent (basher, file-picker, code-searcher, thinker, editor, or code-reviewer) to perform a task.",
             category="delegation",
             risk_level=RiskLevel.LOW,
             input_schema={"agent_type": "string", "params": "string (JSON)"},

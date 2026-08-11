@@ -14,6 +14,8 @@ class SessionContext:
     environment: str = ""
     encrypted_sudo_pwd: str = ""
     rsa_private_key: any = None
+    session_id: str = ""
+    workspace_path: str = ""
 
 # The context variable storing the active session's context.
 # Tools should read from this instead of using os.environ or os.getcwd() directly.

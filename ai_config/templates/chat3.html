@@ -4,6 +4,11 @@
 {% block title %}NeuroSysAI SRE Agent{% endblock %}
 
 {% block content %}
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+<script>
+  mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
+</script>
 
 <style id="chat-theme-styles">
   :root {
@@ -21,6 +26,10 @@
     --error: #f85149;
     --warning: #d29922;
     --purple: #8957e5;
+  }
+
+  details[open]>summary .fa-chevron-down {
+    transform: rotate(180deg);
   }
 
   body.active-light-mode {
@@ -73,7 +82,8 @@
     display: inline-block !important;
   }
 
-  select#model-selector, select#mode-selector {
+  select#model-selector,
+  select#mode-selector {
     display: inline-flex !important;
     align-items: center !important;
     opacity: 1 !important;
@@ -89,9 +99,9 @@
   }
 
 
-  div.bootstrap-select > button.dropdown-toggle[data-id="model-selector"],
-  div.bootstrap-select > button.dropdown-toggle[data-id="mode-selector"],
-  div.bootstrap-select > div.dropdown-menu {
+  div.bootstrap-select>button.dropdown-toggle[data-id="model-selector"],
+  div.bootstrap-select>button.dropdown-toggle[data-id="mode-selector"],
+  div.bootstrap-select>div.dropdown-menu {
     display: none !important;
   }
 
@@ -275,7 +285,7 @@
     <!-- Header bar -->
     <div class="sre-panel"
       style="background: var(--bg-main); display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-bottom: 1px solid var(--border-color); position: relative; z-index: 50;">
-      <div style="display: flex; align-items: center; gap: 10px;">
+      <div style="display: flex;flex-wrap: wrap; align-items: center; gap: 10px;">
         <button id="toggle-sidebar-btn"
           onclick="document.getElementById('history-sidebar').style.display='flex'; this.style.display='none';"
           title="Open History"
@@ -310,10 +320,18 @@
           onmouseout="this.style.borderColor='var(--border-color)'">
           <i class="fa-solid fa-sliders"></i> Models
         </button>
+        <button id="architecture-btn" class="sre-input" onclick="openArchitectureModal()"
+          title="View System Architecture"
+          style="background: var(--bg-panel); color: #8957e5; border: 1px solid var(--border-color); font-size: 12px; height: 32px; padding: 0 14px; border-radius: 20px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; transition: all 0.2s ease; box-sizing: border-box; line-height: 1;"
+          onmouseover="this.style.borderColor='var(--purple)'"
+          onmouseout="this.style.borderColor='var(--border-color)'">
+          <i class="fa-solid fa-project-diagram"></i> Architecture
+        </button>
         <select id="mode-selector" class="sre-input"
           style="appearance: none; -webkit-appearance: none; font-size: 12px; height: 32px; padding: 0 14px; padding-right: 28px; border-radius: 20px; cursor: pointer; outline: none; transition: all 0.2s ease; font-weight: 500; box-sizing: border-box; line-height: 1; background-image: url('data:image/svg+xml;utf8,<svg fill=\'%238b949e\' height=\'16\' viewBox=\'0 0 24 24\' width=\'16\' xmlns=\'http://www.w3.org/2000/svg\'><path d=\'M7 10l5 5 5-5z\'/></svg>'); background-repeat: no-repeat; background-position-x: calc(100% - 6px); background-position-y: 50%;">
-          <option value="guided">Guided Mode (LangGraph)</option>
-          <option value="autonomous">Autonomous Mode (ReAct)</option>
+          <option value="guided">Guided Investigation</option>
+          <option value="autonomous_single">Autonomous Single Agent</option>
+          <option value="autonomous_multi">Autonomous Multi Agent</option>
         </select>
         <span style="width: 8px; height: 8px; border-radius: 50%; background: #3fb950;" id="status-dot"></span>
       </div>
@@ -353,12 +371,14 @@
         <div id="bulk-action-bar"
           style="display: none; padding: 10px; border-bottom: 1px solid var(--border-color); background: var(--bg-panel); flex-direction: column; gap: 8px;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
-            <label style="color: var(--text-primary); font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
+            <label
+              style="color: var(--text-primary); font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
               <input type="checkbox" id="bulk-select-all" onclick="selectAllHistory(this.checked)"
                 style="appearance: auto; -webkit-appearance: auto; accent-color: var(--purple); width: 15px; height: 15px; cursor: pointer;">
               Select All
             </label>
-            <span id="bulk-selected-count" style="font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: rgba(137, 87, 229, 0.15); color: var(--purple); border: 1px solid rgba(137, 87, 229, 0.3);">
+            <span id="bulk-selected-count"
+              style="font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: rgba(137, 87, 229, 0.15); color: var(--purple); border: 1px solid rgba(137, 87, 229, 0.3);">
               0 selected
             </span>
           </div>
@@ -431,7 +451,7 @@
       <div class="sre-panel" id="right-panel"
         style="backdrop-filter: blur(20px); background: rgba(255, 255, 255, 0); width: 35%; display: flex; flex-direction: column; min-width: 300px; max-width: 80vw; margin: 8px; margin-left: 0;">
         <div class="sre-layout"
-          style="border: 1px solid rgb(132 132 132 / 16%); backdrop-filter: blur(20px); background: rgba(255, 255, 255, 0); display: flex; border-bottom: 1px solid rgba(255,255,255,0.08); border-top-left-radius: 16px; border-top-right-radius: 16px; overflow: hidden;">
+          style="border: 1px solid rgb(132 132 132 / 16%); backdrop-filter: blur(20px); background: rgba(255, 255, 255, 0); display: flex; border-bottom: 1px solid rgba(255,255,255,0.08); border-top-left-radius: 16px; border-top-right-radius: 16px; overflow: auto;">
           <div class="tab-btn active sre-text-primary" onclick="window.switchTab('investigation')"
             style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; text-align: center; padding: 12px 10px; font-size: 13px; cursor: pointer; border-bottom: 2px solid var(--accent); transition: background 0.2s;">
             <i class="fa-solid fa-microscope" style="font-size: 14px;"></i> Investigation
@@ -501,6 +521,11 @@
 <!-- FUNGSI GLOBAL - Ditempatkan di LUAR IIFE                     -->
 <!-- ============================================================ -->
 <script>
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
   // ============================================
   // 1. FUNGSI BULK EDIT (Global)
   // ============================================
@@ -646,7 +671,21 @@
 <!-- IIFE UTAMA                                                    -->
 <!-- ============================================================ -->
 <script>
+
   (function () {
+    function formatTime(ts) {
+      const d = new Date(ts * 1000); // Convert Unix timestamp ke Date
+      return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+    function formatRelativeTime(ts, startTs) {
+      if (!ts || !startTs) return '';
+      const diff = ts - startTs;
+      if (diff < 0) return '0.0s';
+      return '✓ ' + diff.toFixed(1) + 's';  // ← SELALU pake centang!
+    }
+
+
+    // Cytoscape initialized dynamically on render
     const messagesDiv = document.getElementById('chat-messages');
     const form = document.getElementById('chat-form');
     const input = document.getElementById('chat-input');
@@ -934,28 +973,25 @@
           const dur = data.duration ? data.duration.toFixed(1) : ((endTime - startTime) / 1000).toFixed(1);
 
           const auditHtml = `
-                    <div class="sre-agent-step accordion-item mb-3 mt-3" style="border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
-                        <h2 class="accordion-header" style="margin: 0;">
-                            <button class="accordion-button" type="button" style="padding: 12px 16px; background: rgba(46,160,67,0.1); border: none; box-shadow: none; width: 100%; display: flex; align-items: center;">
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <span style="color: var(--success);">${getIcon('check-all')}</span>
-                                    <strong style="color: var(--success);">Task Execution Completed</strong>
-                                </div>
-                            </button>
-                        </h2>
-                        <div class="accordion-collapse collapse show">
-                            <div class="accordion-body" style="padding: 16px; font-size: 13px; background: var(--bg-panel);">
-                                <p style="margin-top: 0; margin-bottom: 12px;">${data.content}</p>
-                                <table style="width: 100%; border-collapse: collapse; font-size: 12px; border: 1px solid var(--border-color);">
-                                    <tr style="background: #21262d;"><th style="padding: 6px; border: 1px solid var(--border-color); text-align: left;">Audit Trail</th><th style="padding: 6px; border: 1px solid var(--border-color); text-align: left;">Details</th></tr>
-                                    <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Status</td><td style="padding: 6px; border: 1px solid var(--border-color); color: var(--success);"><strong>COMPLETED</strong></td></tr>
-                                    <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Start Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${startTime.toLocaleTimeString()}</td></tr>
-                                    <tr><td style="padding: 6px; border: 1px solid var(--border-color);">End Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${endTime.toLocaleTimeString()}</td></tr>
-                                    <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Total Execution Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${dur} seconds</td></tr>
-                                </table>
+                   <details class="sre-agent-step mb-3 mt-3" style="border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
+                        <summary style="cursor: pointer; padding: 12px 16px; background: rgba(46,160,67,0.1); border: none; width: 100%; display: flex; align-items: center; user-select: none; list-style: none;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="color: var(--success);">${getIcon('check-all')}</span>
+                                <strong style="color: var(--success);">Task Execution Completed</strong>
                             </div>
+                            <i class="fa-solid fa-chevron-down" style="margin-left: auto; color: var(--success); font-size: 10px; transition: transform 0.2s;"></i>
+                        </summary>
+                        <div style="padding: 16px; font-size: 13px; background: var(--bg-panel); border-top: 1px solid var(--border-color);">
+                            <p style="margin-top: 0; margin-bottom: 12px;">${data.content}</p>
+                            <table style="width: 100%; border-collapse: collapse; font-size: 12px; border: 1px solid var(--border-color);">
+                                <tr style="background: #21262d;"><th style="color: var(--success); padding: 6px; border: 1px solid var(--border-color); text-align: left;">Audit Trail</th><th style="color: var(--success); padding: 6px; border: 1px solid var(--border-color); text-align: left;">Details</th></tr>
+                                <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Status</td><td style="padding: 6px; border: 1px solid var(--border-color); color: var(--success);"><strong>COMPLETED</strong></td></tr>
+                                <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Start Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${startTime.toLocaleTimeString()}</td></tr>
+                                <tr><td style="padding: 6px; border: 1px solid var(--border-color);">End Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${endTime.toLocaleTimeString()}</td></tr>
+                                <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Total Execution Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${dur} seconds</td></tr>
+                            </table>
                         </div>
-                    </div>
+                    </details>
                 `;
           messagesDiv.innerHTML += auditHtml;
 
@@ -988,11 +1024,7 @@
       return '';
     }
 
-    function escapeHtml(text) {
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
-    }
+
 
     function addUserMessage(text) {
       const div = document.createElement('div');
@@ -1063,7 +1095,8 @@
       delete stepTimers[stepId];
     }
 
-    function addAgentStep(label, contentHtml, color, iconName = 'terminal', stepId = null, isEnd = false) {
+
+    function addAgentStep(label, contentHtml, color, iconName = 'terminal', stepId = null, isEnd = false, customTimer = null) {
       if (!window.sessionStartTime) window.sessionStartTime = new Date();
 
       let isGeneric = false;
@@ -1074,6 +1107,17 @@
           stepId = 'step-' + Math.random().toString(36).substr(2, 9);
           isGeneric = true;
         }
+      }
+      let iconHtml = `<div class="spinner-border spinner-border-sm" role="status" style="width: 14px; height: 14px; border-width: 2px;"></div>`;
+      let initialTimer;
+      if (customTimer) {
+        iconHtml = getIcon(iconName || 'terminal');
+        initialTimer = `<span id="timer-${stepId}" class="sre-timer ms-2" style="min-width: 45px; text-align: right; color: var(--success-text);;">${customTimer}</span>`;
+      } else if (window.isLoadingHistory && !isEnd) {
+        iconHtml = getIcon(iconName || 'terminal');
+        initialTimer = `<span id="timer-${stepId}" class="sre-timer ms-2" style="min-width: 45px; text-align: right; color: var(--success-text);;">✓</span>`;
+      } else {
+        initialTimer = `<span id="timer-${stepId}" class="sre-timer ms-2" style="min-width: 45px; text-align: right;">0.0s</span>`;
       }
 
       if (lastGenericStepId && lastGenericStepId !== stepId && !isEnd) {
@@ -1099,18 +1143,18 @@
         stepDiv.style.borderRadius = '8px';
         stepDiv.style.overflow = 'hidden';
 
-        let timerHtml = `<span id="timer-${stepId}" class="sre-timer ms-2" style="min-width: 45px; text-align: right;">0.0s</span>`;
+
 
         stepDiv.innerHTML = `
                 <h2 class="accordion-header" id="heading-${stepId}" style="margin: 0;">
                     <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${stepId}" aria-expanded="true" aria-controls="collapse-${stepId}" style="padding: 10px 14px; background: rgba(0,0,0,0.02); border: none; box-shadow: none; width: 100%; display: flex; align-items: center; justify-content: space-between;">
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <span id="icon-${stepId}" style="color: ${color}; display: flex; align-items: center;">
-                                <div class="spinner-border spinner-border-sm" role="status" style="width: 14px; height: 14px; border-width: 2px;"></div>
+                                ${iconHtml}
                             </span>
                             <span style="color: ${color}; font-weight: 600;">${label}</span>
                         </div>
-                        ${timerHtml}
+                        ${initialTimer}
                     </button>
                 </h2>
                 <div id="collapse-${stepId}" class="accordion-collapse collapse show" aria-labelledby="heading-${stepId}">
@@ -1121,7 +1165,7 @@
             `;
         messagesDiv.appendChild(stepDiv);
 
-        if (!isEnd) {
+        if (!isEnd && !window.isLoadingHistory) {
           stepTimers[stepId] = {
             startTime: Date.now(),
             interval: setInterval(() => {
@@ -1155,7 +1199,7 @@
 
     function addSystemMsg(text, iconName = 'info') {
       const div = document.createElement('div');
-      
+
       if (text.includes('Connected to NeuroSysAI') || text.includes('🚀')) {
         div.className = 'my-2 w-100';
         div.style.cssText = 'width: 100%; max-width: 100%; box-sizing: border-box; align-self: stretch; flex-shrink: 0; border-radius: 14px; overflow: hidden; background: var(--bg-panel); border: 1px solid var(--border-color); padding: 14px 18px; margin: 12px 0; box-shadow: 0 4px 15px rgba(0,0,0,0.15);';
@@ -1447,7 +1491,7 @@
     // --- History ---
     async function loadHistory() {
       window.loadHistoryGlobal = loadHistory;
-      window.onSessionDeleted = function(deletedId) {
+      window.onSessionDeleted = function (deletedId) {
         if (deletedId === sessionId) {
           window.startNewChat();
         }
@@ -1530,6 +1574,8 @@
     window.startNewChat = function () {
       sessionId = null;
       document.querySelectorAll('.sre-history-item').forEach(i => i.classList.remove('active'));
+      activeWorkers = [];
+      renderWorkerActivity();
       messagesDiv.innerHTML = `
         <div class="sre-panel p-3 my-2" style="background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 14px; max-width: 85%; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
           <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
@@ -1555,6 +1601,8 @@
     async function loadSession(id) {
       sessionId = id;
       window.history.pushState({}, '', window.location.pathname + '?session=' + id);
+      activeWorkers = [];
+      renderWorkerActivity();
       try {
         const res = await fetch(`/api/v1/chat-sessions/${id}/messages/`);
         const data = await res.json();
@@ -1580,20 +1628,159 @@
           renderInvestigationTimeline();
         }
 
-        (data.results || data).forEach(msg => {
-          if (msg.role === 'user') {
+        window.isLoadingHistory = true;
+        let sessionStartTimestamp = null;
+        let lastEventTimestamp = null;  // ← TAMBAHIN INI!
+        const messages = (data.results || data);
+
+        messages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+        messages.forEach(msg => {
+          if (msg.sender === 'user') {
             addUserMessage(msg.message);
-          } else if (msg.role === 'assistant' || msg.sender === 'ai') {
+          } else if (msg.sender === 'ai') {
             if (msg.metadata && msg.metadata.events && Array.isArray(msg.metadata.events)) {
-              msg.metadata.events.forEach(evt => {
-                if (evt.type === 'investigation_started') {
-                  addSystemMsg('Investigation started: ' + (evt.data?.title || 'Unknown'), 'search');
+
+              // Set start timestamp dari event pertama
+              if (!sessionStartTimestamp && msg.metadata.events.length > 0) {
+                sessionStartTimestamp = msg.metadata.events[0].timestamp;
+                if (!lastEventTimestamp) {
+                  lastEventTimestamp = sessionStartTimestamp;
                 }
-                if (evt.type === 'task_updated') {
-                  const taskData = evt.data?.task || (evt.data?.metadata && evt.data?.metadata?.task);
-                  if (taskData && taskData.new_status === 'completed') {
-                    addAgentStep('Task Completed', taskData.task, 'var(--success)', 'check-circle');
-                  }
+              }
+
+              msg.metadata.events.forEach(evt => {
+                // === HITUNG DURASI DARI EVENT SEBELUMNYA ===
+                const diff = lastEventTimestamp ? (evt.timestamp - lastEventTimestamp) : 0;
+                const time = '✓ ' + (diff >= 0 ? diff : 0).toFixed(1) + 's';
+
+                // Update lastEventTimestamp untuk event berikutnya
+                lastEventTimestamp = evt.timestamp;
+
+                switch (evt.type) {
+                  case 'session_id':
+                    sessionStartTimestamp = evt.timestamp;
+                    break;
+
+                  case 'session_title':
+                    break;
+
+                  case 'exploring':
+                    addAgentStep('Exploring', evt.content, 'var(--accent)', 'search', null, false, time);
+                    break;
+
+                  case 'task_plan':
+                    addAgentStep('Task Plan', 'Plan updated', '#dac654', 'list-todo', null, false, time);
+                    break;
+
+                  case 'discovering_tools':
+                    let toolsHtml = evt.content;
+                    if (evt.tools && evt.tools.length) {
+                      toolsHtml += '<div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px;">';
+                      evt.tools.forEach(t => {
+                        toolsHtml += `<span style="font-size: 11px; background: #21262d; padding: 2px 8px; border-radius: 4px; color: #79c0ff;">${t}</span>`;
+                      });
+                      toolsHtml += '</div>';
+                    }
+                    addAgentStep('Discovering Tools', toolsHtml, 'var(--purple)', 'wrench', null, false, time);
+                    break;
+
+                  case 'planning':
+                    addAgentStep('Planning', evt.content, '#dac654', 'list-todo', null, false, time);
+                    break;
+
+                  case 'thinking':
+                    addAgentStep('Thinking', evt.content, '#ff69b4', 'brain', null, false, time);
+                    break;
+
+                  case 'tool_start':
+                    addAgentStep('Executing', `<code>${evt.tool || ''}</code> ${evt.command || ''}`, 'var(--warning)', 'zap', evt.step_id, false, time);
+                    break;
+
+                  case 'tool_end':
+                    const result = (evt.result || '').substring(0, 1000);
+                    addAgentStep('Result', `<pre class="sre-layout" style="padding: 8px; border-radius: 6px; overflow-x: auto; font-size: 12px; max-height: 200px; overflow-y: auto; margin: 4px 0; border: 1px solid var(--border-color);">${escapeHtml(result)}</pre>`, 'var(--success)', 'check-circle', evt.step_id, true, time);
+                    break;
+
+                  case 'message_chunk':
+                    break;
+
+                  case 'worker_activity':
+                    if (evt.workers) {
+                      activeWorkers = evt.workers;
+                      renderWorkerActivity();
+                    }
+                    break;
+
+                  case 'hypothesis':
+                    addAgentStep('Hypothesis', evt.content, '#a371f7', 'lightbulb', null, false, time);
+                    break;
+
+                  case 'parallel_start':
+                    addAgentStep('Parallel', `⚡ ${evt.content || 'Executing tasks...'}`, '#00d4ff', 'layers', null, false, time);
+                    break;
+
+                  case 'parallel_complete':
+                    addAgentStep('Parallel Done', `✅ ${evt.content || 'All tasks completed.'}`, 'var(--success)', 'check-circle', null, false, time);
+                    break;
+
+                  case 'findings':
+                    addAgentStep('Findings', 'New findings recorded', 'var(--success)', 'check-square', null, false, time);
+                    break;
+
+                  case 'completed':
+                    const endTime = new Date(evt.timestamp * 1000);
+                    const startTime = new Date(endTime.getTime() - ((evt.duration || 0) * 1000));
+                    const dur = (evt.duration || 0).toFixed(1);
+
+                    const auditHtml = `
+                                  <details class="sre-agent-step mb-3 mt-3" style="border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;" open>
+                                      <summary style="cursor: pointer; padding: 12px 16px; background: rgba(46,160,67,0.1); border: none; width: 100%; display: flex; align-items: center; user-select: none; list-style: none;">
+                                          <div style="display: flex; align-items: center; gap: 8px;">
+                                              <span style="color: var(--success);">${getIcon('check-all')}</span>
+                                              <strong style="color: var(--success);">Task Execution Completed</strong>
+                                          </div>
+                                          <i class="fa-solid fa-chevron-down" style="margin-left: auto; color: var(--success); font-size: 10px; transition: transform 0.2s;"></i>
+                                      </summary>
+                                      <div style="padding: 16px; font-size: 13px; background: var(--bg-panel); border-top: 1px solid var(--border-color);">
+                                          <p style="margin-top: 0; margin-bottom: 12px;">${evt.content}</p>
+                                          <table style="width: 100%; border-collapse: collapse; font-size: 12px; border: 1px solid var(--border-color);">
+                                              <tr style="background: #21262d;"><th style="color: var(--success); padding: 6px; border: 1px solid var(--border-color); text-align: left;">Audit Trail</th><th style="color: var(--success); padding: 6px; border: 1px solid var(--border-color); text-align: left;">Details</th></tr>
+                                              <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Status</td><td style="padding: 6px; border: 1px solid var(--border-color); color: var(--success);"><strong>COMPLETED</strong></td></tr>
+                                              <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Start Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${startTime.toLocaleTimeString()}</td></tr>
+                                              <tr><td style="padding: 6px; border: 1px solid var(--border-color);">End Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${endTime.toLocaleTimeString()}</td></tr>
+                                              <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Total Execution Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${dur} seconds</td></tr>
+                                          </table>
+                                      </div>
+                                  </details>
+                              `;
+                    messagesDiv.innerHTML += auditHtml;
+                    break;
+
+                  case 'investigation_started':
+                    if (evt.investigation_id) {
+                      investigations[evt.investigation_id] = {
+                        id: evt.investigation_id,
+                        title: evt.content || 'Investigation',
+                        status: 'active',
+                        plan: [],
+                        findings: []
+                      };
+                      activeInvestigationId = evt.investigation_id;
+                      renderInvestigationTimeline();
+                    }
+                    addAgentStep('Investigation Started', evt.content || 'Starting new investigation...', 'var(--accent)', 'search', null, false, time);
+                    break;
+
+                  case 'task_updated':
+                    const taskData = evt.data?.task || (evt.data?.metadata && evt.data?.metadata?.task);
+                    if (taskData && taskData.new_status === 'completed') {
+                      addAgentStep('Task Completed', taskData.task, 'var(--success)', 'check-circle', null, false, time);
+                    }
+                    break;
+
+                  default:
+                    console.log('Unknown event type in history:', evt.type);
                 }
               });
             }
@@ -1602,6 +1789,7 @@
             }
           }
         });
+        window.isLoadingHistory = false;
         lucide.createIcons();
       } catch (e) {
         console.error('Failed to load session', e);
@@ -2070,6 +2258,129 @@
   }
 </style>
 
+<!-- Architecture Modal -->
+<div id="architecture-modal"
+  style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(4px); z-index: 10000; align-items: center; justify-content: center;">
+  <div
+    style="background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 12px; width: 90vw; max-width: 1200px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,0.5); overflow: hidden;">
+    <div
+      style="padding: 16px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2);">
+      <h3 style="margin: 0; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+        <i class="fa-solid fa-project-diagram" style="color: var(--purple);"></i> System Architecture
+        <span id="arch-cached-badge"
+          style="display: none; font-size: 10px; padding: 2px 6px; border-radius: 4px; background: rgba(137, 87, 229, 0.15); color: var(--purple); border: 1px solid rgba(137, 87, 229, 0.3); margin-left: 8px;">CACHED</span>
+      </h3>
+      <div style="display: flex; gap: 8px;">
+        <button onclick="regenerateArchitecture()" class="sre-input"
+          style="background: var(--bg-main); color: var(--text-primary); border: 1px solid var(--border-color); padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s;"><i
+            class="fa-solid fa-rotate-right"></i> Regenerate</button>
+        <button onclick="closeArchitectureModal()"
+          style="background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 16px;"><i
+            class="fa-solid fa-xmark"></i></button>
+      </div>
+    </div>
+    <div style="display: flex; flex: 1; overflow: hidden;">
+      <!-- Left side: Diagram & Insights -->
+      <div style="flex: 2; padding: 20px; overflow-y: auto; border-right: 1px solid var(--border-color);">
+        <!-- Setup Container -->
+        <div id="arch-setup-container"
+          style="display: none; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 20px;">
+          <div style="text-align: center; max-width: 400px;">
+            <i class="fa-solid fa-microchip" style="font-size: 48px; color: var(--purple); margin-bottom: 16px;"></i>
+            <h3 style="color: var(--text-strong); margin: 0 0 8px 0;">Generate System Architecture</h3>
+            <p style="color: var(--text-secondary); font-size: 13px; line-height: 1.5; margin: 0 0 24px 0;">Select an AI
+              model to analyze your system's raw processes, network ports, and services, then generate a dynamic
+              topology diagram.</p>
+
+            <div style="display: flex; flex-direction: column; gap: 12px; text-align: left;">
+              <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary);">Select AI Model:</label>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <select id="arch-model-selector" class="sre-input"
+                  style="flex: 1; appearance: none; -webkit-appearance: none; font-size: 13px; height: 38px; padding: 0 14px; padding-right: 28px; border-radius: 6px; cursor: pointer; outline: none; background-color: var(--bg-main); color: var(--text-primary); border: 1px solid var(--border-color); background-image: url('data:image/svg+xml;utf8,<svg fill=\'%238b949e\' height=\'16\' viewBox=\'0 0 24 24\' width=\'16\' xmlns=\'http://www.w3.org/2000/svg\'><path d=\'M7 10l5 5 5-5z\'/></svg>'); background-repeat: no-repeat; background-position-x: calc(100% - 10px); background-position-y: 50%;">
+                  <!-- Options will be populated dynamically -->
+                </select>
+                <button type="button" onclick="refreshArchModels(true)" class="sre-input"
+                  style="background: var(--bg-main); color: var(--text-primary); border: 1px solid var(--border-color); height: 38px; padding: 0 12px; border-radius: 6px; cursor: pointer; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;"
+                  title="Refresh Models List">
+                  <i id="arch-refresh-icon" class="fa-solid fa-arrows-rotate"></i>
+                </button>
+              </div>
+              <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-top: 4px;">Sudo
+                Password:</label>
+              <input type="password" id="arch-sudo-pwd-input" placeholder="Required for deep system scan"
+                class="sre-input"
+                style="font-size: 13px; height: 38px; padding: 0 14px; border-radius: 6px; outline: none; background-color: var(--bg-main); color: var(--text-primary); border: 1px solid var(--border-color); width: 100%;">
+              <button type="button" onclick="startArchGeneration(event)"
+                style="background: var(--purple); color: white; border: none; padding: 10px 16px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; margin-top: 8px;">
+                <i class="fa-solid fa-bolt" style="margin-right: 6px;"></i> Start Generation
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Progress Container -->
+        <div id="arch-progress-container"
+          style="display: none; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 16px;">
+          <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 32px; color: var(--purple);"></i>
+          <div id="arch-progress-text" style="color: var(--text-primary); font-size: 14px; font-weight: 500;">Scanning
+            system...</div>
+        </div>
+
+        <!-- Content Container -->
+        <div id="arch-content-container" style="display: none; flex-direction: column; gap: 20px;">
+
+          <div id="arch-infrastructure-container" style="display: none; flex-direction: column; gap: 12px;">
+            <!-- System Info - Collapsible -->
+            <details class="sre-panel"
+              style="padding: 0; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-main); overflow: hidden;">
+              <summary
+                style="cursor: pointer; padding: 12px; font-size: 13px; font-weight: 600; color: var(--text-strong); background: rgba(255,255,255,0.03); user-select: none;">
+                <i class="fa-solid fa-server" style="color: var(--accent); margin-right: 6px;"></i> System Info
+                <i class="fa-solid fa-chevron-down"
+                  style="float: right; font-size: 10px; margin-top: 3px; transition: transform 0.2s;"></i>
+              </summary>
+              <div id="arch-sys-info"
+                style="padding: 12px; font-size: 12px; color: var(--text-secondary); line-height: 1.6; border-top: 1px solid var(--border-color);">
+              </div>
+            </details>
+
+            <!-- Network Info - Collapsible -->
+            <details class="sre-panel"
+              style="padding: 0; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-main); overflow: hidden;">
+              <summary
+                style="cursor: pointer; padding: 12px; font-size: 13px; font-weight: 600; color: var(--text-strong); background: rgba(255,255,255,0.03); user-select: none;">
+                <i class="fa-solid fa-network-wired" style="color: var(--success); margin-right: 6px;"></i> Network Info
+                <i class="fa-solid fa-chevron-down"
+                  style="float: right; font-size: 10px; margin-top: 3px; transition: transform 0.2s;"></i>
+              </summary>
+              <div id="arch-net-info"
+                style="padding: 12px; font-size: 12px; color: var(--text-secondary); line-height: 1.6; border-top: 1px solid var(--border-color);">
+              </div>
+            </details>
+          </div>
+
+          <div id="mermaid-container"
+            style="background: #ffffff; padding: 16px; border-radius: 8px; border: 1px solid var(--border-color); width: 100%; height: 500px; position: relative; overflow: hidden;">
+            <!-- Mermaid renders here -->
+          </div>
+        </div>
+      </div>
+      <!-- Right side: Services List -->
+      <div style="flex: 1; padding: 20px; overflow-y: auto; background: rgba(0,0,0,0.1);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <h4 style="margin: 0; font-size: 14px; color: var(--text-strong);"><i class="fa-solid fa-server"></i> Detected
+            Services</h4>
+          <i id="arch-status-spinner" class="fa-solid fa-circle-notch fa-spin"
+            style="display: none; color: var(--text-secondary); font-size: 12px;" title="Polling status..."></i>
+        </div>
+        <div id="arch-services-container" style="display: flex; flex-direction: column; gap: 16px;">
+          <!-- Services rendered here -->
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Sudo Password Modal -->
 <div id="sudo-modal"
   style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); backdrop-filter: blur(5px); z-index: 9999; align-items: center; justify-content: center;">
@@ -2165,19 +2476,23 @@
   style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.45); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); z-index: 9999; align-items: center; justify-content: center;">
   <div
     style="background: var(--bg-panel); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 18px; width: 980px; max-width: 96%; max-height: 88vh; display: flex; flex-direction: column; box-shadow: 0 15px 45px rgba(0, 0, 0, 0.3); overflow: hidden;">
-    
+
     <!-- Modal Header -->
-    <div style="padding: 16px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; background: var(--bg-main);">
+    <div
+      style="padding: 16px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; background: var(--bg-main);">
       <div class="d-flex align-items-center" style="gap: 12px;">
-        <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(31, 111, 235, 0.12); border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center; color: var(--accent); font-size: 15px;">
+        <div
+          style="width: 36px; height: 36px; border-radius: 10px; background: rgba(31, 111, 235, 0.12); border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center; color: var(--accent); font-size: 15px;">
           <i class="fa-solid fa-sliders"></i>
         </div>
         <div>
           <h3 style="margin: 0; font-size: 16px; font-weight: 700; color: var(--text-strong);">AI Model Manager</h3>
-          <p style="margin: 0; font-size: 11px; color: var(--text-secondary);">Configure LLM providers, model IDs, and endpoints</p>
+          <p style="margin: 0; font-size: 11px; color: var(--text-secondary);">Configure LLM providers, model IDs, and
+            endpoints</p>
         </div>
       </div>
-      <button onclick="closeModelManagerModal()" class="btn btn-sm sre-input" style="border-radius: 50%; width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+      <button onclick="closeModelManagerModal()" class="btn btn-sm sre-input"
+        style="border-radius: 50%; width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; cursor: pointer;">
         <i class="fa-solid fa-xmark" style="color: var(--text-secondary);"></i>
       </button>
     </div>
@@ -2190,17 +2505,21 @@
         <div class="d-flex justify-content-between align-items-center mb-3">
           <div class="d-flex align-items-center" style="gap: 8px;">
             <h4 style="margin: 0; font-size: 14px; font-weight: 600; color: var(--text-primary);">Configured Models</h4>
-            <span id="model-count-badge" class="badge rounded-pill sre-input" style="font-size: 10px; font-weight: 500; padding: 4px 8px; color: var(--text-secondary);">0 models</span>
+            <span id="model-count-badge" class="badge rounded-pill sre-input"
+              style="font-size: 10px; font-weight: 500; padding: 4px 8px; color: var(--text-secondary);">0 models</span>
           </div>
-          <button onclick="openAddAIModelForm()" class="sre-btn-primary btn btn-sm rounded-pill px-3 shadow-sm" style="font-weight: 600; font-size: 12px; border: none;">
+          <button onclick="openAddAIModelForm()" class="sre-btn-primary btn btn-sm rounded-pill px-3 shadow-sm"
+            style="font-weight: 600; font-size: 12px; border: none;">
             <i class="fa-solid fa-plus me-1"></i> Add New Model
           </button>
         </div>
 
-        <div style="border: 1px solid var(--border-color); border-radius: 12px; overflow-x: auto; background: var(--bg-panel);">
+        <div
+          style="border: 1px solid var(--border-color); border-radius: 12px; overflow-x: auto; background: var(--bg-panel);">
           <table class="table align-middle mb-0" style="font-size: 12px; color: var(--text-primary); width: 100%;">
             <thead>
-              <tr style="border-bottom: 1px solid var(--border-color); background: var(--bg-main); color: var(--text-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">
+              <tr
+                style="border-bottom: 1px solid var(--border-color); background: var(--bg-main); color: var(--text-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">
                 <th style="padding: 10px 12px; width: 60px; text-align: center; white-space: nowrap;">Order</th>
                 <th style="padding: 10px 12px; white-space: nowrap;">Display Name</th>
                 <th style="padding: 10px 12px; white-space: nowrap;">Model ID</th>
@@ -2213,7 +2532,8 @@
             <tbody id="ai-models-table-body">
               <tr>
                 <td colspan="7" style="padding: 24px; text-align: center; color: var(--text-secondary);">
-                  <div class="spinner-border spinner-border-sm me-2" role="status" style="color: var(--accent);"></div> Loading configured models...
+                  <div class="spinner-border spinner-border-sm me-2" role="status" style="color: var(--accent);"></div>
+                  Loading configured models...
                 </td>
               </tr>
             </tbody>
@@ -2222,45 +2542,64 @@
       </div>
 
       <!-- Add/Edit Model Form Card (Hidden by default) -->
-      <div id="ai-model-form-card" style="display: none; border: 1px solid var(--border-color); border-radius: 14px; padding: 18px; background: var(--bg-main);">
+      <div id="ai-model-form-card"
+        style="display: none; border: 1px solid var(--border-color); border-radius: 14px; padding: 18px; background: var(--bg-main);">
         <div class="d-flex align-items-center" style="gap: 8px; margin-bottom: 16px;">
           <i class="fa-solid fa-pen-ruler" style="font-size: 14px; color: var(--accent);"></i>
-          <h4 id="ai-model-form-title" style="margin: 0; font-size: 14px; font-weight: 700; color: var(--text-strong);">Add New Model</h4>
+          <h4 id="ai-model-form-title" style="margin: 0; font-size: 14px; font-weight: 700; color: var(--text-strong);">
+            Add New Model</h4>
         </div>
-        
+
         <form id="ai-model-form" onsubmit="saveAIModelForm(event)">
           <input type="hidden" id="model-edit-id" value="">
           <div class="row g-3 mb-3">
             <div class="col-md-6">
-              <label class="form-label mb-1" style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">Display Name</label>
-              <input type="text" id="model-name-input" placeholder="e.g. OpenCode Provider (9Router)" required class="sre-input" style="width: 100%; padding: 8px 12px; border-radius: 8px; font-size: 12px;">
+              <label class="form-label mb-1"
+                style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">Display Name</label>
+              <input type="text" id="model-name-input" placeholder="e.g. OpenCode Provider (9Router)" required
+                class="sre-input" style="width: 100%; padding: 8px 12px; border-radius: 8px; font-size: 12px;">
             </div>
             <div class="col-md-6">
-              <label class="form-label mb-1" style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">Model ID <span style="opacity: 0.7;">(Target sent to engine)</span></label>
-              <input type="text" id="model-id-input" placeholder="e.g. OPENCODE or GROQ" required class="sre-input" style="width: 100%; padding: 8px 12px; border-radius: 8px; font-size: 12px;">
+              <label class="form-label mb-1"
+                style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">Model ID <span
+                  style="opacity: 0.7;">(Target sent to engine)</span></label>
+              <input type="text" id="model-id-input" placeholder="e.g. OPENCODE or GROQ" required class="sre-input"
+                style="width: 100%; padding: 8px 12px; border-radius: 8px; font-size: 12px;">
             </div>
             <div class="col-md-6">
-              <label class="form-label mb-1" style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">Provider</label>
-              <input type="text" id="model-provider-input" placeholder="e.g. 9router, nvidia, ollama, mistral" required class="sre-input" style="width: 100%; padding: 8px 12px; border-radius: 8px; font-size: 12px;">
+              <label class="form-label mb-1"
+                style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">Provider</label>
+              <input type="text" id="model-provider-input" placeholder="e.g. 9router, nvidia, ollama, mistral" required
+                class="sre-input" style="width: 100%; padding: 8px 12px; border-radius: 8px; font-size: 12px;">
             </div>
             <div class="col-md-6">
-              <label class="form-label mb-1" style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">Base URL / Endpoint <span style="opacity: 0.7;">(Optional)</span></label>
-              <input type="text" id="model-baseurl-input" placeholder="e.g. http://localhost:20128/v1" class="sre-input" style="width: 100%; padding: 8px 12px; border-radius: 8px; font-size: 12px;">
+              <label class="form-label mb-1"
+                style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">Base URL / Endpoint <span
+                  style="opacity: 0.7;">(Optional)</span></label>
+              <input type="text" id="model-baseurl-input" placeholder="e.g. http://localhost:20128/v1" class="sre-input"
+                style="width: 100%; padding: 8px 12px; border-radius: 8px; font-size: 12px;">
             </div>
             <div class="col-md-6">
-              <label class="form-label mb-1" style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">Display Order</label>
-              <input type="number" id="model-order-input" value="0" class="sre-input" style="width: 100%; padding: 8px 12px; border-radius: 8px; font-size: 12px;">
+              <label class="form-label mb-1"
+                style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">Display Order</label>
+              <input type="number" id="model-order-input" value="0" class="sre-input"
+                style="width: 100%; padding: 8px 12px; border-radius: 8px; font-size: 12px;">
             </div>
             <div class="col-md-6 d-flex align-items-center">
               <div class="form-check form-switch mt-3">
-                <input class="form-check-input" type="checkbox" id="model-active-input" checked style="cursor: pointer; accent-color: var(--accent);">
-                <label class="form-check-label ms-1" for="model-active-input" style="cursor: pointer; font-size: 12px; font-weight: 500; color: var(--text-primary);">Active Option</label>
+                <input class="form-check-input" type="checkbox" id="model-active-input" checked
+                  style="cursor: pointer; accent-color: var(--accent);">
+                <label class="form-check-label ms-1" for="model-active-input"
+                  style="cursor: pointer; font-size: 12px; font-weight: 500; color: var(--text-primary);">Active
+                  Option</label>
               </div>
             </div>
           </div>
           <div class="d-flex justify-content-end gap-2 pt-3" style="border-top: 1px solid var(--border-color);">
-            <button type="button" onclick="closeAIModelForm()" class="btn btn-sm sre-input" style="border-radius: 20px; font-size: 12px; padding: 5px 16px;">Cancel</button>
-            <button type="submit" class="sre-btn-success btn btn-sm px-4 shadow-sm" style="border-radius: 20px; font-weight: 600; font-size: 12px; border: none;">
+            <button type="button" onclick="closeAIModelForm()" class="btn btn-sm sre-input"
+              style="border-radius: 20px; font-size: 12px; padding: 5px 16px;">Cancel</button>
+            <button type="submit" class="sre-btn-success btn btn-sm px-4 shadow-sm"
+              style="border-radius: 20px; font-weight: 600; font-size: 12px; border: none;">
               <i class="fa-solid fa-floppy-disk me-1"></i> Save Model
             </button>
           </div>
@@ -2277,10 +2616,10 @@
   function purgeBootstrapSelect() {
     if (window.jQuery && $.fn.selectpicker) {
       try {
-        $('#model-selector, #mode-selector').selectpicker('destroy');
-      } catch (e) {}
+        $('#model-selector, #mode-selector, #arch-model-selector').selectpicker('destroy');
+      } catch (e) { }
     }
-    ['model-selector', 'mode-selector'].forEach(id => {
+    ['model-selector', 'mode-selector', 'arch-model-selector'].forEach(id => {
       const el = document.getElementById(id);
       if (el) {
         const parent = el.closest('.bootstrap-select');
@@ -2300,7 +2639,7 @@
         currentLoadedAIModels = data.models;
         const selector = document.getElementById('model-selector');
         if (!selector) return;
-        
+
         const savedVal = localStorage.getItem('sre_selected_model');
         const currentVal = selector.value;
         const targetVal = savedVal || currentVal;
@@ -2380,10 +2719,10 @@
           ${m.base_url ? m.base_url : '<span style="opacity: 0.5; font-style: italic;">Default</span>'}
         </td>
         <td style="padding: 10px 12px; text-align: center; white-space: nowrap;">
-          ${m.is_active 
-            ? `<span style="font-size: 10px; font-weight: 600; color: var(--success-text); background: rgba(45, 164, 78, 0.12); border: 1px solid rgba(45, 164, 78, 0.3); padding: 3px 8px; border-radius: 12px;"><i class="fa-solid fa-circle-check me-1"></i>Active</span>`
-            : `<span style="font-size: 10px; font-weight: 600; color: var(--text-secondary); background: var(--bg-main); border: 1px solid var(--border-color); padding: 3px 8px; border-radius: 12px;"><i class="fa-solid fa-circle-xmark me-1"></i>Inactive</span>`
-          }
+          ${m.is_active
+        ? `<span style="font-size: 10px; font-weight: 600; color: var(--success-text); background: rgba(45, 164, 78, 0.12); border: 1px solid rgba(45, 164, 78, 0.3); padding: 3px 8px; border-radius: 12px;"><i class="fa-solid fa-circle-check me-1"></i>Active</span>`
+        : `<span style="font-size: 10px; font-weight: 600; color: var(--text-secondary); background: var(--bg-main); border: 1px solid var(--border-color); padding: 3px 8px; border-radius: 12px;"><i class="fa-solid fa-circle-xmark me-1"></i>Inactive</span>`
+      }
         </td>
         <td style="padding: 10px 12px; text-align: right; white-space: nowrap;">
           <button onclick="editAIModel(${m.id})" class="btn btn-sm sre-input me-1" style="border-radius: 8px; padding: 3px 8px; font-size: 11px; color: var(--accent);" title="Edit Model">
@@ -2429,7 +2768,7 @@
     document.getElementById('model-order-input').value = m.order;
     document.getElementById('model-active-input').checked = m.is_active;
     document.getElementById('ai-model-form-title').innerText = 'Edit Model: ' + m.name;
-    
+
     const card = document.getElementById('ai-model-form-card');
     card.style.display = 'block';
     setTimeout(() => {
@@ -2489,7 +2828,383 @@
     }
   }
 
+  // --- Architecture Feature Logic ---
+  let archSocket = null;
+  let cachedServices = [];
+  let archPollingInterval = null;
+
+  function initArchitectureSocket() {
+    if (!archSocket || archSocket.readyState === WebSocket.CLOSED) {
+      const wsScheme = window.location.protocol === "https:" ? "wss" : "ws";
+      archSocket = new WebSocket(`${wsScheme}://${window.location.host}/ws/architecture/`);
+
+      archSocket.onopen = function () {
+        archSocket.send(JSON.stringify({ type: 'load_cache' }));
+      };
+
+      archSocket.onmessage = function (e) {
+        const data = JSON.parse(e.data);
+        console.log('📩 Architecture WS received:', data.type, data);
+        if (data.type === 'arch_sudo_key_exchange') {
+          window.archServerRsaPublicKey = data.public_key;
+        } else if (data.type === 'arch_not_found') {
+          // No cache in DB, show setup view for new generation
+          showArchSetup();
+        } else if (data.type === 'arch_progress') {
+          document.getElementById('arch-progress-container').style.display = 'flex';
+          document.getElementById('arch-content-container').style.display = 'none';
+          document.getElementById('arch-progress-text').innerText = data.step;
+        } else if (data.type === 'arch_result') {
+          renderArchitecture(data.data, data.cached);
+        } else if (data.type === 'arch_error') {
+          alert("Architecture Generation Failed: " + data.message);
+          showArchSetup();
+        } else if (data.type === 'status_result') {
+          updateServicesStatus(data.services);
+        }
+      };
+    } else if (archSocket.readyState === WebSocket.OPEN) {
+      archSocket.send(JSON.stringify({ type: 'get_cached_arch' }));
+    }
+  }
+
+  function openArchitectureModal() {
+    document.getElementById('architecture-modal').style.display = 'flex';
+    initArchitectureSocket();
+  }
+
+
+
+  function closeArchitectureModal() {
+    document.getElementById('architecture-modal').style.display = 'none';
+    stopArchPolling();
+  }
+
+  function regenerateArchitecture() {
+    showArchSetup();
+  }
+
+  async function refreshArchModels(spinIcon = false) {
+    const archSelector = document.getElementById('arch-model-selector');
+    if (!archSelector) return;
+
+    const icon = document.getElementById('arch-refresh-icon');
+    if (spinIcon && icon) icon.classList.add('fa-spin');
+
+    // Destroy bootstrap-select on this element if it exists to ensure standard rendering
+    if (window.jQuery && $.fn.selectpicker) {
+      try {
+        $(archSelector).selectpicker('destroy');
+      } catch (e) { }
+    }
+
+    archSelector.innerHTML = '';
+
+    try {
+      const res = await fetch('/api/v1/ai-models/');
+      const data = await res.json();
+      const modelsList = Array.isArray(data) ? data : (data.models || []);
+
+      if (modelsList.length > 0) {
+        modelsList.filter(m => m.is_active).forEach(m => {
+          const opt = document.createElement('option');
+          opt.value = m.model_id;
+          opt.textContent = m.name;
+          archSelector.appendChild(opt);
+        });
+      }
+    } catch (err) {
+      console.error("Failed to fetch models for architecture modal:", err);
+    }
+
+    // Fallback if fetch produced no options
+    if (archSelector.options.length === 0) {
+      const mainSelector = document.getElementById('model-selector');
+      if (mainSelector) {
+        Array.from(mainSelector.options).forEach(mOpt => {
+          const opt = document.createElement('option');
+          opt.value = mOpt.value;
+          opt.textContent = mOpt.textContent;
+          archSelector.appendChild(opt);
+        });
+      }
+    }
+
+    const mainSelector = document.getElementById('model-selector');
+    if (mainSelector && mainSelector.value) {
+      archSelector.value = mainSelector.value;
+    }
+
+    purgeBootstrapSelect();
+
+    if (spinIcon && icon) {
+      setTimeout(() => icon.classList.remove('fa-spin'), 400);
+    }
+  }
+
+  async function showArchSetup() {
+    document.getElementById('arch-progress-container').style.display = 'none';
+    document.getElementById('arch-content-container').style.display = 'none';
+    document.getElementById('arch-setup-container').style.display = 'flex';
+
+    await refreshArchModels();
+  }
+
+  async function startArchGeneration(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    const pwdInput = document.getElementById('arch-sudo-pwd-input');
+    const pwd = pwdInput ? pwdInput.value : '';
+    if (!pwd) {
+      alert("Sudo password is required to perform deep system scans.");
+      return;
+    }
+
+    if (!window.archServerRsaPublicKey) {
+      alert("RSA Public Key not received from server yet. Please wait.");
+      return;
+    }
+
+    if (!window.crypto || !window.crypto.subtle) {
+      alert("Cryptography API not available. This feature requires a secure context (HTTPS or localhost).");
+      return;
+    }
+
+    let encryptedBase64 = "";
+    try {
+      const keyBuffer = pemToArrayBuffer(window.archServerRsaPublicKey);
+      const importedKey = await window.crypto.subtle.importKey(
+        "spki",
+        keyBuffer,
+        { name: "RSA-OAEP", hash: "SHA-256" },
+        false,
+        ["encrypt"]
+      );
+      const encodedPwd = new TextEncoder().encode(pwd);
+      const encryptedBuf = await window.crypto.subtle.encrypt(
+        { name: "RSA-OAEP" },
+        importedKey,
+        encodedPwd
+      );
+      encryptedBase64 = window.btoa(String.fromCharCode.apply(null, new Uint8Array(encryptedBuf)));
+    } catch (err) {
+      console.error("Encryption failed:", err);
+      alert("Failed to encrypt sudo password: " + (err.message || err.toString()));
+      return;
+    }
+
+    document.getElementById('arch-setup-container').style.display = 'none';
+    document.getElementById('arch-progress-container').style.display = 'flex';
+    document.getElementById('arch-content-container').style.display = 'none';
+    document.getElementById('arch-progress-text').innerText = 'Starting dynamic scan...';
+
+    const archSelector = document.getElementById('arch-model-selector');
+    const modelId = archSelector ? archSelector.value : "mistral:latest";
+
+    if (!archSocket || archSocket.readyState !== WebSocket.OPEN) {
+      alert("WebSocket is not connected to the server yet. Please wait a moment or refresh the page.");
+      showArchSetup();
+      return;
+    }
+
+    try {
+      archSocket.send(JSON.stringify({ type: 'generate', model_id: modelId, encrypted_password: encryptedBase64 }));
+    } catch (sendErr) {
+      alert("Failed to send generate request: " + sendErr.message);
+      showArchSetup();
+    }
+  }
+
+  function renderArchitecture(data, isCached) {
+    document.getElementById('arch-setup-container').style.display = 'none';
+    document.getElementById('arch-progress-container').style.display = 'none';
+    document.getElementById('arch-content-container').style.display = 'flex';
+
+    const cachedBadge = document.getElementById('arch-cached-badge');
+    if (isCached) {
+      cachedBadge.style.display = 'inline-block';
+    } else {
+      cachedBadge.style.display = 'none';
+    }
+
+    // 1. Render Mermaid
+    const mermaidContainer = document.getElementById('mermaid-container');
+    mermaidContainer.innerHTML = ''; // clear previous
+    if (data.mermaid_diagram) {
+      try {
+        const id = 'mermaid-graph-' + Date.now();
+        mermaid.render(id, data.mermaid_diagram).then(result => {
+          mermaidContainer.innerHTML = result.svg;
+          // Make interactive using svg-pan-zoom
+          const svgEl = mermaidContainer.querySelector('svg');
+          if (svgEl) {
+            svgEl.style.width = '100%';
+            svgEl.style.height = '100%';
+            svgEl.style.maxWidth = '100%';
+            svgPanZoom(svgEl, {
+              zoomEnabled: true,
+              controlIconsEnabled: true,
+              fit: true,
+              center: true,
+              minZoom: 0.1,
+              maxZoom: 10
+            });
+          }
+        }).catch(err => {
+          mermaidContainer.innerHTML = `<div style="color:var(--error);">Failed to render diagram: ${err.message}</div><pre style="color:var(--text-secondary);font-size:11px;">${escapeHtml(data.mermaid_diagram)}</pre>`;
+        });
+      } catch (err) {
+        mermaidContainer.innerHTML = `<div style="color:var(--error);">Error parsing diagram: ${err.message}</div><pre style="color:var(--text-secondary);font-size:11px;">${escapeHtml(data.mermaid_diagram)}</pre>`;
+      }
+    }
+
+    const infraContainer = document.getElementById('arch-infrastructure-container');
+    if (data.infrastructure || data.network) {
+      infraContainer.style.display = 'grid';
+
+      let sysHtml = '';
+      if (data.infrastructure) {
+        const inf = data.infrastructure;
+        if (inf.hostname) sysHtml += `<div><strong>Hostname:</strong> ${escapeHtml(inf.hostname)}</div>`;
+        if (inf.os) sysHtml += `<div><strong>OS:</strong> ${escapeHtml(inf.os)} (${escapeHtml(inf.kernel || '')})</div>`;
+        if (inf.cpu && inf.cpu.cores) sysHtml += `<div><strong>CPU:</strong> ${inf.cpu.cores} Cores - ${escapeHtml(inf.cpu.model || '')}</div>`;
+        if (inf.ram && inf.ram.total) sysHtml += `<div><strong>RAM:</strong> ${escapeHtml(inf.ram.total)} (Used: ${escapeHtml(inf.ram.used || '')})</div>`;
+      }
+      document.getElementById('arch-sys-info').innerHTML = sysHtml || '<em>No system data</em>';
+
+      let netHtml = '';
+      if (data.network) {
+        const net = data.network;
+        if (net.gateway) netHtml += `<div><strong>Gateway:</strong> ${escapeHtml(net.gateway)}</div>`;
+        if (net.dns && net.dns.length) netHtml += `<div><strong>DNS:</strong> ${escapeHtml(net.dns.join(', '))}</div>`;
+        if (net.interfaces && net.interfaces.length) {
+          netHtml += `<div><strong>Interfaces:</strong></div><ul style="margin:2px 0 0 20px; padding:0;">`;
+          net.interfaces.forEach(i => {
+            netHtml += `<li>${escapeHtml(i.name)}: ${escapeHtml(i.ip)}</li>`;
+          });
+          netHtml += `</ul>`;
+        }
+      }
+      document.getElementById('arch-net-info').innerHTML = netHtml || '<em>No network data</em>';
+    } else {
+      infraContainer.style.display = 'none';
+    }
+
+    // 3. Render Services List
+    cachedServices = data.services || [];
+    renderServicesList(cachedServices);
+
+    // Immediately poll status after render
+    pollArchStatus();
+  }
+
+  function renderServicesList(services) {
+    console.log('🔧 renderServicesList called with:', services?.length, 'services');
+    const container = document.getElementById('arch-services-container');
+    console.log('📦 Container found:', !!container);
+    console.log('📦 Container display:', container?.style.display);
+    console.log('📦 Container parent visible:', container?.offsetParent !== null);
+
+    if (!services || !Array.isArray(services) || services.length === 0) {
+      container.innerHTML = '<div style="color:var(--text-secondary);font-size:13px;">No services detected.</div>';
+      return;
+    }
+
+    // Group by type dynamically
+    const groups = {};
+    services.forEach(s => {
+      if (!s) return;
+      const name = String(s.name || s.service_name || s.service || s.raw_name || 'Unknown Service');
+      const t = String(s.type || s.category || 'System Service');
+      if (!groups[t]) groups[t] = [];
+
+      const safeService = {
+        name: name,
+        type: t,
+        status: String(s.status || 'running'),
+        ports: Array.isArray(s.ports) ? s.ports : (s.port ? [s.port] : [])
+      };
+      groups[t].push(safeService);
+    });
+
+    let html = '';
+    for (const [type, list] of Object.entries(groups)) {
+      html += `
+        <div style="background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; margin-bottom: 12px;">
+          <div style="background: rgba(255,255,255,0.05); padding: 8px 12px; font-size: 12px; font-weight: 600; color: var(--text-primary); border-bottom: 1px solid var(--border-color);">
+            ${escapeHtml(type.toUpperCase())}
+          </div>
+          <div style="padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+            ${list.map(s => {
+        const isRunning = s.status.toLowerCase() === 'running' || s.status.toLowerCase() === 'active';
+        const statusColor = isRunning ? 'var(--success-text)' : 'var(--error)';
+        const statusIcon = isRunning ? 'fa-circle-check' : 'fa-circle-xmark';
+        const sId = 'srv-status-' + s.name.replace(/[^a-zA-Z0-9]/g, '-');
+        const portsDisplay = s.ports.length > 0 ? s.ports.join(', ') : '-';
+        return `
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <i id="${sId}-icon" class="fa-solid ${statusIcon}" style="color: ${statusColor}; font-size: 14px;"></i>
+                  <span style="color: var(--text-strong); font-weight: 500;">${escapeHtml(s.name)}</span>
+                </div>
+                <div style="text-align: right;">
+                  <div id="${sId}-text" style="color: ${statusColor}; font-size: 11px; font-weight: 600; text-transform: uppercase;">${escapeHtml(s.status)}</div>
+                  <div style="color: var(--text-secondary); font-size: 11px;">Port: ${escapeHtml(portsDisplay)}</div>
+                </div>
+              </div>
+              `;
+      }).join('<div style="height:1px; background:var(--border-color); margin: 4px 0;"></div>')}
+          </div>
+        </div>
+      `;
+    }
+    console.log('✅ HTML generated:', html.substring(0, 200));
+
+    container.innerHTML = html || '<div style="color:var(--text-secondary);font-size:13px;">No services detected.</div>';
+    console.log('✅ Container innerHTML set!');
+    console.log('✅ Container children count:', container.children.length);
+  }
+
+  function updateServicesStatus(updatedServices) {
+    document.getElementById('arch-status-spinner').style.display = 'none';
+    updatedServices.forEach(s => {
+      const sId = 'srv-status-' + s.name.replace(/[^a-zA-Z0-9]/g, '-');
+      const iconEl = document.getElementById(`${sId}-icon`);
+      const textEl = document.getElementById(`${sId}-text`);
+      if (iconEl && textEl) {
+        const statusColor = s.status === 'running' ? 'var(--success-text)' : 'var(--error)';
+        const statusIcon = s.status === 'running' ? 'fa-circle-check' : 'fa-circle-xmark';
+        iconEl.className = `fa-solid ${statusIcon}`;
+        iconEl.style.color = statusColor;
+        textEl.innerText = s.status.toUpperCase();
+        textEl.style.color = statusColor;
+      }
+    });
+  }
+
+  function pollArchStatus() {
+    if (!cachedServices || cachedServices.length === 0) return;
+    if (archSocket && archSocket.readyState === WebSocket.OPEN) {
+      document.getElementById('arch-status-spinner').style.display = 'inline-block';
+      archSocket.send(JSON.stringify({ type: 'status_update', services: cachedServices }));
+    }
+  }
+
+  function startArchPolling() {
+    if (archPollingInterval) clearInterval(archPollingInterval);
+    archPollingInterval = setInterval(() => {
+      pollArchStatus();
+    }, 5000); // Poll every 5 seconds
+  }
+
+  function stopArchPolling() {
+    if (archPollingInterval) {
+      clearInterval(archPollingInterval);
+      archPollingInterval = null;
+    }
+  }
+
   // Load models on page load and bind change listener
+
   document.addEventListener('DOMContentLoaded', function () {
     const selector = document.getElementById('model-selector');
     if (selector) {

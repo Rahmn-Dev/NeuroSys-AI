@@ -1347,3 +1347,419 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
             "type": "status",
             "content": f"{'✅ Approved' if approved else '❌ Rejected'}: {tool_name}"
         }))
+class ArchitectureConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        from sre_agent.crypto import generate_rsa_key_pair
+        self.rsa_private_key, public_pem = generate_rsa_key_pair()
+        await self.accept()
+        await self.send(text_data=json.dumps({
+            "type": "arch_sudo_key_exchange",
+            "public_key": public_pem
+        }))
+
+    async def disconnect(self, close_code):
+        pass
+
+    async def receive(self, text_data):
+        try:
+            data = json.loads(text_data)
+        except json.JSONDecodeError:
+            return
+
+        msg_type = data.get("type")
+
+        if msg_type == "load_cache":
+            await self._handle_load_cache()
+        elif msg_type == "generate":
+            import asyncio
+            asyncio.create_task(self._handle_generate(data.get("model_id", "mistral:latest"), data.get("encrypted_password", "")))
+        elif msg_type == "status_update":
+            await self._handle_status_update(data.get("services", []))
+
+    async def _handle_load_cache(self):
+        from chatbot.models import SystemArchitectureCache
+        from asgiref.sync import sync_to_async
+        cache = await sync_to_async(lambda: SystemArchitectureCache.objects.order_by('-updated_at').first())()
+        
+        if cache and cache.mermaid_diagram:
+            elements_data = cache.mermaid_diagram
+                
+            try:
+                services_data = json.loads(cache.services_json) if cache.services_json else {}
+                if isinstance(services_data, list):
+                    # Migration from old format where services_json was just a list
+                    services_data = {"services": services_data}
+            except Exception:
+                services_data = {}
+                
+            await self.send(text_data=json.dumps({
+                "type": "arch_result",
+                "data": {
+                    "mermaid_diagram": elements_data,
+                    "services": services_data.get("services", []),
+                    "network": services_data.get("network", {}),
+                    "infrastructure": services_data.get("infrastructure", {}),
+                    "dependencies": services_data.get("dependencies", []),
+                    "security": services_data.get("security", {}),
+                    "insights": json.loads(cache.insights_json) if cache.insights_json else []
+                },
+                "cached": True
+            }))
+        else:
+            await self.send(text_data=json.dumps({
+                "type": "arch_not_found"
+            }))
+
+    async def _handle_status_update(self, services):
+        import asyncio
+        updated_services = []
+        for s in services:
+            service_name = s.get("name")
+            if service_name:
+                proc = await asyncio.create_subprocess_shell(
+                    f"systemctl is-active {service_name}",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout, _ = await proc.communicate()
+                status = stdout.decode().strip()
+                # Consider running or active as running
+                s["status"] = "running" if status in ["active", "activating"] else "stopped"
+            updated_services.append(s)
+            
+        await self.send(text_data=json.dumps({
+            "type": "status_result",
+            "services": updated_services
+        }))
+
+    async def _scan_system_deterministically(self, sudo_input):
+        import platform
+        import socket
+        import os
+
+        # 1. Infrastructure
+        hostname = socket.gethostname()
+        os_name = f"{platform.system()} {platform.release()}"
+        try:
+            if os.path.exists("/etc/os-release"):
+                with open("/etc/os-release") as f:
+                    for line in f:
+                        if line.startswith("PRETTY_NAME="):
+                            os_name = line.split("=")[1].strip().strip('"')
+                            break
+        except Exception:
+            pass
+
+        cpu_cores = os.cpu_count() or 1
+
+        p_ram = await asyncio.create_subprocess_shell("free -h", stdout=asyncio.subprocess.PIPE)
+        out_ram, _ = await p_ram.communicate()
+        ram_total, ram_used, ram_free = "N/A", "N/A", "N/A"
+        for line in out_ram.decode(errors='ignore').splitlines():
+            if line.startswith("Mem:"):
+                parts = line.split()
+                if len(parts) >= 4:
+                    ram_total, ram_used, ram_free = parts[1], parts[2], parts[3]
+
+        p_disk = await asyncio.create_subprocess_shell("df -h /", stdout=asyncio.subprocess.PIPE)
+        out_disk, _ = await p_disk.communicate()
+        disk_list = []
+        for line in out_disk.decode(errors='ignore').splitlines()[1:]:
+            parts = line.split()
+            if len(parts) >= 6:
+                disk_list.append({"mount": parts[5], "total": parts[1], "used": parts[2], "type": parts[0]})
+
+        p_docker = await asyncio.create_subprocess_shell("sudo -S docker ps -a --format '{{.Names}}|{{.Image}}|{{.Status}}'", stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        out_docker, _ = await p_docker.communicate(input=sudo_input)
+        containers = []
+        for line in out_docker.decode(errors='ignore').splitlines():
+            if "|" in line:
+                parts = line.split("|")
+                containers.append({"name": parts[0], "image": parts[1], "status": parts[2]})
+
+        infra_data = {
+            "hostname": hostname,
+            "os": os_name,
+            "kernel": platform.release(),
+            "cpu": {"cores": cpu_cores, "model": platform.machine()},
+            "ram": {"total": ram_total, "used": ram_used, "free": ram_free},
+            "disk": disk_list,
+            "containers": containers
+        }
+
+        # 2. Network
+        p_pub_ip = await asyncio.create_subprocess_shell("curl -s --max-time 3 ifconfig.me || curl -s --max-time 3 api.ipify.org", stdout=asyncio.subprocess.PIPE)
+        out_pub_ip, _ = await p_pub_ip.communicate()
+        public_ip = out_pub_ip.decode(errors='ignore').strip() or "N/A"
+
+        p_ip = await asyncio.create_subprocess_shell("sudo -S ip -4 addr show", stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        out_ip, _ = await p_ip.communicate(input=sudo_input)
+        interfaces = []
+        curr_iface = ""
+        for line in out_ip.decode(errors='ignore').splitlines():
+            if line and line[0].isdigit():
+                curr_iface = line.split(":")[1].strip()
+            elif "inet " in line:
+                ip = line.strip().split()[1]
+                interfaces.append({"name": curr_iface, "ip": ip, "type": "ipv4"})
+
+        if public_ip != "N/A":
+            interfaces.insert(0, {"name": "public_internet", "ip": public_ip, "type": "public"})
+
+        p_gw = await asyncio.create_subprocess_shell("ip route show default", stdout=asyncio.subprocess.PIPE)
+        out_gw, _ = await p_gw.communicate()
+        gateway = "N/A"
+        gw_parts = out_gw.decode(errors='ignore').split()
+        if "via" in gw_parts:
+            gateway = gw_parts[gw_parts.index("via") + 1]
+
+        p_ports = await asyncio.create_subprocess_shell("sudo -S ss -tulnp", stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        out_ports, _ = await p_ports.communicate(input=sudo_input)
+        open_ports = []
+        for line in out_ports.decode(errors='ignore').splitlines()[1:]:
+            parts = line.split()
+            if len(parts) >= 5:
+                proto = parts[0]
+                local_addr = parts[4]
+                process_name = parts[-1] if len(parts) >= 7 else "unknown"
+                port = local_addr.split(":")[-1]
+                if port.isdigit():
+                    open_ports.append({"port": int(port), "protocol": proto, "service": process_name, "risk": "low"})
+
+        net_data = {
+            "interfaces": interfaces,
+            "gateway": gateway,
+            "dns": ["8.8.8.8"],
+            "open_ports": open_ports
+        }
+
+        # 3. Dynamic Services & Ports Extraction (NO HARDCODING)
+        p_systemd = await asyncio.create_subprocess_shell("sudo -S systemctl list-units --type=service --state=running --no-legend", stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        out_systemd, _ = await p_systemd.communicate(input=sudo_input)
+
+        raw_services_list = []
+        seen_identifiers = set()
+
+        import re
+        # Dynamic process & port extraction from ss -tulnp
+        for item in open_ports:
+            port = item["port"]
+            proc_raw = item["service"]
+            proc_match = re.search(r'users:\(\("([^"]+)"', proc_raw)
+            pname = proc_match.group(1) if proc_match else proc_raw
+            
+            identifier = f"port_{port}_{pname}"
+            if identifier not in seen_identifiers:
+                seen_identifiers.add(identifier)
+                raw_services_list.append({
+                    "raw_name": pname,
+                    "port": port,
+                    "protocol": item["protocol"],
+                    "source": "listening_port"
+                })
+
+        # Dynamic Docker containers extraction
+        for c in containers:
+            identifier = f"docker_{c['name']}"
+            if identifier not in seen_identifiers:
+                seen_identifiers.add(identifier)
+                raw_services_list.append({
+                    "raw_name": c["name"],
+                    "image": c["image"],
+                    "status": c["status"],
+                    "source": "docker_container"
+                })
+
+        # Dynamic Systemd active services extraction
+        for line in out_systemd.decode(errors='ignore').splitlines():
+            parts = line.split()
+            if parts:
+                svc_name = parts[0].replace(".service", "")
+                identifier = f"systemd_{svc_name}"
+                if identifier not in seen_identifiers:
+                    seen_identifiers.add(identifier)
+                    raw_services_list.append({
+                        "raw_name": svc_name,
+                        "description": " ".join(parts[4:]) if len(parts) >= 5 else "",
+                        "source": "systemd_service"
+                    })
+
+        return infra_data, net_data, raw_services_list
+
+    async def _handle_generate(self, model_id, encrypted_password):
+        import asyncio
+        import json
+        import subprocess
+        
+        try:
+            print(f"[ArchitectureConsumer] Received generate request with model_id='{model_id}'", flush=True)
+            
+            sudo_pwd = ""
+            if encrypted_password:
+                from sre_agent.crypto import decrypt_rsa_oaep
+                try:
+                    sudo_pwd = decrypt_rsa_oaep(self.rsa_private_key, encrypted_password) + "\n"
+                except Exception as e:
+                    print(f"[ArchitectureConsumer] Decryption failed: {e}", flush=True)
+                    await self.send(text_data=json.dumps({"type": "arch_error", "message": f"Sudo decryption failed: {str(e)}"}))
+                    return
+            else:
+                await self.send(text_data=json.dumps({"type": "arch_error", "message": "Sudo password is required for deep scan."}))
+                return
+            
+            sudo_input = sudo_pwd.encode()
+            
+            # 1. Deterministic Scanning of Raw Ports & Services
+            await self.send(text_data=json.dumps({"type": "arch_progress", "step": "Scanning raw ports, containers, and services dynamically..."}))
+            infra_data, net_data, raw_services_list = await self._scan_system_deterministically(sudo_input)
+
+            await self.send(text_data=json.dumps({"type": "arch_progress", "step": "Categorizing services and building Mermaid diagram with AI..."}))
+
+            prompt = f"""### TASK: Categorize Services & Generate Architecture Flowchart
+
+System Information:
+- Hostname: {infra_data['hostname']}
+- OS: {infra_data['os']} ({infra_data['kernel']})
+- CPU Cores: {infra_data['cpu']['cores']} ({infra_data['cpu']['model']})
+- RAM: {infra_data['ram']['total']} (Used: {infra_data['ram']['used']})
+
+Network Interfaces:
+{json.dumps(net_data['interfaces'], indent=2)}
+
+RAW DETECTED PORTS, CONTAINERS & SERVICES:
+{json.dumps(raw_services_list, indent=2)}
+
+YOUR TASKS:
+1. Categorize all the raw detected items into clean, human-readable service objects inside a "services" array:
+   - "name": Clean name (e.g., "PostgreSQL", "Nginx", "Redis", "Ollama AI", "Docker: <container>", "SSH Server")
+   - "type": "Database" | "Web Server" | "Cache" | "Web Application" | "Container" | "System Service" | "AI Infrastructure"
+   - "status": "running"
+   - "ports": list of ports associated with this service (e.g. [5432] or [])
+
+2. Generate a comprehensive Mermaid flowchart (graph TD) connecting User({infra_data['hostname']}) to all the detected services, databases, network interfaces, and containers.
+   Use subgraphs for grouping (e.g., subgraph Network Layer, subgraph Services Layer, subgraph Database Layer).
+
+OUTPUT FORMAT:
+Respond STRICTLY in the following JSON format (no markdown blocks around the JSON):
+{{
+  "services": [
+    {{"name": "...", "type": "...", "status": "running", "ports": [5432], "pid": 0, "memory": "N/A"}}
+  ],
+  "mermaid_diagram": "graph TD\\nUser({infra_data['hostname']}) --> Nginx[Nginx Web Server]\\n...",
+  "insights": ["<insight_1>", "<insight_2>"]
+}}
+"""
+            from sre_agent.engine import SREAgentEngine
+            from langchain_core.messages import HumanMessage
+            
+            engine = SREAgentEngine(model_name=model_id)
+            llm = engine._get_llm()
+            
+            print(f"[ArchitectureConsumer] Invoking LLM with model: {model_id}", flush=True)
+            parsed = None
+            for attempt in range(3):
+                try:
+                    resp = await asyncio.wait_for(
+                        llm.ainvoke([HumanMessage(content=prompt)]),
+                        timeout=30.0
+                    )
+                    
+                    content = resp.content.strip()
+                    if not content:
+                        raise ValueError("Empty response")
+                    
+                    if content.startswith("```json"):
+                        content = content[7:-3]
+                    elif content.startswith("```"):
+                        content = content[3:-3]
+                    
+                    parsed = json.loads(content)
+                    break
+                    
+                except asyncio.TimeoutError:
+                    if attempt < 2:
+                        await self.send(text_data=json.dumps({
+                            "type": "arch_progress",
+                            "step": f"AI timeout (attempt {attempt+1}/3), retrying..."
+                        }))
+                    else:
+                        raise Exception("AI analysis timed out after 3 attempts")
+                        
+                except json.JSONDecodeError:
+                    if attempt < 2:
+                        await self.send(text_data=json.dumps({
+                            "type": "arch_progress", 
+                            "step": f"Invalid JSON (attempt {attempt+1}/3), retrying..."
+                        }))
+                    else:
+                        raise Exception(f"Failed to parse AI response after 3 attempts")
+            
+            if not parsed or not isinstance(parsed, dict):
+                parsed = {}
+
+            # Inject deterministic infra and network data
+            parsed["infrastructure"] = infra_data
+            parsed["network"] = net_data
+            
+            # Sanitize services array
+            sanitized_services = []
+            raw_services = parsed.get("services", [])
+            if isinstance(raw_services, list):
+                for s in raw_services:
+                    if isinstance(s, dict):
+                        s_name = s.get("name") or s.get("service_name") or s.get("service") or s.get("raw_name") or "Unknown Service"
+                        s_type = s.get("type") or s.get("category") or "System Service"
+                        s_status = s.get("status") or "running"
+                        s_ports = s.get("ports") if isinstance(s.get("ports"), list) else ([s.get("port")] if s.get("port") else [])
+                        sanitized_services.append({
+                            "name": str(s_name),
+                            "type": str(s_type),
+                            "status": str(s_status),
+                            "ports": s_ports,
+                            "pid": 0,
+                            "memory": "N/A"
+                        })
+            
+            if not sanitized_services:
+                sanitized_services = [
+                    {
+                        "name": str(item.get("raw_name", "Unknown Service")),
+                        "type": "System Service",
+                        "status": "running",
+                        "ports": [item["port"]] if "port" in item else [],
+                        "pid": 0,
+                        "memory": "N/A"
+                    }
+                    for item in raw_services_list
+                ]
+
+            parsed["services"] = sanitized_services
+                
+            # Save to Cache
+            from chatbot.models import SystemArchitectureCache
+            from asgiref.sync import sync_to_async
+            
+            await sync_to_async(lambda: SystemArchitectureCache.objects.create(
+                mermaid_diagram=parsed.get("mermaid_diagram", ""),
+                services_json=json.dumps({
+                    "services": sanitized_services,
+                    "network": net_data,
+                    "infrastructure": infra_data
+                }),
+                insights_json=json.dumps(parsed.get("insights", []))
+            ))()
+            
+            await self.send(text_data=json.dumps({
+                "type": "arch_result",
+                "data": parsed,
+                "cached": False
+            }))
+            print(f"[ArchitectureConsumer] Success!", flush=True)
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            await self.send(text_data=json.dumps({
+                "type": "arch_error",
+                "message": str(e)
+            }))

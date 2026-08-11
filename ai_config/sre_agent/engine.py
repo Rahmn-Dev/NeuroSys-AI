@@ -354,7 +354,9 @@ Output strictly the category name."""
             hostname=socket.gethostname(),
             environment="local",
             rsa_private_key=self.rsa_private_key,
-            encrypted_sudo_pwd=self.encrypted_sudo_pwd
+            encrypted_sudo_pwd=self.encrypted_sudo_pwd,
+            session_id=self.session_id,
+            workspace_path=workspace_ctx.path if workspace_ctx else os.getcwd()
         ))
         
         if terminal_cwd:
@@ -521,10 +523,10 @@ Reply STRICTLY 'CONTINUE' or 'NEW'."""
             findings_path = f".neurosys/sessions/{self.session_id}/investigations/{inv_id}/findings.json"
             history_path = f".neurosys/sessions/{self.session_id}/investigations/{inv_id}/execution_history.json"
 
-            if mode == "autonomous":
+            if mode in ["autonomous_single", "autonomous_multi"]:
                 from .react_engine import ReactEngine
                 current_model_name.set(self.model_name)
-                react_engine = ReactEngine(llm, discovery_result.tools, system_prompt, self.session_id)
+                react_engine = ReactEngine(llm, discovery_result.tools, system_prompt, self.session_id, mode=mode)
                 async for event in react_engine.astream(initial_state):
                     if event.type == AgentEventType.MESSAGE_CHUNK:
                         final_message += event.content
