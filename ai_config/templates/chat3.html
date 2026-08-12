@@ -298,7 +298,7 @@
         <span id="connection-badge"
           style="font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #1f6feb33; color: #58a6ff;">Connecting...</span>
 
-        <button id="sudo-auth-btn" class="sre-input"
+        <button id="sudo-auth-btn" class="sre-input1"
           onclick="document.getElementById('sudo-modal').style.display='flex';"
           style="background: var(--bg-panel); color: #f85149; border: 1px solid var(--border-color); font-size: 12px; height: 32px; padding: 0 14px; border-radius: 20px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; margin-left: 15px; box-sizing: border-box; line-height: 1;"><i
             class="fa-solid fa-lock"></i> Set Sudo Password</button>
@@ -730,9 +730,24 @@
       localStorage.removeItem('sre_selected_file');
       updateContextAttachments();
     };
+    let reconnectTimer = null;
 
     // --- WebSocket ---
     function connect() {
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+
+      // Don't reconnect if already connected
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        return;
+      }
+
+      // Don't reconnect if currently connecting
+      if (ws && ws.readyState === WebSocket.CONNECTING) {
+        return;
+      }
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
       ws = new WebSocket(`${protocol}//${location.host}/ws/sre-agent/`);
       window.sreAgentWs = ws;
@@ -768,7 +783,23 @@
           break;
 
         case 'session_id':
+          const oldSessionId = sessionId;
           sessionId = data.content;
+
+          // If this is a new session (not from loading history), refresh the history sidebar
+          if (!window.isLoadingHistory && oldSessionId !== sessionId && sessionId) {
+            setTimeout(async () => {
+              await loadHistory();
+              // After loading, ensure the new session is highlighted
+              document.querySelectorAll('.sre-history-item').forEach(i => i.classList.remove('active'));
+              const newItem = document.getElementById('history-item-' + sessionId);
+              if (newItem) {
+                newItem.classList.add('active');
+              }
+              // Update URL without reloading
+              window.history.pushState({}, '', window.location.pathname + '?session=' + sessionId);
+            }, 800);
+          }
           break;
 
         case 'session_title':
@@ -835,15 +866,6 @@
           addAgentStep('Warning', data.content, 'var(--warning)', 'alert-triangle');
           break;
 
-        case 'creating_artifact':
-          addAgentStep('Creating Artifact', data.content, 'var(--success)', 'file-code-2');
-          loadArtifacts();
-          break;
-
-        case 'restoring_artifact':
-          addAgentStep('Restoring Artifact', data.content, 'var(--warning)', 'history');
-          loadArtifacts();
-          break;
 
         case 'security_scan':
           addAgentStep('Security Scan', data.content, 'var(--purple)', 'shield-check');
@@ -860,22 +882,36 @@
         case 'parallel_complete':
           addAgentStep('Parallel Complete', `✅ ${data.content || 'All tasks completed.'}`, 'var(--success)', 'check-circle');
           break;
+        case 'creating_artifact':
+          addAgentStep('Creating Artifact', data.content, 'var(--success)', 'file-code-2');
+          loadArtifacts();  // Always call - it works even if tab is hidden
+          break;
+
+        case 'restoring_artifact':
+          addAgentStep('Restoring Artifact', data.content, 'var(--warning)', 'history');
+          loadArtifacts();  // Always call
+          break;
 
         case 'investigation_started':
-          if (activeInvestigationId && investigations[activeInvestigationId]) {
+          if (!window.isLoadingHistory && activeInvestigationId && investigations[activeInvestigationId]) {
             investigations[activeInvestigationId].status = 'completed';
           }
-          const invId = data.metadata ? data.metadata.investigation_id : null;
+          const invId = data.investigation_id || (data.metadata && data.metadata.investigation_id);
           if (invId) {
-            investigations[invId] = {
-              id: invId,
-              title: data.content || 'Investigation',
-              status: 'active',
-              plan: [],
-              findings: []
-            };
+            if (!investigations[invId]) {
+              investigations[invId] = {
+                id: invId,
+                title: data.content || 'Investigation',
+                status: 'active',
+                plan: [],
+                findings: []
+              };
+            } else if (!window.isLoadingHistory) {
+              investigations[invId].status = 'active';
+            }
             activeInvestigationId = invId;
             renderInvestigationTimeline();
+
             addAgentStep('Investigation Started', data.content || 'Starting new investigation...', 'var(--accent)', 'search');
           }
           break;
@@ -912,6 +948,7 @@
             if (taskData.new_status === 'completed') {
               addAgentStep('Task Completed', taskData.task, 'var(--success)', 'check-circle');
             }
+            renderInvestigationTimeline();
           }
           break;
 
@@ -953,6 +990,7 @@
           scrollToBottom();
           break;
 
+
         case 'completed':
           if (activeInvestigationId && investigations[activeInvestigationId]) {
             investigations[activeInvestigationId].status = 'completed';
@@ -962,7 +1000,13 @@
                 p.completed = true;
               });
             }
-            renderInvestigationTimeline();
+            if (sessionId) {
+              loadHistory();
+            }
+
+            // Refresh if visible
+            renderInvestigationTimeline();  // Always refresh
+            loadArtifacts();
           }
           if (lastGenericStepId) { stopStep(lastGenericStepId); lastGenericStepId = null; }
           const activeDash = document.getElementById('active-dashboard');
@@ -1258,6 +1302,7 @@
     let investigations = {};
     let activeInvestigationId = null;
     let activeWorkers = [];
+    // ← ADD THIS
 
     function renderInvestigationTimeline() {
       const container = document.getElementById('investigation-timeline-container');
@@ -1481,9 +1526,15 @@
         tabContent.style.display = 'flex';
       }
 
-      if (tabName === 'explorer') loadExplorer();
-      if (tabName === 'artifacts') loadArtifacts();  // This already exists, keep it
-      if (tabName === 'investigation') renderInvestigationTimeline(); // Add this
+      if (tabName === 'explorer') {
+        loadExplorer();
+      }
+      if (tabName === 'artifacts') {
+        loadArtifacts();
+      }
+      if (tabName === 'investigation') {
+        renderInvestigationTimeline();
+      }
       if (tabName === 'terminal' && window.fitTerminal) {
         setTimeout(window.fitTerminal, 50);
       }
@@ -1544,9 +1595,12 @@
                 updateBulkSelectedCount();
               }
             } else {
-              document.querySelectorAll('.sre-history-item').forEach(i => i.classList.remove('active'));
-              el.classList.add('active');
-              loadSession(sess.id);
+              // Only load if different session
+              if (sessionId !== sess.id) {
+                document.querySelectorAll('.sre-history-item').forEach(i => i.classList.remove('active'));
+                el.classList.add('active');
+                loadSession(sess.id);
+              }
             }
           };
 
@@ -1555,17 +1609,20 @@
 
         updateBulkSelectedCount();
 
+        // ONLY auto-load if there's a URL param AND no current session
         const urlParams = new URLSearchParams(window.location.search);
         const urlSessionId = urlParams.get('session');
-        if (urlSessionId) {
+        if (urlSessionId && !sessionId) {
           sessionId = urlSessionId;
           const el = document.getElementById('history-item-' + sessionId);
           if (el) el.classList.add('active');
           loadSession(sessionId);
-        } else {
-          sessionId = null;
+        } else if (!sessionId && !urlSessionId) {
+          // No session at all - start new chat
           window.startNewChat();
         }
+        // If sessionId already exists (from WebSocket), DON'T reload
+
       } catch (e) {
         console.error('Failed to load history', e);
       }
@@ -1573,6 +1630,7 @@
 
 
     window.startNewChat = function () {
+
       sessionId = null;
       document.querySelectorAll('.sre-history-item').forEach(i => i.classList.remove('active'));
       activeWorkers = [];
@@ -1596,14 +1654,17 @@
       renderInvestigationTimeline();
       document.getElementById('artifacts-list').innerHTML = '<div class="sre-text-secondary" style="font-style: italic; padding: 16px;">No artifacts for this session</div>';
       window.history.pushState({}, '', window.location.pathname);
+
     };
 
 
     async function loadSession(id) {
+
       sessionId = id;
       window.history.pushState({}, '', window.location.pathname + '?session=' + id);
       activeWorkers = [];
       renderWorkerActivity();
+
       try {
         const res = await fetch(`/api/v1/chat-sessions/${id}/messages/`);
         const data = await res.json();
@@ -1760,13 +1821,15 @@
 
                   case 'investigation_started':
                     if (evt.investigation_id) {
-                      investigations[evt.investigation_id] = {
-                        id: evt.investigation_id,
-                        title: evt.content || 'Investigation',
-                        status: 'active',
-                        plan: [],
-                        findings: []
-                      };
+                      if (!investigations[evt.investigation_id]) {
+                        investigations[evt.investigation_id] = {
+                          id: evt.investigation_id,
+                          title: evt.content || 'Investigation',
+                          status: 'active',
+                          plan: [],
+                          findings: []
+                        };
+                      }
                       activeInvestigationId = evt.investigation_id;
                       renderInvestigationTimeline();
                     }
@@ -1792,23 +1855,13 @@
         });
         window.isLoadingHistory = false;
         lucide.createIcons();
-        const visibleTab = document.querySelector('.tab-content[style*="display: flex"]') ||
-          document.getElementById('tab-investigation');
-        if (visibleTab) {
-          if (visibleTab.id === 'tab-artifacts') {
-            loadArtifacts();
-          } else if (visibleTab.id === 'tab-explorer') {
-            loadExplorer();
-          } else if (visibleTab.id === 'tab-investigation') {
-            renderInvestigationTimeline();
-          }
-        }
-
-        // Also pre-load artifacts in background so they're ready
         loadArtifacts();
+        renderInvestigationTimeline();
+
       } catch (e) {
         console.error('Failed to load session', e);
       }
+
     }
 
     // --- Explorer Logic ---
@@ -2100,7 +2153,7 @@
         }
       });
 
-      term.writeln('Welcome to NeuroSysAI Interactive Terminal\nConnecting...');
+      term.writeln('Welcome to NeuroSysAI Interactive Terminal\n');
 
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
       const termWs = new WebSocket(`${protocol}//${location.host}/ws/terminal/`);
@@ -2603,13 +2656,14 @@
                 <th style="padding: 10px 12px; white-space: nowrap;">Model ID</th>
                 <th style="padding: 10px 12px; white-space: nowrap;">Provider</th>
                 <th style="padding: 10px 12px; white-space: nowrap;">Endpoint (Base URL)</th>
+                <th style="padding: 10px 12px; white-space: nowrap;">API Key</th>
                 <th style="padding: 10px 12px; text-align: center; white-space: nowrap; width: 110px;">Status</th>
                 <th style="padding: 10px 12px; text-align: right; white-space: nowrap; width: 110px;">Action</th>
               </tr>
             </thead>
             <tbody id="ai-models-table-body">
               <tr>
-                <td colspan="7" style="padding: 24px; text-align: center; color: var(--text-secondary);">
+                <td colspan="8" style="padding: 24px; text-align: center; color: var(--text-secondary);">
                   <div class="spinner-border spinner-border-sm me-2" role="status" style="color: var(--accent);"></div>
                   Loading configured models...
                 </td>
@@ -2659,6 +2713,13 @@
             </div>
             <div class="col-md-6">
               <label class="form-label mb-1"
+                style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">API Key <span
+                  style="opacity: 0.7;">(Optional)</span></label>
+              <input type="password" id="model-apikey-input" placeholder="e.g. sk-proj-... or gsk_..." class="sre-input"
+                style="width: 100%; padding: 8px 12px; border-radius: 8px; font-size: 12px;">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label mb-1"
                 style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">Display Order</label>
               <input type="number" id="model-order-input" value="0" class="sre-input"
                 style="width: 100%; padding: 8px 12px; border-radius: 8px; font-size: 12px;">
@@ -2673,7 +2734,14 @@
               </div>
             </div>
           </div>
+          <div id="ai-model-test-result"
+            style="display: none; width: 100%; margin-top: 10px; padding: 10px 14px; border-radius: 8px; font-size: 12px;">
+          </div>
           <div class="d-flex justify-content-end gap-2 pt-3" style="border-top: 1px solid var(--border-color);">
+            <button type="button" id="model-test-btn" onclick="testAIModelForm()" class="btn btn-sm sre-input"
+              style="border-radius: 20px; font-weight: 600; font-size: 12px; padding: 5px 16px; color: var(--purple); border-color: rgba(137, 87, 229, 0.4);">
+              <i class="fa-solid fa-vial me-1"></i> Test Connection
+            </button>
             <button type="button" onclick="closeAIModelForm()" class="btn btn-sm sre-input"
               style="border-radius: 20px; font-size: 12px; padding: 5px 16px;">Cancel</button>
             <button type="submit" class="sre-btn-success btn btn-sm px-4 shadow-sm"
@@ -2778,7 +2846,7 @@
 
     if (!tbody) return;
     if (currentLoadedAIModels.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7" style="padding: 24px; text-align: center; color: var(--text-secondary);">No models configured. Click <b>Add New Model</b> to create one.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" style="padding: 24px; text-align: center; color: var(--text-secondary);">No models configured. Click <b>Add New Model</b> to create one.</td></tr>`;
       return;
     }
     tbody.innerHTML = currentLoadedAIModels.map(m => `
@@ -2795,6 +2863,9 @@
         </td>
         <td style="padding: 10px 12px; font-family: monospace; font-size: 11px; color: var(--text-secondary); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
           ${m.base_url ? m.base_url : '<span style="opacity: 0.5; font-style: italic;">Default</span>'}
+        </td>
+        <td style="padding: 10px 12px; white-space: nowrap;">
+          ${m.api_key ? '<span style="font-size: 10px; font-weight: 600; color: var(--success-text); background: rgba(45, 164, 78, 0.12); border: 1px solid rgba(45, 164, 78, 0.3); padding: 3px 8px; border-radius: 12px;"><i class="fa-solid fa-key me-1"></i>Set</span>' : '<span style="opacity: 0.5; font-style: italic;">Default/Env</span>'}
         </td>
         <td style="padding: 10px 12px; text-align: center; white-space: nowrap;">
           ${m.is_active
@@ -2829,10 +2900,14 @@
     if (providerInput) providerInput.value = '9router';
     const baseUrlInput = document.getElementById('model-baseurl-input');
     if (baseUrlInput) baseUrlInput.value = '';
+    const apiKeyInput = document.getElementById('model-apikey-input');
+    if (apiKeyInput) apiKeyInput.value = '';
     const orderInput = document.getElementById('model-order-input');
     if (orderInput) orderInput.value = '0';
     const activeInput = document.getElementById('model-active-input');
     if (activeInput) activeInput.checked = true;
+    const resDiv = document.getElementById('ai-model-test-result');
+    if (resDiv) { resDiv.style.display = 'none'; resDiv.innerHTML = ''; }
   }
 
   function editAIModel(id) {
@@ -2843,6 +2918,7 @@
     document.getElementById('model-id-input').value = m.model_id;
     document.getElementById('model-provider-input').value = m.provider;
     document.getElementById('model-baseurl-input').value = m.base_url || '';
+    document.getElementById('model-apikey-input').value = m.api_key || '';
     document.getElementById('model-order-input').value = m.order;
     document.getElementById('model-active-input').checked = m.is_active;
     document.getElementById('ai-model-form-title').innerText = 'Edit Model: ' + m.name;
@@ -2863,6 +2939,7 @@
       model_id: document.getElementById('model-id-input').value,
       provider: document.getElementById('model-provider-input').value,
       base_url: document.getElementById('model-baseurl-input').value,
+      api_key: document.getElementById('model-apikey-input').value,
       order: parseInt(document.getElementById('model-order-input').value) || 0,
       is_active: document.getElementById('model-active-input').checked
     };
@@ -2878,7 +2955,13 @@
       });
       const data = await res.json();
       if (data.status === 'success') {
+        const savedModelId = payload.model_id;
+        localStorage.setItem('sre_selected_model', savedModelId);
         await loadAIModels();
+        const mainSel = document.getElementById('model-selector');
+        if (mainSel && Array.from(mainSel.options).some(o => o.value === savedModelId)) {
+          mainSel.value = savedModelId;
+        }
         renderModelManagerTable();
         closeAIModelForm();
       } else {
@@ -2903,6 +2986,68 @@
       }
     } catch (err) {
       alert('Failed to delete model: ' + err.toString());
+    }
+  }
+
+  async function testAIModelForm() {
+    const testBtn = document.getElementById('model-test-btn');
+    const resultDiv = document.getElementById('ai-model-test-result');
+    if (!testBtn || !resultDiv) return;
+
+    const payload = {
+      model_id: document.getElementById('model-id-input').value,
+      provider: document.getElementById('model-provider-input').value,
+      base_url: document.getElementById('model-baseurl-input').value,
+      api_key: document.getElementById('model-apikey-input').value,
+    };
+
+    if (!payload.model_id) {
+      alert('Please enter a Model ID first.');
+      return;
+    }
+
+    testBtn.disabled = true;
+    testBtn.innerHTML = `<i class="fa-solid fa-spinner spin-anim me-1"></i> Testing...`;
+    resultDiv.style.display = 'none';
+
+    try {
+      const res = await fetch('/api/v1/ai-models/test/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      resultDiv.style.display = 'block';
+
+      if (data.status === 'success') {
+        let text = `<b><i class="fa-solid fa-circle-check me-1"></i> ${data.message}</b>`;
+        if (data.reply) text += `<br><span style="opacity: 0.8;">Response preview: "${escapeHtml(data.reply)}"</span>`;
+        if (data.available_models && data.available_models.length > 0) {
+          text += `<br><span style="font-size: 11px;">Available Models from Endpoint: <code>${data.available_models.join(', ')}</code></span>`;
+        }
+        resultDiv.style.background = 'rgba(45, 164, 78, 0.15)';
+        resultDiv.style.border = '1px solid var(--success)';
+        resultDiv.style.color = 'var(--success-text)';
+        resultDiv.innerHTML = text;
+      } else {
+        let text = `<b><i class="fa-solid fa-circle-xmark me-1"></i> Connection / Model Failed:</b> ${escapeHtml(data.message)}`;
+        if (data.available_models && data.available_models.length > 0) {
+          text += `<br><span style="font-weight: 600;">Valid Model IDs returned by Endpoint:</span> <code style="user-select: all;">${data.available_models.join(', ')}</code>`;
+        }
+        resultDiv.style.background = 'rgba(248, 81, 73, 0.15)';
+        resultDiv.style.border = '1px solid var(--error)';
+        resultDiv.style.color = 'var(--error)';
+        resultDiv.innerHTML = text;
+      }
+    } catch (err) {
+      resultDiv.style.display = 'block';
+      resultDiv.style.background = 'rgba(248, 81, 73, 0.15)';
+      resultDiv.style.border = '1px solid var(--error)';
+      resultDiv.style.color = 'var(--error)';
+      resultDiv.innerHTML = `<b><i class="fa-solid fa-circle-xmark me-1"></i> Error:</b> ${escapeHtml(err.toString())}`;
+    } finally {
+      testBtn.disabled = false;
+      testBtn.innerHTML = `<i class="fa-solid fa-vial me-1"></i> Test Connection`;
     }
   }
 

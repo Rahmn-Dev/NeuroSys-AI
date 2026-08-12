@@ -702,6 +702,7 @@ def ai_models_api(request):
                 'model_id': m.model_id,
                 'provider': m.provider,
                 'base_url': m.base_url or '',
+                'api_key': m.api_key or '',
                 'is_active': m.is_active,
                 'order': m.order,
             }
@@ -716,6 +717,7 @@ def ai_models_api(request):
             model_id = payload.get('model_id', '').strip()
             provider = payload.get('provider', '9router').strip()
             base_url = payload.get('base_url', '').strip() or None
+            api_key = payload.get('api_key', '').strip() or None
             is_active = payload.get('is_active', True)
             order = int(payload.get('order', 0))
 
@@ -727,6 +729,7 @@ def ai_models_api(request):
                 model_id=model_id,
                 provider=provider,
                 base_url=base_url,
+                api_key=api_key,
                 is_active=is_active,
                 order=order
             )
@@ -738,6 +741,7 @@ def ai_models_api(request):
                     'model_id': model_obj.model_id,
                     'provider': model_obj.provider,
                     'base_url': model_obj.base_url or '',
+                    'api_key': model_obj.api_key or '',
                     'is_active': model_obj.is_active,
                     'order': model_obj.order
                 }
@@ -764,6 +768,7 @@ def ai_model_detail_api(request, pk):
                 'model_id': model_obj.model_id,
                 'provider': model_obj.provider,
                 'base_url': model_obj.base_url or '',
+                'api_key': model_obj.api_key or '',
                 'is_active': model_obj.is_active,
                 'order': model_obj.order
             }
@@ -775,6 +780,8 @@ def ai_model_detail_api(request, pk):
             model_obj.model_id = payload.get('model_id', model_obj.model_id).strip()
             model_obj.provider = payload.get('provider', model_obj.provider).strip()
             model_obj.base_url = payload.get('base_url', model_obj.base_url or '').strip() or None
+            if 'api_key' in payload:
+                model_obj.api_key = payload['api_key'].strip() or None
             if 'is_active' in payload:
                 model_obj.is_active = bool(payload['is_active'])
             if 'order' in payload:
@@ -789,6 +796,7 @@ def ai_model_detail_api(request, pk):
                     'model_id': model_obj.model_id,
                     'provider': model_obj.provider,
                     'base_url': model_obj.base_url or '',
+                    'api_key': model_obj.api_key or '',
                     'is_active': model_obj.is_active,
                     'order': model_obj.order
                 }
@@ -801,4 +809,71 @@ def ai_model_detail_api(request, pk):
         return JsonResponse({'status': 'success', 'message': 'Model deleted successfully.'})
 
     return JsonResponse({'status': 'error', 'message': 'Method not allowed.'}, status=405)
+
+
+@csrf_exempt
+def ai_model_test_api(request):
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Method not allowed.'}, status=405)
+
+    fetched_models = []
+    try:
+        payload = json.loads(request.body)
+        model_id = payload.get('model_id', '').strip()
+        provider = payload.get('provider', '9router').strip().lower()
+        base_url = payload.get('base_url', '').strip() or None
+        api_key = payload.get('api_key', '').strip() or None
+
+        if not model_id:
+            return JsonResponse({'status': 'error', 'message': 'Model ID is required for testing.'}, status=400)
+
+        # Try listing models from GET {base_url}/models if base_url is specified
+        target_endpoint = base_url.rstrip('/') if base_url else "http://localhost:20128/v1"
+        try:
+            headers = {}
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+           
+            resp = requests.get(f"{target_endpoint}/models", headers=headers, timeout=4)
+            if resp.status_code == 200:
+                resp_json = resp.json()
+                if isinstance(resp_json, dict) and "data" in resp_json and isinstance(resp_json["data"], list):
+                    fetched_models = [m.get("id") for m in resp_json["data"] if isinstance(m, dict) and m.get("id")]
+        except Exception:
+            pass
+
+        # Try a quick invocation test with LangChain LLM
+        from langchain_core.messages import HumanMessage
+        from langchain_openai import ChatOpenAI
+        from langchain_ollama import ChatOllama
+        from langchain_mistralai import ChatMistralAI
+
+        if provider == 'ollama':
+            url = base_url or getattr(settings, "OLLAMA_URL", os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434"))
+            llm = ChatOllama(model=model_id, base_url=url, temperature=0.1)
+        elif provider == 'mistral' and not base_url:
+            key = api_key or getattr(settings, "MISTRAL_API_KEY", os.environ.get("MISTRAL_API_KEY", ""))
+            llm = ChatMistralAI(model=model_id, mistral_api_key=key, temperature=0.1)
+        else:
+            url = base_url if base_url else "http://localhost:20128/v1"
+            key = api_key or os.environ.get("MIMO_API_KEY") or getattr(settings, "ROUTER_API_KEY", os.environ.get("ROUTER_API_KEY", os.environ.get("OPENAI_API_KEY", "9router")))
+            llm = ChatOpenAI(model=model_id, base_url=url, api_key=key, temperature=0.1, max_tokens=10)
+
+        res = llm.invoke([HumanMessage(content="hi")])
+        reply = res.content if hasattr(res, 'content') else str(res)
+
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Connection & Model test successful!',
+            'reply': str(reply)[:100],
+            'available_models': fetched_models
+        })
+    except Exception as e:
+        err_msg = str(e)
+        return JsonResponse({
+            'status': 'error',
+            'message': err_msg,
+            'available_models': fetched_models
+        }, status=400)
+
 

@@ -355,6 +355,7 @@ class AIModel(models.Model):
     model_id = models.CharField(max_length=100, help_text="Model identifier sent to engine (e.g. OPENCODE, GROQ, mistral-large-latest)")
     provider = models.CharField(max_length=50, choices=PROVIDER_CHOICES, default='9router')
     base_url = models.CharField(max_length=255, blank=True, null=True, help_text="Optional custom Base URL (e.g. http://localhost:20128/v1)")
+    api_key = models.CharField(max_length=255, blank=True, null=True, help_text="Optional API Key for custom provider")
     is_active = models.BooleanField(default=True)
     order = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)

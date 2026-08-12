@@ -4,8 +4,9 @@ from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, SystemMessage
 from sre_agent.safety import SafetyLayer, SafetyVerdict
 from sre_agent.tools.registry import ToolMetadata, RiskLevel
+from asgiref.sync import async_to_sync
 
-def get_llm():
+async def get_llm():
     from django.conf import settings
     import os
     from sre_agent.context import current_model_name
@@ -15,16 +16,27 @@ def get_llm():
     provider = None
     target_model = model_name
     custom_base_url = None
+    custom_api_key = None
 
     try:
         from chatbot.models import AIModel
-        db_model = AIModel.objects.filter(model_id=model_name).first()
-        if not db_model:
-            db_model = AIModel.objects.filter(name=model_name).first()
+        from asgiref.sync import sync_to_async
+
+        @sync_to_async
+        def fetch_model(mn):
+            db_model = AIModel.objects.filter(model_id=mn).first()
+            if not db_model:
+                db_model = AIModel.objects.filter(name=mn).first()
+            if not db_model:
+                db_model = AIModel.objects.filter(is_active=True).order_by('order').first()
+            return db_model
+
+        db_model = await fetch_model(model_name)
         if db_model:
             provider = (db_model.provider or "").lower().strip()
             target_model = db_model.model_id
             custom_base_url = db_model.base_url
+            custom_api_key = db_model.api_key
     except Exception:
         pass
 
@@ -42,7 +54,7 @@ def get_llm():
     # 2. Explicit Mistral AI Official API
     elif provider == 'mistral' and not custom_base_url:
         from langchain_mistralai import ChatMistralAI
-        api_key = getattr(settings, "MISTRAL_API_KEY", os.environ.get("MISTRAL_API_KEY", ""))
+        api_key = custom_api_key or getattr(settings, "MISTRAL_API_KEY", os.environ.get("MISTRAL_API_KEY", ""))
         return ChatMistralAI(
             model=target_model,
             mistral_api_key=api_key,
@@ -62,7 +74,7 @@ def get_llm():
             real_model = "OPENCODE"
             
         base_url = custom_base_url if (custom_base_url and custom_base_url.strip()) else "http://localhost:20128/v1"
-        api_key = getattr(settings, "ROUTER_API_KEY", os.environ.get("ROUTER_API_KEY", os.environ.get("OPENAI_API_KEY", "9router")))
+        api_key = custom_api_key or os.environ.get("MIMO_API_KEY") or getattr(settings, "ROUTER_API_KEY", os.environ.get("ROUTER_API_KEY", os.environ.get("OPENAI_API_KEY", "9router")))
         
         return ChatOpenAI(
             model=real_model,
@@ -232,7 +244,7 @@ When describing command output:
         if what_to_summarize:
             user_prompt += f"\n\nPlease focus on summarizing: {what_to_summarize}"
             
-        llm = get_llm()
+        llm = async_to_sync(get_llm)()
         
         response = llm.invoke([
             SystemMessage(content=system_prompt),
@@ -256,7 +268,7 @@ def _run_file_picker(args: dict) -> str:
 Your job is to translate a user's natural language request into a Linux `find` or `grep` command to locate the relevant files, execute it, and return the findings."""
     
     # Simple direct query using LLM to generate command, then run it.
-    llm = get_llm()
+    llm = async_to_sync(get_llm)()
     
     prompt = f"Generate ONLY a single bash command (find, locate, or grep) to find files matching this query: '{query}'. Do not use formatting like ```bash. Just output the command."
     
@@ -294,7 +306,7 @@ def _run_code_searcher(args: dict) -> str:
     system_prompt = """You are a code-searcher agent. 
 Your job is to translate a user's natural language request into a Linux `grep` or `ripgrep` command to locate the relevant code within files, execute it, and return the findings."""
     
-    llm = get_llm()
+    llm = async_to_sync(get_llm)()
     prompt = f"Generate ONLY a single bash command (grep or rg) to find code matching this query: '{query}'. Do not use formatting like ```bash. Just output the command. Search recursively in the current directory."
     
     response = llm.invoke([
@@ -333,7 +345,7 @@ Wrap your output entirely in <PLAN> and </PLAN> tags.
 Do NOT write actual code files, just write the logical steps.
 """
     
-    llm = get_llm()
+    llm = async_to_sync(get_llm)()
     prompt = f"Context:\n{context}\n\nProblem:\n{problem}\n\nPlease generate a <PLAN>."
     
     response = llm.invoke([
@@ -422,7 +434,7 @@ Schema:
 ]
 """
     
-    llm = get_llm()
+    llm = async_to_sync(get_llm)()
     prompt = f"Target Files:\n{file_contents}\n\nInstructions:\n{instructions}\n\nOutput the JSON array of edits."
     
     response = llm.invoke([
@@ -484,7 +496,7 @@ Your job is to review the code changes or file contents and provide constructive
 Focus on logic errors, security issues, syntax errors, or missed edge cases.
 """
     
-    llm = get_llm()
+    llm = async_to_sync(get_llm)()
     prompt = f"Please review the following code changes/state:\n{diff}"
     
     response = llm.invoke([

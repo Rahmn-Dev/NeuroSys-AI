@@ -161,23 +161,38 @@ class SREAgentEngine:
 
         _ensure_tools_registered()
 
-    def _get_llm(self):
+    async def _get_llm(self):
         """Get the selected LLM instance dynamically."""
         provider = None
         target_model = self.model_name
         custom_base_url = None
+        custom_api_key = None
 
         try:
             from chatbot.models import AIModel
-            db_model = AIModel.objects.filter(model_id=self.model_name).first()
-            if not db_model:
-                db_model = AIModel.objects.filter(name=self.model_name).first()
+            from asgiref.sync import sync_to_async
+
+            @sync_to_async
+            def fetch_model(model_name):
+                db_model = AIModel.objects.filter(model_id=model_name).first()
+                if not db_model:
+                    db_model = AIModel.objects.filter(name=model_name).first()
+                if not db_model:
+                    db_model = AIModel.objects.filter(is_active=True).order_by('order').first()
+                return db_model
+
+            db_model = await fetch_model(self.model_name)
+
             if db_model:
                 provider = (db_model.provider or "").lower().strip()
                 target_model = db_model.model_id
                 custom_base_url = db_model.base_url
-        except Exception:
-            pass
+                custom_api_key = db_model.api_key
+                if db_model.model_id != self.model_name and db_model.name != self.model_name:
+                    print(f"[SRE ENGINE WARN] model_name='{self.model_name}' not found, using fallback: '{db_model.name}' (model_id='{db_model.model_id}')", flush=True)
+            print(f"[SRE ENGINE DEBUG] model_name='{self.model_name}' -> resolved: model_id='{target_model}', provider='{provider}', base_url='{custom_base_url}', api_key_set={bool(custom_api_key)}", flush=True)
+        except Exception as e:
+            print(f"[SRE ENGINE DEBUG ERROR] Failed db lookup: {e}", flush=True)
 
         # 1. Ollama Native Client
         if provider == 'ollama' or (target_model in ["mistral:latest", "qwen2.5-coder:latest"] and not custom_base_url):
@@ -193,7 +208,7 @@ class SREAgentEngine:
         # 2. Explicit Mistral AI Official API
         elif provider == 'mistral' and not custom_base_url:
             from langchain_mistralai import ChatMistralAI
-            api_key = getattr(settings, "MISTRAL_API_KEY", os.environ.get("MISTRAL_API_KEY", ""))
+            api_key = custom_api_key or getattr(settings, "MISTRAL_API_KEY", os.environ.get("MISTRAL_API_KEY", ""))
             return ChatMistralAI(
                 model=target_model,
                 mistral_api_key=api_key,
@@ -201,20 +216,21 @@ class SREAgentEngine:
                 max_tokens=2048,
             )
 
-        # 3. Default / 9Router / Custom Base URL / OpenAI-compatible API (Includes OPENCODE, GROQ, NVIDIA, DeepSeek, GPT-OSS)
+        # 3. Default / 9Router / Custom Base URL / OpenAI-compatible API
         else:
             from langchain_openai import ChatOpenAI
-            
+
             if self.model_name.startswith("9router:"):
                 real_model = self.model_name.split(":", 1)[1]
             elif target_model and target_model != "9router":
                 real_model = target_model
             else:
                 real_model = "OPENCODE"
-                
+
             base_url = custom_base_url if (custom_base_url and custom_base_url.strip()) else "http://localhost:20128/v1"
-            api_key = getattr(settings, "ROUTER_API_KEY", os.environ.get("ROUTER_API_KEY", os.environ.get("OPENAI_API_KEY", "9router")))
-            
+            api_key = custom_api_key or getattr(settings, "ROUTER_API_KEY", os.environ.get("ROUTER_API_KEY", os.environ.get("OPENAI_API_KEY", "9router")))
+
+            print(f"[SRE ENGINE DEBUG] Using ChatOpenAI: model='{real_model}', base_url='{base_url}'", flush=True)
             return ChatOpenAI(
                 model=real_model,
                 base_url=base_url,
@@ -222,8 +238,6 @@ class SREAgentEngine:
                 temperature=0.1,
                 max_tokens=4096,
             )
-
-
 
 
     async def _run_internal(self, user_message: str, terminal_cwd: Optional[str] = None, active_workspace: Optional[str] = None, selected_file: Optional[str] = None, selected_file_name: Optional[str] = None, mode: str = "guided") -> AsyncGenerator[AgentEvent, None]:
@@ -249,7 +263,7 @@ class SREAgentEngine:
         self.short_memory.add("user_input", user_message)
 
         # --- Phase 2: Smart Intent Classification ---
-        llm = self._get_llm()
+        llm = await self._get_llm()
         
         intent_prompt = f"""Categorize the user's intent based on their message. 
 Categories:
@@ -287,8 +301,14 @@ Output strictly the category name."""
                     messages.append(AIMessage(content=msg.message))
             messages.append(HumanMessage(content=user_message))
             
-            conv_resp = await llm.ainvoke(messages)
-            yield evt_message_chunk(conv_resp.content)
+            full_response = ""
+            async for chunk in llm.astream(messages):
+                content = chunk.content if isinstance(chunk.content, str) else str(chunk.content or "")
+                if content:
+                    full_response += content
+                    yield evt_message_chunk(full_response)
+            
+            await self._save_message(db_session_id, "ai", full_response)
             
             duration = time.time() - start_time
             yield evt_completed(f"Task completed in {duration:.1f}s", duration=duration)
@@ -517,6 +537,7 @@ Reply STRICTLY 'CONTINUE' or 'NEW'."""
             else:
                 inv_id = initial_state["plan"].get("investigation_id", "inv_" + str(uuid.uuid4())[:8])
                 initial_state["plan"]["is_continuation"] = True
+                plan_data = initial_state["plan"]  # Bug #5 fix: keep plan_data in sync
 
             # Fix 8: Artifact Segmentation. Scope artifacts by investigation_id.
             task_plan_path = f".neurosys/sessions/{self.session_id}/investigations/{inv_id}/task_plan.json"
@@ -556,6 +577,19 @@ Reply STRICTLY 'CONTINUE' or 'NEW'."""
                                 except Exception:
                                     pass
                     yield event
+                
+                if inv_id:
+                    await sync_to_async(lambda: Investigation.objects.filter(id=inv_id).update(status="completed"))()
+                    if final_message:
+                        await sync_to_async(lambda: InvestigationFinding.objects.filter(investigation_id=inv_id).delete())()
+                        await sync_to_async(InvestigationFinding.objects.create)(investigation_id=inv_id, content=final_message)
+                        if artifact_mgr:
+                            findings_path = f".neurosys/sessions/{self.session_id}/investigations/{inv_id}/findings.json"
+                            import json
+                            await artifact_mgr.upsert_artifact(findings_path, json.dumps({"findings": [final_message]}, indent=2), action_type="finding")
+                    
+                    yield evt_completed(final_message)
+
             else:
                 async for event in agent.astream_events(initial_state, version="v2", config={"recursion_limit": 100}):
                     kind = event["event"]
@@ -614,10 +648,15 @@ Reply STRICTLY 'CONTINUE' or 'NEW'."""
                                         await artifact_mgr.upsert_artifact(artifact_path, final_message, action_type="report")
 
                                     # Mark Investigation and tasks as completed in DB
-                                    inv_id = plan_data.get("investigation_id") if isinstance(plan_data, dict) else None
-                                    if inv_id:
-                                        await sync_to_async(lambda: Investigation.objects.filter(id=inv_id).update(status="completed"))()
-                                        await sync_to_async(lambda: InvestigationTask.objects.filter(investigation_id=inv_id).update(status="completed"))()
+                                    # Bug #3 fix: also try resolving inv_id from state_output plan
+                                    _inv_id_final = (plan_data.get("investigation_id") if isinstance(plan_data, dict) else None) \
+                                        or (state_output.get("plan", {}).get("investigation_id") if isinstance(state_output.get("plan"), dict) else None) \
+                                        or inv_id
+                                    if _inv_id_final:
+                                        inv_id = _inv_id_final
+                                        await sync_to_async(lambda _i=inv_id: Investigation.objects.filter(id=_i).update(status="completed"))()
+                                        await sync_to_async(lambda _i=inv_id: InvestigationTask.objects.filter(investigation_id=_i).update(status="completed"))()
+                                        plan_data["_db_completed"] = True  # Bug #2 guard marker
 
 
                                 # Sync Findings
@@ -672,15 +711,16 @@ Reply STRICTLY 'CONTINUE' or 'NEW'."""
                                         await artifact_mgr.upsert_artifact(task_plan_path, json.dumps(new_plan, indent=2), action_type="plan")
                                 
                                     # Sync Tasks to DB
+                                    # Bug #2 fix: skip re-sync if already marked completed
                                     inv_id = new_plan.get("investigation_id")
-                                    if inv_id:
+                                    if inv_id and not plan_data.get("_db_completed", False):
                                         await sync_to_async(
-                                            lambda: Investigation.objects.get_or_create(
-                                                id=inv_id,
+                                            lambda _i=inv_id: Investigation.objects.get_or_create(
+                                                id=_i,
                                                 defaults={"session_id": self.session_id, "title": user_message[:40]}
                                             )
                                         )()
-                                        await sync_to_async(lambda: InvestigationTask.objects.filter(investigation_id=inv_id).delete())()
+                                        await sync_to_async(lambda _i=inv_id: InvestigationTask.objects.filter(investigation_id=_i).delete())()
                                         for idx, t in enumerate(new_tasks):
                                             await sync_to_async(InvestigationTask.objects.create)(
                                                 investigation_id=inv_id,

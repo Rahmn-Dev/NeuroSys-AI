@@ -41,19 +41,30 @@ class CustomJSONEncoder(json.JSONEncoder):
 class SystemMonitorConsumer(AsyncWebsocketConsumer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.last_external_ip = None  # Store the last external IP
+        self.last_external_ip = None
+        self.monitoring_task = None  # ← ADD THIS
+
     async def connect(self):
         await self.accept()
-        await self.send_system_data()
+        self.monitoring_task = asyncio.create_task(self.send_system_data())
 
     async def disconnect(self, close_code):
-        pass
+        if self.monitoring_task:
+            self.monitoring_task.cancel()
+            try:
+                await self.monitoring_task
+            except asyncio.CancelledError:
+                pass
 
     async def send_system_data(self):
-        while True:
-            data = self.get_system_monitor_data()
-            await self.send(text_data=json.dumps(data))
-            await asyncio.sleep(1)  # Update every 5 seconds
+        try:
+            while True:
+                data = self.get_system_monitor_data()
+                await self.send(text_data=json.dumps(data))
+                await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            # Clean exit
+            pass
 
     def get_system_monitor_data(self):
         # Active network connections
@@ -313,44 +324,61 @@ def parse_suricata_log(line):
 from asgiref.sync import sync_to_async  # Import sync_to_async
 
 class SuricataLogConsumer(AsyncWebsocketConsumer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.tail_task = None  # ← ADD THIS
+
     async def connect(self):
         await self.accept()
-        await self.send_suricata_logs()
+        self.tail_task = asyncio.create_task(self.send_suricata_logs())
 
     async def disconnect(self, close_code):
-        pass
+        if self.tail_task:
+            self.tail_task.cancel()
+            try:
+                await self.tail_task
+            except asyncio.CancelledError:
+                pass
 
     async def send_suricata_logs(self):
-        log_file = "/var/log/suricata/fast.log"
-        async for new_line in self.tail_log(log_file):  # Gunakan async for
-            if new_line is None:  # Skip empty lines
-                continue
-            parsed_data = parse_suricata_log(new_line.strip())
-            if not parsed_data:
-                continue 
-            if parsed_data['priority'] not in [1]:
-                continue
-            from chatbot.models import SuricataLog
-            # Use sync_to_async to save the log asynchronously
-            await sync_to_async(SuricataLog.objects.create)(
-                timestamp=parsed_data['timestamp'],
-                message=parsed_data['message'],
-                severity="High" if parsed_data['priority'] >= 3 else "Low",  # Contoh logika severity
-                source_ip=parsed_data['source_ip'],
-                source_port=parsed_data['source_port'],
-                destination_ip=parsed_data['destination_ip'],
-                destination_port=parsed_data['destination_port'],
-                protocol=parsed_data['protocol'],
-                classification=parsed_data['classification'],
-                priority=parsed_data['priority'],
-            )
-            
-            # Send the log message to the WebSocket client
-            await self.send(text_data=json.dumps({
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "message": new_line.strip()
-            }))
-            await asyncio.sleep(0.1)  # Small delay to avoid overload
+        try:
+            log_file = "/var/log/suricata/fast.log"
+            async for new_line in self.tail_log(log_file):  # Gunakan async for
+                if new_line is None:
+                    continue
+                parsed_data = parse_suricata_log(new_line.strip())
+                if not parsed_data:
+                    continue 
+                if parsed_data['priority'] not in [1]:
+                    continue
+                from chatbot.models import SuricataLog
+                # Use sync_to_async to save the log asynchronously
+               
+                try:
+                    await sync_to_async(SuricataLog.objects.create)(
+                        timestamp=parsed_data['timestamp'],
+                        message=parsed_data['message'],
+                        severity="High" if parsed_data['priority'] >= 3 else "Low",  # Contoh logika severity
+                        source_ip=parsed_data['source_ip'],
+                        source_port=parsed_data['source_port'],
+                        destination_ip=parsed_data['destination_ip'],
+                        destination_port=parsed_data['destination_port'],
+                        protocol=parsed_data['protocol'],
+                        classification=parsed_data['classification'],
+                        priority=parsed_data['priority'],
+                    )
+                    
+                    # Send the log message to the WebSocket client
+                    await self.send(text_data=json.dumps({
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "message": new_line.strip()
+                    }))
+
+                except Exception:
+                    break  # Connection closed, exit loop
+                await asyncio.sleep(0.1)  # Small delay to avoid overload
+        except asyncio.CancelledError:
+            pass
 
     async def tail_log(self, file_path):
         with open(file_path, 'r') as file:
@@ -364,14 +392,22 @@ class SuricataLogConsumer(AsyncWebsocketConsumer):
                 yield line.strip()
 
 class ServiceControlConsumer(AsyncWebsocketConsumer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.services_task = None  # ← ADD THIS
     async def connect(self):
             await self.accept()
             # Kirim daftar layanan yang sedang berjalan saat koneksi dibuka
-            await self.get_running_services()
+            self.services_task = asyncio.create_task(self.get_running_services())
             
 
     async def disconnect(self, close_code):
-        pass
+        if self.services_task:
+            self.services_task.cancel()
+            try:
+                await self.services_task
+            except asyncio.CancelledError:
+                pass
 
     async def receive(self, text_data):
         try:
@@ -408,105 +444,109 @@ class ServiceControlConsumer(AsyncWebsocketConsumer):
             return {'status': 'error', 'message': str(e)}
 
     async def get_running_services(self):
-        while True:
-            try:
-                # Jalankan perintah systemctl untuk mendapatkan daftar layanan
-                result = subprocess.run(
-                    ["systemctl", "list-units", "--type=service", "--all", "--no-pager"],
-                    capture_output=True, text=True
-                )
-                services = []
-                lines = result.stdout.split('\n')
+        try:
+            while True:
+                try:
+                    # Jalankan perintah systemctl untuk mendapatkan daftar layanan
+                    result = subprocess.run(
+                        ["systemctl", "list-units", "--type=service", "--all", "--no-pager"],
+                        capture_output=True, text=True
+                    )
+                    services = []
+                    lines = result.stdout.split('\n')
 
-                # Hitung statistik layanan
-                total_services = 0
-                active_services = 0
-                inactive_services = 0
-                failed_services = 0
+                    # Hitung statistik layanan
+                    total_services = 0
+                    active_services = 0
+                    inactive_services = 0
+                    failed_services = 0
 
-                # Proses setiap baris
-                for line in lines:
-                    # Skip baris kosong
-                    if not line.strip():
-                        continue
-                    
-                    # Skip header dan footer
-                    if (line.strip().startswith("UNIT") or 
-                        line.strip().startswith("Legend:") or 
-                        line.strip().startswith("To show all installed unit files") or 
-                        "loaded units listed" in line or
-                        line.strip().startswith("LOAD") or
-                        line.strip().startswith("ACTIVE") or
-                        line.strip().startswith("SUB")):
-                        continue
+                    # Proses setiap baris
+                    for line in lines:
+                        # Skip baris kosong
+                        if not line.strip():
+                            continue
+                        
+                        # Skip header dan footer
+                        if (line.strip().startswith("UNIT") or 
+                            line.strip().startswith("Legend:") or 
+                            line.strip().startswith("To show all installed unit files") or 
+                            "loaded units listed" in line or
+                            line.strip().startswith("LOAD") or
+                            line.strip().startswith("ACTIVE") or
+                            line.strip().startswith("SUB")):
+                            continue
 
-                    # Clean line dari karakter bullet point dan whitespace berlebih
-                    clean_line = line.replace("●", "").strip()
-                    
-                    # Split berdasarkan whitespace
-                    parts = clean_line.split()
-                    
-                    # Pastikan baris memiliki minimal 4 kolom (UNIT, LOAD, ACTIVE, SUB)
-                    if len(parts) < 4:
-                        continue
+                        # Clean line dari karakter bullet point dan whitespace berlebih
+                        clean_line = line.replace("●", "").strip()
+                        
+                        # Split berdasarkan whitespace
+                        parts = clean_line.split()
+                        
+                        # Pastikan baris memiliki minimal 4 kolom (UNIT, LOAD, ACTIVE, SUB)
+                        if len(parts) < 4:
+                            continue
 
-                    # Pastikan ini baris service yang valid
-                    if not parts[0].endswith('.service'):
-                        continue
+                        # Pastikan ini baris service yang valid
+                        if not parts[0].endswith('.service'):
+                            continue
 
-                    total_services += 1
-                    
-                    # Ekstrak informasi layanan
-                    name = parts[0]
-                    load_state = parts[1]
-                    active_state = parts[2] 
-                    sub_state = parts[3]
-                    description = " ".join(parts[4:]) if len(parts) > 4 else "N/A"
+                        total_services += 1
+                        
+                        # Ekstrak informasi layanan
+                        name = parts[0]
+                        load_state = parts[1]
+                        active_state = parts[2] 
+                        sub_state = parts[3]
+                        description = " ".join(parts[4:]) if len(parts) > 4 else "N/A"
 
-                    # Hitung statistik berdasarkan active state
-                    if active_state == "active":
-                        active_services += 1
-                    elif active_state == "inactive":
-                        inactive_services += 1
-                    elif active_state == "failed":
-                        failed_services += 1
+                        # Hitung statistik berdasarkan active state
+                        if active_state == "active":
+                            active_services += 1
+                        elif active_state == "inactive":
+                            inactive_services += 1
+                        elif active_state == "failed":
+                            failed_services += 1
 
-                    # Tentukan status overall
-                    if active_state == "failed" or sub_state == "failed":
-                        status = "failed"
-                    elif active_state == "active":
-                        status = "running"
-                    elif load_state == "not-found":
-                        status = "not-found"
-                    else:
-                        status = "stopped"
+                        # Tentukan status overall
+                        if active_state == "failed" or sub_state == "failed":
+                            status = "failed"
+                        elif active_state == "active":
+                            status = "running"
+                        elif load_state == "not-found":
+                            status = "not-found"
+                        else:
+                            status = "stopped"
 
-                    # Tambahkan ke daftar layanan
-                    services.append({
-                        'name': name,
-                        'status': status,
-                        'active_state': active_state,
-                        'sub_state': sub_state,
-                        'load_state': load_state,
-                        'description': description
-                    })
+                        # Tambahkan ke daftar layanan
+                        services.append({
+                            'name': name,
+                            'status': status,
+                            'active_state': active_state,
+                            'sub_state': sub_state,
+                            'load_state': load_state,
+                            'description': description
+                        })
 
-                # Kirim data layanan ke frontend
-                await self.send(json.dumps({
-                    'status': 'success', 
-                    'services': services, 
-                    'service_stats': {
-                        "total": total_services,
-                        "active": active_services,
-                        "inactive": inactive_services,
-                        "failed": failed_services
-                    }
-                }))
+                    # Kirim data layanan ke frontend
+                    await self.send(json.dumps({
+                        'status': 'success', 
+                        'services': services, 
+                        'service_stats': {
+                            "total": total_services,
+                            "active": active_services,
+                            "inactive": inactive_services,
+                            "failed": failed_services
+                        }
+                    }))
 
-            except Exception as e:
-                await self.send(json.dumps({'status': 'error', 'message': str(e)}))
-            
-            await asyncio.sleep(1)
+                except Exception as e:
+                    await self.send(json.dumps({'status': 'error', 'message': str(e)}))
+                
+                await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            # Clean exit
+            pass
 
 
 # baru ==========================
@@ -902,37 +942,33 @@ from channels.db import database_sync_to_async
 
 
 class SecurityConsumer(AsyncWebsocketConsumer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.stats_task = None  # ← ADD THIS
        
     async def connect(self):
-        await self.channel_layer.group_add(
-            "security_alerts",
-            self.channel_name
-        )
+        await self.channel_layer.group_add("security_alerts", self.channel_name)
         await self.accept()
-        
-        # Send initial data
         await self.send_initial_data()
-        
-        # Kirim stats saat pertama kali connect
         await self.send_security_stats()
-
-        # Mulai pengiriman periodik
-        asyncio.create_task(self.send_periodic_stats())
+        self.stats_task = asyncio.create_task(self.send_periodic_stats())
 
     async def send_periodic_stats(self):
-        while True:
-            try:
+        try:
+            while True:
                 await self.send_security_stats()
-                await asyncio.sleep(1)  # Kirim setiap 30 detik
-            except Exception as e:
-                print("Error sending periodic stats:", str(e))
-                break
+                await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            pass
     async def disconnect(self, close_code):
-        # Leave security alerts group
-        await self.channel_layer.group_discard(
-            "security_alerts",
-            self.channel_name
-        )
+        if self.stats_task:
+            self.stats_task.cancel()
+            try:
+                await self.stats_task
+            except asyncio.CancelledError:
+                pass
+        
+        await self.channel_layer.group_discard("security_alerts", self.channel_name)
     
     async def receive(self, text_data):
         """Handle incoming WebSocket messages"""
@@ -1308,6 +1344,7 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
         selected_file_name = data.get("selected_file_name", None)
         model_name = data.get("model", "mistral-large-latest")
         mode = data.get("mode", "guided")
+        print(f"[CONSUMER DEBUG] WS received model='{model_name}', mode='{mode}', session_id='{session_id}'", flush=True)
 
         try:
             from sre_agent.engine import SREAgentEngine
@@ -1653,7 +1690,7 @@ Respond STRICTLY in the following JSON format (no markdown blocks around the JSO
             from langchain_core.messages import HumanMessage
             
             engine = SREAgentEngine(model_name=model_id)
-            llm = engine._get_llm()
+            llm = await engine._get_llm()
             
             print(f"[ArchitectureConsumer] Invoking LLM with model: {model_id}", flush=True)
             parsed = None

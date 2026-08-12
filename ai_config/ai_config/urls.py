@@ -53,6 +53,7 @@ urlpatterns = [
     path('api/v1/workspace/artifacts/', chatbot_views.artifact_list_api, name='artifact_list_api'),
     path('api/v1/workspace/artifacts/<int:artifact_id>/rollback/', chatbot_views.artifact_rollback_api, name='artifact_rollback_api'),
     path('api/v1/ai-models/', chatbot_views.ai_models_api, name='ai_models_api'),
+    path('api/v1/ai-models/test/', chatbot_views.ai_model_test_api, name='ai_model_test_api'),
     path('api/v1/ai-models/<int:pk>/', chatbot_views.ai_model_detail_api, name='ai_model_detail_api'),
     path('api/sudo-command/', views.sudo_command, name='sudo_command'),
     path('api/get-service-config/<str:service_name>/', views.get_service_config, name='get_service_config'),
