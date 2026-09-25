@@ -71,7 +71,7 @@ class TaskState(TypedDict):
 # ---------------------------------------------------------------------------
 
 class AutonomousController:
-    def __init__(self, llm, tools, system_prompt: str = ""):
+    def __init__(self, llm, tools, system_prompt: str = "", mode: str = "guided"):
         self.llm = llm
         self.tools = tools
         self.tool_node = ToolNode(tools)
@@ -80,7 +80,7 @@ class AutonomousController:
         self.safety = SafetyLayer()
         self.registry = ToolRegistry()
         self.parallel_executor = ParallelExecutor(safety=self.safety)
-        self.worker_scheduler = WorkerScheduler(llm=llm, tool_map=self.tool_map, safety=self.safety)
+        self.worker_scheduler = WorkerScheduler(llm=llm, tool_map=self.tool_map, safety=self.safety, mode=mode)
 
     def build_graph(self):
         workflow = StateGraph(TaskState)

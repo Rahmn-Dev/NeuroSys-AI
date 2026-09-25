@@ -1209,11 +1209,13 @@ class WorkerScheduler:
     MAX_CONCURRENT_WORKERS = 5
 
     def __init__(self, llm, tool_map: Dict[str, Any], safety,
-                 global_threshold: float = GLOBAL_CONFIDENCE_THRESHOLD):
+                 global_threshold: float = GLOBAL_CONFIDENCE_THRESHOLD,
+                 mode: str = "guided"):
         self.llm = llm
         self.tool_map = tool_map
         self.safety = safety
         self.global_threshold = global_threshold
+        self.mode = mode
 
     async def run_workers(
         self,
@@ -1294,8 +1296,11 @@ class WorkerScheduler:
                 # Fix 7: Early Worker Cancellation / Termination Gate.
                 # Cancel remaining workers ONLY when verified deterministic evidence is found 
                 # AND confidence is >= 0.95.
-                if state.confidence.has_verified_evidence and state.confidence.score >= 0.95:
-                    cancel_event.set()
+                # In autonomous_multi mode, we disable early cancellation because we want
+                # all workers (e.g. fix actions and checks) to finish their goals for the iteration report.
+                if self.mode != "autonomous_multi":
+                    if state.confidence.has_verified_evidence and state.confidence.score >= 0.95:
+                        cancel_event.set()
 
         await asyncio.gather(*[run_single(i, spec) for i, spec in enumerate(worker_specs)],
                               return_exceptions=True)

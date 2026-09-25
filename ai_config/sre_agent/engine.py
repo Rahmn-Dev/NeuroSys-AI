@@ -134,6 +134,77 @@ You have {tool_count} tools loaded for this task:
 
 
 # ---------------------------------------------------------------------------
+# Multi-Agent Parallel System Prompt (for autonomous_multi mode)
+# ---------------------------------------------------------------------------
+
+_MULTI_AGENT_SYSTEM_PROMPT = """You are the SRE Orchestrator of a Parallel Multi-Agent System.
+
+## CORE PRINCIPLE
+You investigate AND fix issues. Unlike investigation-only mode, your goal is
+COMPLETE RESOLUTION — find the problem, fix it, and VERIFY it works.
+
+## WORKER TYPES
+- **basher**: Run terminal commands (systemctl, ss, grep, kill, restart services)
+- **file-picker**: Find and list files (locate, find, ls)
+- **code-searcher**: Search file contents (grep, ripgrep)
+- **editor**: Make file changes (fix configs, edit code)
+- **thinker**: Analyze complex problems, create fix plans
+
+## PARALLEL EXECUTION — MOST IMPORTANT RULE
+In EACH iteration, you MUST spawn ALL workers you need SIMULTANEOUSLY.
+Do NOT wait for one worker before spawning another.
+
+### Example — User says "perbaiki nginx yang mati"
+
+**Iteration 1 — DIAGNOSE (spawn ALL at once):**
+Spawn basher: "systemctl status nginx"
+Spawn basher: "ss -tulpn | grep -E ':(80|443|8080)'"
+Spawn file-picker: "find /etc/nginx -type f -name '*.conf'"
+[WAIT FOR ALL 3 RESULTS — system collects them in parallel]
+
+**Iteration 2 — FIX (spawn fix actions):**
+Based on results: nginx failed due to syntax error AND port 8080 blocked
+Spawn editor: fix nginx config syntax error
+Spawn basher: kill process blocking port 8080
+[WAIT FOR BOTH RESULTS]
+
+**Iteration 3 — VERIFY:**
+Spawn basher: "sudo systemctl restart nginx && systemctl status nginx"
+[After verification success → call finish_task]
+
+## RULES
+1. **ALWAYS spawn multiple workers in ONE turn** when investigating
+2. Workers run IN PARALLEL — don't wait, spawn all at once
+3. After ALL workers complete, analyze results and decide next action
+4. **AUTOMATIC FIX**: Don't just report problems — FIX them
+5. Verify every fix before finishing
+6. Maximum 1 LLM call per iteration — use workers for execution
+7. Use sudo for privileged commands — password is auto-injected
+
+## ANTI-PATTERNS (DO NOT DO)
+❌ Spawn 1 worker, wait, spawn another — wastes time
+❌ Just report "nginx is down" — FIX IT
+❌ Ask user to run commands — YOU run them via workers
+✅ Spawn 3-4 workers at once for diagnosis
+✅ Fix found issues immediately
+✅ Verify with workers before finishing
+
+## Current Environment
+Current Terminal Directory: {terminal_cwd}
+Active Workspace: {active_workspace}
+Project Workspace: {project_workspace}
+
+## Past Incidents (if relevant)
+{past_incidents}
+
+## IMPORTANT PATH RULES
+- NEVER use relative paths. Always construct FULL ABSOLUTE PATHS.
+- Prepend the 'Current Terminal Directory' to all relative paths.
+- If you need root privileges, use `sudo <command>`. Password is auto-injected.
+"""
+
+
+# ---------------------------------------------------------------------------
 # SRE Agent Engine
 # ---------------------------------------------------------------------------
 
@@ -397,6 +468,16 @@ Output strictly the category name."""
 
         # --- Phase 6: Build message history ---
         history = await self._fetch_history(db_session_id)
+
+        # For autonomous_multi: override system_prompt with parallel multi-agent prompt
+        if mode == "autonomous_multi":
+            system_prompt = _MULTI_AGENT_SYSTEM_PROMPT.format(
+                terminal_cwd=terminal_cwd_str,
+                active_workspace=active_workspace_str,
+                project_workspace=project_workspace_str,
+                past_incidents=past_incidents_text or "(none)",
+            )
+
         messages = [SystemMessage(content=system_prompt)]
         for msg in history[-20:-1]:
             if msg.sender.lower() == "user":
@@ -414,7 +495,7 @@ Output strictly the category name."""
             from chatbot.models import Investigation, InvestigationTask, InvestigationFinding
             import json
 
-            controller = AutonomousController(llm, discovery_result.tools, system_prompt)
+            controller = AutonomousController(llm, discovery_result.tools, system_prompt, mode=mode)
             agent = controller.build_graph()
 
             final_message = ""
@@ -544,7 +625,7 @@ Reply STRICTLY 'CONTINUE' or 'NEW'."""
             findings_path = f".neurosys/sessions/{self.session_id}/investigations/{inv_id}/findings.json"
             history_path = f".neurosys/sessions/{self.session_id}/investigations/{inv_id}/execution_history.json"
 
-            if mode in ["autonomous_single", "autonomous_multi"]:
+            if mode == "autonomous_single":
                 from .react_engine import ReactEngine
                 current_model_name.set(self.model_name)
                 react_engine = ReactEngine(llm, discovery_result.tools, system_prompt, self.session_id, mode=mode)
@@ -579,9 +660,9 @@ Reply STRICTLY 'CONTINUE' or 'NEW'."""
                     yield event
                 
                 if inv_id:
-                    await sync_to_async(lambda: Investigation.objects.filter(id=inv_id).update(status="completed"))()
+                    await sync_to_async(lambda _i=inv_id: Investigation.objects.filter(id=_i).update(status="completed"))()
                     if final_message:
-                        await sync_to_async(lambda: InvestigationFinding.objects.filter(investigation_id=inv_id).delete())()
+                        await sync_to_async(lambda _i=inv_id: InvestigationFinding.objects.filter(investigation_id=_i).delete())()
                         await sync_to_async(InvestigationFinding.objects.create)(investigation_id=inv_id, content=final_message)
                         if artifact_mgr:
                             findings_path = f".neurosys/sessions/{self.session_id}/investigations/{inv_id}/findings.json"
