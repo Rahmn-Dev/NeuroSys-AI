@@ -411,7 +411,12 @@ def normalize_provider_error(exc: Exception) -> dict:
         category = "rate_limit"
     elif "context" in text or "token" in text and "limit" in text:
         category = "context_overflow"
-    elif status and int(status) >= 500 or any(x in text for x in ("timeout", "timed out", "connection")):
+    elif status and int(status) >= 500 or any(x in text for x in (
+        "timeout", "timed out", "connection",
+        "name resolution", "gaierror", "failed to resolve", "dns",
+        "temporary failure", "no such host", "network is unreachable",
+        "name or service not known", "nodename nor servname",
+    )):
         category = "transient"
     elif "json" in text or "parse" in text:
         category = "malformed"

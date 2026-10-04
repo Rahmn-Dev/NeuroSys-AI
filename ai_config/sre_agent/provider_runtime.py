@@ -176,7 +176,7 @@ async def invoke_provider_chain(callers: dict[str, Callable[[], Awaitable[Any]]]
 
 
 async def invoke_with_retry(call: Callable[[], Awaitable[Any]], *, max_attempts: int = 3,
-                            base_delay: float = 0.05, cancel_event: asyncio.Event | None = None,
+                            base_delay: float = 0.5, cancel_event: asyncio.Event | None = None,
                             on_retry: Callable[[dict, int], Any] | None = None) -> Any:
     """Retry transient/rate-limit/malformed failures only, with bounded backoff."""
     attempt = 0
