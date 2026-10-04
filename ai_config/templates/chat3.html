@@ -2551,10 +2551,19 @@
       };
 
       try {
-        const res = await fetch('/api/v1/chat-sessions/');
+        // Pagination: first page resets the list; subsequent pages append.
+        // `window.__historyAppend` is set by the Load More button.
+        const appendMode = window.__historyAppend === true;
+        const url = appendMode
+          ? `/api/v1/chat-sessions/?limit=50&offset=${window.__historyOffset || 0}`
+          : '/api/v1/chat-sessions/?limit=50';
+        const res = await fetch(url);
         const data = await res.json();
         const list = document.getElementById('history-list');
-        list.innerHTML = '';
+        if (!appendMode) {
+          list.innerHTML = '';
+          window.__historyOffset = 0;
+        }
         let sessions = data.results || data;
 
         sessions.forEach(sess => {
@@ -2609,17 +2618,37 @@
 
         updateBulkSelectedCount();
 
+        window.__historyOffset = (window.__historyOffset || 0) + sessions.length;
+        window.__historyAppend = false;
+        const oldLoadMore = document.getElementById('history-load-more');
+        if (oldLoadMore) oldLoadMore.remove();
+        const total = typeof data.count === 'number' ? data.count : null;
+        if ((data.next) || (total !== null && window.__historyOffset < total)) {
+          const btn = document.createElement('button');
+          btn.id = 'history-load-more';
+          btn.type = 'button';
+          btn.style.cssText = 'margin: 8px 4px; width: calc(100% - 8px); padding: 6px; border-radius: 8px; border: 1px dashed var(--border-color); background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 12px;';
+          btn.innerHTML = `<i class="fa-solid fa-ellipsis"></i> Load more (${window.__historyOffset}${total !== null ? '/' + total : ''})`;
+          btn.onclick = () => {
+            window.__historyAppend = true;
+            loadHistory();
+          };
+          list.appendChild(btn);
+        }
+
         // ONLY auto-load if there's a URL param AND no current session
-        const urlParams = new URLSearchParams(window.location.search);
-        const urlSessionId = urlParams.get('session');
-        if (urlSessionId && !sessionId) {
-          sessionId = urlSessionId;
-          const el = document.getElementById('history-item-' + sessionId);
-          if (el) el.classList.add('active');
-          loadSession(sessionId);
-        } else if (!sessionId && !urlSessionId) {
-          // No session at all - start new chat
-          window.startNewChat();
+        if (!appendMode) {
+          const urlParams = new URLSearchParams(window.location.search);
+          const urlSessionId = urlParams.get('session');
+          if (urlSessionId && !sessionId) {
+            sessionId = urlSessionId;
+            const el = document.getElementById('history-item-' + sessionId);
+            if (el) el.classList.add('active');
+            loadSession(sessionId);
+          } else if (!sessionId && !urlSessionId) {
+            // No session at all - start new chat
+            window.startNewChat();
+          }
         }
         // If sessionId already exists (from WebSocket), DON'T reload
 

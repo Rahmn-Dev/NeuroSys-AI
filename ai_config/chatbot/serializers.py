@@ -31,6 +31,18 @@ class InvestigationSerializer(serializers.ModelSerializer):
         fields = ['id', 'session', 'title', 'status', 'parent', 'relation_type', 'case_kind',
                   'goal_signature', 'created_at', 'updated_at', 'tasks', 'findings']
 
+class ChatSessionListSerializer(serializers.ModelSerializer):
+    """Lightweight row for the history sidebar: no nested messages and
+    investigations. The previous default serializer nested both, which made
+    GET /api/v1/chat-sessions/ several MB on every page load."""
+
+    message_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = models.ChatSession
+        fields = ['id', 'title', 'created_at', 'updated_at', 'message_count']
+
+
 class ChatSessionSerializer(serializers.ModelSerializer):
     messages = ChatMessageSerializer(many=True, read_only=True)
     investigations = InvestigationSerializer(many=True, read_only=True)

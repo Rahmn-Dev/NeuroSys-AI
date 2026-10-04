@@ -1,6 +1,8 @@
 from rest_framework import viewsets, status, permissions
 from rest_framework.response import Response
 from rest_framework.decorators import action
+from rest_framework.pagination import LimitOffsetPagination
+from django.db.models import Count
 from . import models
 from .serializers import ChatSessionSerializer, ChatMessageSerializer
 from . import serializers
@@ -8,10 +10,27 @@ from rest_framework.decorators import api_view, permission_classes
 from sre_agent.approvals import request_approval, approve, deny
 from sre_agent.security_boundary import audit
 from django.db import transaction
+class ChatSessionPagination(LimitOffsetPagination):
+    default_limit = 50
+    max_limit = 200
+
+
 class ChatSessionViewSet(viewsets.ModelViewSet):
     queryset = models.ChatSession.objects.all().order_by('-updated_at')
     serializer_class = ChatSessionSerializer
     permission_classes = [permissions.AllowAny]
+    pagination_class = ChatSessionPagination
+
+    def get_queryset(self):
+        return (super().get_queryset()
+                .annotate(message_count=Count('messages', distinct=True)))
+
+    def get_serializer_class(self):
+        # The sidebar list must be cheap: detail rows (messages + nested
+        # investigations) are only needed by the single-session endpoints.
+        if self.action == 'list':
+            return serializers.ChatSessionListSerializer
+        return self.serializer_class
 
     # Custom action untuk mengirim pesan ke sesi tertentu
     @action(detail=True, methods=['post'])

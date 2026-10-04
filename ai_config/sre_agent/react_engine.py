@@ -266,19 +266,52 @@ Do NOT stop calling tools until you are ready to call `finish_task`.
         # in the same Task Plan UI as guided mode and persisted for reloads.
         single_plan = None
         if self.mode == "autonomous_single":
-            single_plan = {
-                "investigation_id": str((initial_state.get("plan") or {}).get("investigation_id") or ""),
-                "title": str(goal or "")[:40],
-                "tasks": [
-                    {"id": "S1", "description": "Gather evidence with read-only tools",
-                     "status": "running", "completed": False},
-                    {"id": "S2", "description": "Execute actions and verify results",
-                     "status": "pending", "completed": False},
-                    {"id": "S3", "description": "Finish and report",
-                     "status": "pending", "completed": False},
-                ],
-                "completed": False,
-            }
+            # A 'continue' against an existing investigation must not start a
+            # fresh checklist: carry the statuses forward so the operator sees
+            # where the previous run stopped and the agent picks up from the
+            # next open task. The message history already carries the prior
+            # tool calls, so the model itself also resumes mid-thought.
+            prior_tasks = (initial_state.get("plan") or {}).get("tasks") or []
+            carried_id = str((initial_state.get("plan") or {}).get("investigation_id") or "")
+            if prior_tasks:
+                single_plan = {
+                    "investigation_id": carried_id,
+                    "title": str(goal or "")[:40],
+                    "tasks": [
+                        {
+                            "id": str(t.get("id", idx + 1)),
+                            "description": str(t.get("description") or t.get("title") or ""),
+                            "status": str(t.get("status") or "pending"),
+                            "completed": bool(t.get("completed"))
+                                or str(t.get("status", "")).lower() in ("completed", "done"),
+                        }
+                        for idx, t in enumerate(prior_tasks)
+                    ],
+                    "completed": all(
+                        bool(t.get("completed")) or str(t.get("status", "")).lower() in ("completed", "done")
+                        for t in prior_tasks
+                    ),
+                }
+                # Whatever step was in flight last run resumes as running.
+                if not single_plan["completed"]:
+                    for t in single_plan["tasks"]:
+                        if t["status"] in ("running", "in_progress", "pending"):
+                            t["status"] = "running" if not t["completed"] else "completed"
+                            break
+            else:
+                single_plan = {
+                    "investigation_id": carried_id,
+                    "title": str(goal or "")[:40],
+                    "tasks": [
+                        {"id": "S1", "description": "Gather evidence with read-only tools",
+                         "status": "running", "completed": False},
+                        {"id": "S2", "description": "Execute actions and verify results",
+                         "status": "pending", "completed": False},
+                        {"id": "S3", "description": "Finish and report",
+                         "status": "pending", "completed": False},
+                    ],
+                    "completed": False,
+                }
             yield evt_task_plan(single_plan)
             await self._sync_single_plan_tasks(single_plan)
 
