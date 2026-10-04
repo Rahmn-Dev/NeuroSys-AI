@@ -103,6 +103,7 @@ class AgentEventType(str, enum.Enum):
     PROVIDER_FALLBACK = "provider_fallback"
     VERIFYING = "verifying"
     RESUMING = "resuming"
+    DIRECT_CHAT = "direct_chat"
 
 
 def public_text(value):
@@ -176,6 +177,11 @@ class AgentEvent:
 # ---------------------------------------------------------------------------
 # Convenience constructors
 # ---------------------------------------------------------------------------
+
+def evt_direct_chat(msg: str = "Direct answer, no tools needed") -> AgentEvent:
+    """Marker: this turn was answered directly, with no agent tooling."""
+    return AgentEvent(type=AgentEventType.DIRECT_CHAT, content=msg)
+
 
 def evt_status(msg: str) -> AgentEvent:
     return AgentEvent(type=AgentEventType.STATUS, content=msg)

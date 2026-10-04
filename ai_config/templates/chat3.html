@@ -1572,6 +1572,18 @@
           }
           break;
 
+        case 'direct_chat':
+          // Plain conversation: the answer was produced without any tool, so
+          // there is no run to show. Close the card and let the answer speak.
+          if (window.activeRunWrap) {
+            paintRunWrap(window.activeRunWrap.dataset.wrapId, 'answered');
+            if (window.activeRunOrb) window.applyOrbTo(window.activeRunOrb, 'done');
+            window.activeRunOrb = null;
+            window.activeRunWrap = null;
+          }
+          setBeamRunning(false);
+          break;
+
         case 'exploring':
           // Safety net: if no run container is active (e.g. stream resumed
           // without a fresh submit), open one so steps stay grouped.
@@ -2294,6 +2306,11 @@
     };
 
     function paintRunWrap(wrapId, status, duration) {
+      if (status === 'answered') {
+        const answered = document.getElementById(wrapId);
+        if (answered) answered.style.display = 'none';
+        return;
+      }
       const pill = document.getElementById(wrapId + '-pill');
       const dur = document.getElementById(wrapId + '-dur');
       const spin = document.getElementById(wrapId + '-spin');

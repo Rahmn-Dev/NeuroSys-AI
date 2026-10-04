@@ -46,7 +46,7 @@ from .events import (
     evt_hypothesis, evt_resolution_plan,
     evt_parallel_start, evt_parallel_progress, evt_parallel_complete,
     evt_approval_required, evt_security_blocked, AgentEventType,
-    evt_lifecycle, evt_verifying
+    evt_lifecycle, evt_verifying, evt_direct_chat
 )
 from .memory import LongTermMemory, ShortTermMemory, WorkspaceMemory
 from .safety import SafetyLayer, SafetyVerdict
@@ -412,6 +412,67 @@ class SREAgentEngine:
             )
 
 
+    async def _run_direct_chat(
+        self,
+        user_message: str,
+        terminal_cwd: Optional[str] = None,
+        active_workspace: Optional[str] = None,
+        selected_file: Optional[str] = None,
+    ) -> AsyncGenerator[AgentEvent, None]:
+        """Plain conversation: stream one answer, bind no tools, log no case."""
+        from langchain_core.messages import HumanMessage, SystemMessage
+        from chatbot.models import ChatSession
+
+        start_time = time.time()
+        db_session_id = await self._get_or_create_session()
+        self.session_id = str(db_session_id)
+        yield evt_session_id(str(db_session_id))
+
+        session_obj = await sync_to_async(ChatSession.objects.get)(id=db_session_id)
+        if session_obj.title == "New Chat":
+            title = user_message[:40] + "..." if len(user_message) > 40 else user_message
+            session_obj.title = title
+            await sync_to_async(session_obj.save)(update_fields=["title"])
+            yield evt_session_title(title)
+
+        await self._save_message(db_session_id, "user", user_message)
+
+        llm = await self._get_llm()
+        messages = [
+            SystemMessage(content=direct_chat_prompt(terminal_cwd, active_workspace, selected_file)),
+            HumanMessage(content=user_message),
+        ]
+
+        answer = ""
+        try:
+            async for chunk in llm.astream(messages):
+                content = chunk.content if isinstance(chunk.content, str) else str(chunk.content or "")
+                if content:
+                    answer += content
+                    yield evt_message_chunk(answer)
+        except Exception:
+            # Never swallow the turn: fall back to the full agent pipeline.
+            async for event in self._run_internal(
+                user_message, terminal_cwd, active_workspace, selected_file,
+                None, "autonomous_single", "need_approval",
+            ):
+                yield event
+            return
+
+        answer = (answer or "").strip()
+        if not answer:
+            async for event in self._run_internal(
+                user_message, terminal_cwd, active_workspace, selected_file,
+                None, "autonomous_single", "need_approval",
+            ):
+                yield event
+            return
+
+        await self._save_message(db_session_id, "ai", answer)
+        yield evt_direct_chat("Direct answer, no tools needed")
+        yield evt_message_chunk(answer)
+        yield evt_completed(answer, duration=time.time() - start_time)
+
     async def _run_internal(self, user_message: str, terminal_cwd: Optional[str] = None, active_workspace: Optional[str] = None, selected_file: Optional[str] = None, selected_file_name: Optional[str] = None, mode: str = "guided", permission_mode: str = "need_approval") -> AsyncGenerator[AgentEvent, None]:
         """
         Internal loop — runs the full agent loop and yields events.
@@ -430,6 +491,17 @@ class SREAgentEngine:
                      scope=self.operational_scope, goal=user_message)
         from .approvals import bind_approval_id
         bind_approval_id(self.approval_id)
+
+        # --- Everyday conversation: answer directly, touch nothing ---
+        # Runs before the case/plan pipeline and without any provider call, so
+        # a greeting never pays for tools, discovery or a case in the graph.
+        from .direct_chat import is_direct_conversation, direct_chat_prompt
+        if is_direct_conversation(user_message):
+            async for event in self._run_direct_chat(
+                user_message, terminal_cwd, active_workspace, selected_file,
+            ):
+                yield event
+            return
 
         # --- Phase 1: Session setup ---
         db_session_id = await self._get_or_create_session()
