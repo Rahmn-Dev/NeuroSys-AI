@@ -1905,6 +1905,7 @@
         <div id="${wrapId}-body" style="padding: 10px 10px 10px 18px; border-left: 2px solid var(--accent); margin: 4px 0 4px 20px; display: flex; flex-direction: column; gap: 8px; max-height: 420px; overflow-y: auto;"></div>
       `;
       messagesDiv.appendChild(wrap);
+      window.agentAutoScroll = true;
       setBeamRunning(true);
       const body = document.getElementById(wrapId + '-body');
       body.dataset.wrapId = wrapId;
@@ -1944,6 +1945,7 @@
       const wrapId = body.dataset.wrapId;
       paintRunWrap(wrapId, status, duration);
       setBeamRunning(false);
+      window.agentAutoScroll = false;
       // Stay OPEN so the just-finished run stays visible; it collapses when
       // the next run starts (startRunWrap) or via manual toggle.
       window.activeRunWrap = null;
@@ -2091,9 +2093,11 @@
 
       // Scroll the run container itself when the step lives inside one,
       // so reading the runner never yanks the whole chat history.
+      // Never fight the operator while they are reviewing an old run.
       const _host = stepDiv.parentElement;
+      const _live = !window.isLoadingHistory && window.agentAutoScroll !== false;
       if (_host && _host.id && /-body$/.test(_host.id)) {
-        _host.scrollTop = _host.scrollHeight;
+        if (_live) _host.scrollTop = _host.scrollHeight;
       } else {
         scrollToBottom();
       }
@@ -2421,7 +2425,14 @@
       container.innerHTML = html;
     }
 
+    // Auto-scroll is a live-run convenience, not a navigation lock:
+    // it follows the newest chunk only while a run is active. Loading a
+    // past session or scrolling through it must never be overridden, and a
+    // run that already ended must not keep yanking the page down.
+    window.agentAutoScroll = true;
     function scrollToBottom() {
+      if (window.isLoadingHistory) return;
+      if (window.agentAutoScroll === false) return;
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
@@ -3034,6 +3045,7 @@
         });
         window.isLoadingHistory = false;
         window.activeRunWrap = null;
+        window.agentAutoScroll = false;
         ensureConnectionCard();
         lucide.createIcons();
         loadArtifacts();
