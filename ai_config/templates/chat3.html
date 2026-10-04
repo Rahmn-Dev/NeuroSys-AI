@@ -162,9 +162,11 @@
   }
 
   .sre-msg-ai {
-    background: var(--bg-panel) !important;
-    border: 1px solid var(--border-color) !important;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    /* The wrapper row merely holds the avatar + bubble card; the card itself
+       contributes the background/border/shadow, so nothing more here. */
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
   }
 
   .lucide {
