@@ -595,6 +595,44 @@ Do NOT stop calling tools until you are ready to call `finish_task`.
                 break
 
         if not self.completed and iteration >= max_iterations:
+            # Never end on "reply continue": synthesise an answer from whatever
+            # evidence the run already gathered, and say what is still unverified.
+            summary = ""
+            evidence_lines = []
+            try:
+                steps = [str(m.content) for m in history if getattr(m, "type", "") == "tool"]
+                evidence_lines = steps[-12:]
+            except Exception:
+                evidence_lines = []
+            synth_prompt = (
+                "The investigation reached its step budget without calling finish_task. "
+                "Write the operator's answer NOW from the evidence below. State the "
+                "conclusion, the evidence that supports it, anything still unverified, "
+                "and the single most useful next step. Do not call any tool, do not plan, "
+                "and do not ask to continue.\n\nRecent tool results:\n"
+                + ("\n".join(evidence_lines) or "(none captured)")
+            )
+            try:
+                from .provider_runtime import invoke_with_retry
+                final = await invoke_with_retry(
+                    lambda: self.llm.ainvoke(history + [HumanMessage(content=synth_prompt)])
+                )
+                summary = (getattr(final, "content", "") or "")
+                if not isinstance(summary, str):
+                    summary = str(summary)
+            except Exception:
+                summary = ""
+
+            if summary.strip():
+                self.outcome = "completed"
+                self.completed = True
+                self.completion_summary = summary.strip()
+                yield evt_status(f"Step budget reached ({max_iterations}); answering from the evidence gathered.")
+                yield evt_message_chunk(summary.strip())
+                if lifecycle:
+                    await lifecycle.atransition("finalization", "completed", "budget_synthesis", {"iterations": iteration})
+                return
+
             self.outcome = "paused"
             yield evt_status(
                 f"Step budget reached ({max_iterations}). The case is still active - "

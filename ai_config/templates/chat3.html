@@ -2973,6 +2973,12 @@
 
     window.cancelRunForSession = function (sid) {
       if (!sid) return;
+      document.querySelectorAll('.sre-run-actions').forEach((block) => {
+        if (String(block.dataset.sessionId) === String(sid)) {
+          block.innerHTML = '<span style="font-size:11px; color:var(--text-secondary);">Cancelled.</span>';
+          block.dataset.consumed = '1';
+        }
+      });
       if (window.runsBySession && window.runsBySession[String(sid)]) {
         try {
           if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'cancel', session_id: String(sid) }));
@@ -4637,6 +4643,15 @@
         const inputEl = document.getElementById('chat-input') || (typeof input !== 'undefined' ? input : null);
         const formEl = (typeof form !== 'undefined' && form) ? form : (inputEl ? inputEl.form : null);
         if (!inputEl || !formEl) return;
+        // Consume the affordance: once pressed, Retry/Cancel must not linger.
+        const owner = forSessionId || window.continueSessionId || sessionId;
+        document.querySelectorAll('.sre-run-actions').forEach((block) => {
+          if (String(block.dataset.sessionId) === String(owner)) {
+            block.innerHTML = '<span style="font-size:11px; color:var(--text-secondary);">' +
+              '<i class="fa-solid fa-circle-notch spin-anim" style="font-size:9px;"></i> Resuming…</span>';
+            block.dataset.consumed = '1';
+          }
+        });
         inputEl.value = 'continue';
         if (formEl.requestSubmit) formEl.requestSubmit();
         else formEl.dispatchEvent(new Event('submit', { cancelable: true }));
