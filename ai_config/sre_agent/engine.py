@@ -457,6 +457,7 @@ class SREAgentEngine:
         # Recent conversation is the whole point of a direct answer: a question
         # about the previous case can only be answered from what was said.
         # Fetched before the new turn is stored so it is not duplicated.
+        from .direct_chat import direct_chat_prompt
         from .memory_graph import relevant_prior_turns
         raw_history = await self._fetch_history(db_session_id, limit=24)
         history = await sync_to_async(relevant_prior_turns)(user_message, raw_history)

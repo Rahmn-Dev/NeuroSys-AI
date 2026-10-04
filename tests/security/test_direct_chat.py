@@ -216,3 +216,26 @@ def test_bare_continuation_words_are_recognised(message):
 def test_resume_ttl_setting_has_a_default():
     from django.conf import settings
     assert getattr(settings, "SRE_RESUME_TTL_MINUTES", 180) == 180
+
+
+# --- regression: locally imported helpers must be imported where they are used -
+
+import inspect  # noqa: E402
+
+from sre_agent.engine import SREAgentEngine  # noqa: E402
+
+
+def test_run_direct_chat_imports_every_helper_it_calls():
+    """A function-local import does not leak: a missing one is a NameError at
+    runtime, which surfaced as an opaque provider_error."""
+    source = inspect.getsource(SREAgentEngine._run_direct_chat)
+    for helper in ("direct_chat_prompt", "relevant_prior_turns"):
+        assert f"import {helper}" in source, f"{helper} is used but never imported"
+
+
+def test_conversation_branch_imports_its_domain_clamp():
+    source = inspect.getsource(SREAgentEngine._run_internal)
+    assert "import SRE_DOMAIN_CLAMP" in source
+    # the router call lives in a tuple import, so match the module import
+    assert "from .direct_chat import" in source
+    assert "route_turn(" in source
