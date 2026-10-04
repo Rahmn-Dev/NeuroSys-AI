@@ -158,6 +158,20 @@ def agent_permission(request):
     return Response({"mode": profile.agent_permission_mode})
 
 
+@api_view(["GET", "PUT"])
+@permission_classes([permissions.IsAuthenticated])
+def suricata_alerts(request):
+    """Read/toggle the Suricata notification toast preference for this user."""
+    profile, _ = models.Profile.objects.get_or_create(user=request.user)
+    if request.method == "GET":
+        return Response({"enabled": profile.suricata_alerts_enabled})
+    enabled = request.data.get("enabled")
+    if isinstance(enabled, bool):
+        profile.suricata_alerts_enabled = enabled
+        profile.save(update_fields=["suricata_alerts_enabled"])
+    return Response({"enabled": profile.suricata_alerts_enabled})
+
+
 @api_view(["POST"])
 @permission_classes([permissions.IsAuthenticated])
 def approval_request(request):

@@ -63,6 +63,7 @@
         notifications: [], // Menyimpan daftar notifikasi
         unreadCount: 0, // Jumlah notifikasi yang belum dibaca
         suricataStatus: 'connecting',
+        suricataAlertsEnabled: true,
         suricataRetryAttempt: 0,
         suricataReconnectTimer: null,
         suricataHeartbeatTimer: null,
@@ -110,8 +111,8 @@
                 // Parse log untuk mendapatkan prioritas
                 const priority = parseSuricataLog(data.message);
 
-                // Filter hanya notifikasi dengan prioritas 2
-                // if (priority === 2) {
+                // Gate: user can silence these toasts with the header toggle.
+                if (window.suricataAlertsEnabled !== false) {
                     // Tambahkan notifikasi baru ke daftar
                     this.notifications.unshift(data);
                     this.unreadCount++;
@@ -120,17 +121,20 @@
                     document.getElementById('notification-badge').innerText = this.unreadCount;
                     document.getElementById('notification-badge').style.display = 'inline-block';
 
-                    // Tampilkan notifikasi SweetAlert2
+                    // Tampilkan notifikasi SweetAlert2 dengan ringkasan yang manusia-bisa-baca
+                    const info = parseSuricataEve(data.message);
                     Swal.fire({
-                        title: 'Suricata Alert!',
-                        text: data.message,
+                        title: info ? info.signature : 'Suricata Alert!',
+                        text: info
+                            ? (info.src + ' → ' + info.dst + ' · ' + info.category + ' · sev ' + info.severity + (info.sni ? ' · ' + info.sni : ''))
+                            : data.message,
                         icon: 'warning',
                         toast: true,
                         position: 'top-end',
                         showConfirmButton: false,
-                        timer: 3000,
+                        timer: 4500,
                     });
-                // }
+                }
             };
 
             socket.onerror = () => { this.setSuricataStatus('error'); };
@@ -149,11 +153,15 @@
             // Tampilkan daftar notifikasi dalam modal SweetAlert2
             Swal.fire({
                 title: 'Notifications',
-                html: this.notifications.map((notif, index) => `
-                    <div style="margin-bottom: 10px;">
-                        <strong>${notif.timestamp}</strong>: ${notif.message}
-                    </div>
-                `).join(''),
+                html: this.notifications.map((notif) => {
+                    const info = parseSuricataEve(notif.message);
+                    return `
+                    <div style="margin-bottom: 10px; padding: 10px 12px; border: 1px solid var(--border-color, #2d333b); border-radius: 10px; background: rgba(127,140,160,.04);">
+                        <div style="font-weight: 700; margin-bottom: 2px;">${info ? info.signature : 'Suricata Alert!'}</div>
+                        <div style="font-size: 11px; opacity: .65;">${notif.timestamp || ''} · ${info ? info.src + ' → ' + info.dst : ''}</div>
+                        <div style="font-size: 11px; margin-top: 2px;">${info ? info.category + ' · severity ' + info.severity + (info.sni ? ' · ' + info.sni : '') : notif.message}</div>
+                    </div>`;
+                }).join(''),
                 showCloseButton: true,
                 showConfirmButton: false,
                 width: '500px',
@@ -169,6 +177,16 @@
 
         // Tambahkan event listener untuk tombol notifikasi
         document.getElementById('notification-btn').addEventListener('click', this.showNotifications);
+
+        // Load dan bind preferensi toast Suricata (persisten per user).
+        window.suricataAlertsEnabled = (typeof window.suricataAlertsEnabled === 'boolean') ? window.suricataAlertsEnabled : true;
+        loadSuricataAlertsPref();
+        const toggleBtn = document.getElementById('alert-toggle');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', () => {
+                setSuricataAlertsEnabled(!(window.suricataAlertsEnabled !== false));
+            });
+        }
     },
 });
 
@@ -181,6 +199,72 @@ function parseSuricataLog(message) {
         return parseInt(match[1], 10); // Ambil nilai Priority sebagai integer
     }
     return null; // Jika tidak ditemukan, kembalikan null
+}
+
+// Extract a readable summary from a raw Suricata EVE JSON object.
+function parseSuricataEve(raw) {
+    try {
+        const evt = (typeof raw === 'string') ? JSON.parse(raw) : raw;
+        const al = evt.alert || {};
+        const src = evt.src_ip ? (evt.src_ip + ':' + (evt.src_port || '')) : '?';
+        const dst = evt.dest_ip ? (evt.dest_ip + ':' + (evt.dest_port || '')) : '?';
+        return {
+            signature: al.signature || 'Suricata alert',
+            category: al.category || al.metadata?.category || '-',
+            severity: al.severity ? String(al.severity) : '-',
+            src: src,
+            dst: dst,
+            proto: evt.proto || evt.app_proto || '',
+            direction: evt.direction || '',
+            sni: (evt.tls && evt.tls.sni) || '',
+        };
+    } catch (e) {
+        return null;
+    }
+}
+
+function csrfCookie() {
+    const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]*)/);
+    return m ? decodeURIComponent(m[1]) : '';
+}
+
+async function loadSuricataAlertsPref() {
+    try {
+        const r = await fetch('/api/v1/suricata-alerts/');
+        if (!r.ok) return;
+        const d = await r.json();
+        window.suricataAlertsEnabled = d.enabled !== false;
+    } catch (e) { window.suricataAlertsEnabled = true; }
+    paintSuricataToggle();
+}
+
+async function setSuricataAlertsEnabled(enabled) {
+    window.suricataAlertsEnabled = !!enabled;
+    try {
+        await fetch('/api/v1/suricata-alerts/', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfCookie() },
+            body: JSON.stringify({ enabled: !!enabled })
+        });
+    } catch (e) {
+        console.warn('Failed to persist alert preference', e);
+    }
+    paintSuricataToggle();
+}
+
+function paintSuricataToggle() {
+    const icon = document.getElementById('alert-toggle-icon');
+    const btn = document.getElementById('alert-toggle');
+    if (!icon || !btn) return;
+    if (window.suricataAlertsEnabled === false) {
+        icon.className = 'fa-solid fa-bell-slash';
+        btn.title = 'Suricata toasts are OFF - click to turn on';
+        btn.setAttribute('aria-pressed', 'false');
+    } else {
+        icon.className = 'fa-solid fa-bell';
+        btn.title = 'Suricata toasts are ON - click to turn off';
+        btn.setAttribute('aria-pressed', 'true');
+    }
 }
 </script>
 {% block script %}

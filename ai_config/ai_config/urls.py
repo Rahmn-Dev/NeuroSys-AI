@@ -19,7 +19,7 @@ from django.urls import path, include
 from . import views
 from chatbot.api import (ChatSessionViewSet, ChatMessageViewSet, SuricataLogsViewSet,
                          approval_request, approval_allow_once, approval_deny)
-from chatbot.api import agent_permission
+from chatbot.api import agent_permission, suricata_alerts
 from rest_framework.routers import DefaultRouter
 from chatbot import views as chatbot_views
 router = DefaultRouter()
@@ -54,6 +54,7 @@ urlpatterns = [
     path('api/v1/approvals/<int:approval_id>/allow-once/', approval_allow_once, name='approval_allow_once'),
     path('api/v1/approvals/<int:approval_id>/deny/', approval_deny, name='approval_deny'),
     path('api/v1/agent-permission/', agent_permission, name='agent_permission'),
+    path('api/v1/suricata-alerts/', suricata_alerts, name='suricata_alerts'),
     path('api/v1/workspace/tree/', chatbot_views.workspace_tree_api, name='workspace_tree_api'),
     path('api/v1/workspace/file/', chatbot_views.workspace_file_api, name='workspace_file_api'),
     path('api/v1/workspace/artifacts/', chatbot_views.artifact_list_api, name='artifact_list_api'),
