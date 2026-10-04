@@ -321,33 +321,43 @@
     isolation: isolate;
   }
 
+  /* Palette: soft, low-saturation sweep (like a refined color picker)
+     instead of a harsh rainbow. Symmetric stops keep the blend silky. */
   .beam-layer {
     position: absolute;
     inset: 0;
     border-radius: 29px;
-    padding: 2px;
+    padding: 1.5px;
     background: conic-gradient(from var(--beam-angle),
-        #58a6ff, #8957e5, #d29922, #3fb950, #f778ba, #58a6ff);
+        #7c8cf8 0%,
+        #a996ef 14%,
+        #8fb6f0 28%,
+        #74cfc4 42%,
+        #8fb6f0 58%,
+        #b294ec 72%,
+        #7c8cf8 86%,
+        #7c8cf8 100%);
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite: xor;
     mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     mask-composite: exclude;
     animation: beam-spin 9s linear infinite;
-    opacity: 0.5;
+    opacity: 0.32;
+    filter: saturate(0.85);
     pointer-events: none;
-    transition: opacity 0.35s ease;
+    transition: opacity 0.35s ease, filter 0.35s ease;
     z-index: 0;
   }
 
   .beam-wrap.beam-running .beam-layer {
-    animation-duration: 1.8s;
-    opacity: 1;
-    filter: drop-shadow(0 0 7px rgba(88, 166, 255, 0.55));
+    animation-duration: 2.4s;
+    opacity: 0.78;
+    filter: saturate(0.95) drop-shadow(0 0 6px rgba(140, 160, 240, 0.45));
   }
 
   .beam-wrap.beam-done .beam-layer {
     animation-duration: 4s;
-    opacity: 0.8;
+    opacity: 0.55;
   }
 
   @keyframes beam-spin {
@@ -719,6 +729,12 @@
                 </button>
               </div>
               <div class="composer-toolbar">
+                <button type="button" id="beam-palette-btn" class="composer-pill"
+                  onclick="cycleBeamPalette()" title="Ganti warna beam"
+                  style="width: 28px; padding: 0; justify-content: center;">
+                  <span id="beam-palette-swatch"
+                    style="width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--border-color); display: inline-block;"></span>
+                </button>
                 <button type="button" id="model-picker-btn" class="composer-pill" onclick="toggleModelPicker(event)"
                   title="Pilih model yang dipakai untuk run ini">
                   <i class="fa-solid fa-microchip" style="font-size: 11px;"></i>
@@ -4770,6 +4786,49 @@
     if (ev.key === 'Escape') closeModelPicker();
   });
 
+  // --- Beam palettes: curated, low-saturation color-picker sets ---
+  const BEAM_PALETTES = {
+    aurora: { label: 'Aurora', colors: ['#7c8cf8', '#a996ef', '#8fb6f0', '#74cfc4'] },
+    sakura: { label: 'Sakura', colors: ['#e2a2c2', '#c6a4ea', '#efc3a4', '#b6a6ea'] },
+    tide: { label: 'Tide', colors: ['#5fb6c9', '#7f9ff0', '#68cfb2', '#8aa6d6'] },
+    dusk: { label: 'Dusk', colors: ['#6d7bd9', '#8f7ad0', '#5f9fb8', '#9a86c8'] }
+  };
+  const BEAM_PALETTE_ORDER = ['aurora', 'sakura', 'tide', 'dusk'];
+
+  // Symmetric sweep: colors 0..n-1 across 0-50%, then mirrored back to 100%,
+  // so the ring blends seamlessly and never shows hard hue bands.
+  function beamGradient(colors) {
+    const n = colors.length;
+    if (n < 2) return colors[0] || 'transparent';
+    const stops = [];
+    for (let i = 0; i < n; i++) {
+      stops.push(`${colors[i]} ${Math.round((i / (n - 1)) * 50)}%`);
+    }
+    for (let i = n - 2; i >= 0; i--) {
+      stops.push(`${colors[i]} ${Math.round(50 + ((n - 1 - i) / (n - 1)) * 50)}%`);
+    }
+    return `conic-gradient(from var(--beam-angle), ${stops.join(', ')})`;
+  }
+
+  function applyBeamPalette(name) {
+    const palette = BEAM_PALETTES[name] || BEAM_PALETTES.aurora;
+    document.querySelectorAll('.beam-layer').forEach(layer => {
+      layer.style.background = beamGradient(palette.colors);
+    });
+    const swatch = document.getElementById('beam-palette-swatch');
+    if (swatch) swatch.style.background = `linear-gradient(135deg, ${palette.colors.join(', ')})`;
+    const btn = document.getElementById('beam-palette-btn');
+    if (btn) btn.title = `Beam color: ${palette.label} - click to change`;
+    try { localStorage.setItem('sre_beam_palette', name); } catch (e) { }
+  }
+
+  function cycleBeamPalette() {
+    const current = localStorage.getItem('sre_beam_palette') || 'aurora';
+    const idx = BEAM_PALETTE_ORDER.indexOf(current);
+    const next = BEAM_PALETTE_ORDER[(idx + 1) % BEAM_PALETTE_ORDER.length];
+    applyBeamPalette(next);
+  }
+
   // --- Beam state: fast + glowing while the agent works ---
   let beamRunTimer = null;
   function setBeamRunning(running) {
@@ -4821,6 +4880,7 @@
       hiddenMode.addEventListener('change', syncComposerModeFromHidden);
     }
     updateModelPickerLabel();
+    applyBeamPalette(localStorage.getItem('sre_beam_palette') || 'aurora');
     purgeBootstrapSelect();
     loadAIModels();
     updateAutoModelsButton();
