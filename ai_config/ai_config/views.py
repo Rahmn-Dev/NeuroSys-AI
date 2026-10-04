@@ -14,6 +14,7 @@ import logging
 import json
 from django.core.paginator import Paginator
 from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 from two_factor.views import LoginView as TwoFactorLoginView
 from two_factor.utils import default_device
@@ -126,6 +127,7 @@ llm = KantorOllamaLLM(
 #     return render(request,"chat.html",{'headTitle' : 'Chat AI','toggle' : "true"})
 @login_required
 @ensure_csrf_cookie
+@never_cache
 def chat3(request):
     # ensure_csrf_cookie: the chat page issues fetch/DELETE calls (session
     # delete, model CRUD, approvals) that send X-CSRFToken. Without the cookie

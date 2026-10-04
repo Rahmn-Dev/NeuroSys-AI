@@ -897,6 +897,25 @@
     return cookieValue;
   }
 
+  // Turns an opaque 403 into something the operator can act on. The usual
+  // cause is a stale tab: the page was loaded before the service restarted, so
+  // it has no csrfmiddlewaretoken input and no matching csrftoken cookie.
+  async function explainMutationFailure(res, what) {
+    let detail = '';
+    try {
+      detail = (await res.text()).slice(0, 300);
+    } catch (e) { }
+    console.error(`${what} failed: ${res.status}`, detail);
+    if (res.status === 403) {
+      return 'CSRF ditolak (403). Halaman ini dimuat sebelum service restart, '
+        + 'jadi token CSRF-nya sudah tidak cocok. Tekan Ctrl+Shift+R untuk hard refresh, lalu ulangi.';
+    }
+    if (res.status === 404) {
+      return `${what}: data sudah tidak ada (404).`;
+    }
+    return `${what} gagal (${res.status}). ${detail || ''}`;
+  }
+
   function getCSRFToken() {
     // Prefer the server-rendered token (always in sync with this page load),
     // fall back to the cookie for robustness.
@@ -964,7 +983,7 @@
           window.location.reload();
         }
       } else {
-        alert('Failed to delete chat session.');
+        alert(await explainMutationFailure(res, 'Delete chat session'));
       }
     } catch (e) {
       console.error(e);
