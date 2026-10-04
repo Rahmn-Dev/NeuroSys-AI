@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import asyncio
 import hashlib
+import logging
 import os
 import time
 import uuid
@@ -28,6 +29,11 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 from django.conf import settings
 from asgiref.sync import sync_to_async
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+
+# Opt-in LangGraph event tracing (off by default). Enable with SRE_GRAPH_TRACE=1.
+# It goes to the service log - never to a file inside the project tree.
+_GRAPH_TRACE_ENABLED = os.environ.get("SRE_GRAPH_TRACE", "").strip().lower() in {"1", "true", "yes", "on"}
+_GRAPH_LOGGER = logging.getLogger("neurosys.sre.graph")
 
 from .context import current_model_name
 from .discovery import ToolDiscoveryAgent
@@ -999,8 +1005,17 @@ Output strictly the category name."""
                     name = event.get("name", "")
                     tags = event.get("tags", [])
 
-                    with open("/home/paul/project-ai/NeuroSys-AI/ai_config/logs_test.txt", "a") as f:
-                        f.write(f"kind={kind}, name={name}, tags={tags}\n")
+                    # NOTE: a leftover debug dump used to append every graph
+                    # event here. It wrote to a hardcoded, user-owned path, so
+                    # when the service runs as `sysai` it raised PermissionError
+                    # and aborted the whole run ("no successful completion was
+                    # recorded"). Bookkeeping must never kill a run: trace via
+                    # the logger (opt-in) and swallow any failure.
+                    if _GRAPH_TRACE_ENABLED:
+                        try:
+                            _GRAPH_LOGGER.debug("kind=%s name=%s tags=%s", kind, name, tags)
+                        except Exception:
+                            pass
 
                     # Intercept StateGraph Node outputs
                     if kind == "on_chain_end":
