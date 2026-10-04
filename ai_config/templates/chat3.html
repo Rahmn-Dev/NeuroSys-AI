@@ -2215,7 +2215,7 @@
       switch (t) {
         case 'exploring': return ['search', 'Exploring'];
         case 'discovering_tools': return ['plug', 'Discovering tools'];
-        case 'planning': return ['list-checks', 'Planning'];
+        case 'planning': return ['list-check', 'Planning'];
         case 'thinking': return ['brain', 'Thinking'];
         case 'tool_start': return ['zap', 'Executing ' + (evt.tool || '') + (evt.command ? ' — ' + evt.command : '')];
         case 'tool_end': {
@@ -2238,7 +2238,7 @@
       panel.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text-secondary);"><i class="fa-solid fa-circle-notch fa-spin"></i> Loading case detail…</div>';
 
       // --- A. timeline filtered by case_id from recorded message events ---
-      let timelineHtml = '<div style="color:var(--text-secondary);font-size:12px;">Tidak ada timeline yang tercatat untuk case ini.</div>';
+      let timelineHtml = '<div style="color:var(--text-secondary);font-size:12px;">No timeline recorded for this case yet.</div>';
       try {
         const res = await fetch(`/api/v1/chat-sessions/${encodeURIComponent(sessionId)}/messages/`, { credentials: 'same-origin' });
         if (res.ok) {
@@ -2266,32 +2266,43 @@
           const hasOldSessionNote = evts.some(ev => ev && ev.type === '_note');
           if (shown.length > 0 || hasOldSessionNote) {
             timelineHtml = (hasOldSessionNote
-              ? `<div style="padding:6px 10px;margin:4px 0;border-radius:10px;background:rgba(210,153,34,.12);color:var(--warning);font-size:11px;">Sesi lama tanpa cap case — menampilkan event sesi (tidak difilter per case).</div>`
-              : '') + shown.map(ev => {
+              ? `<div style="padding:6px 10px;margin:4px 0;border-radius:10px;background:rgba(210,153,34,.12);color:var(--warning);font-size:11px;">Older session has no case stamp — showing whole-session events (unfiltered).</div>`
+              : '') + shown.map((ev, idx) => {
                 const [icon, text] = _sgEventLabel(ev);
-                return `<div style="display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--border-color);font-size:13px;"><i class="fa-solid fa-${icon}" style="color:var(--accent);width:18px;text-align:center;"></i><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(text)}</span></div>`;
+                const last = idx === shown.length - 1;
+                return `<div style="position:relative;display:flex;gap:12px;align-items:stretch;padding:6px 0;">
+                  <div style="position:relative;width:26px;display:flex;justify-content:center;padding-top:9px;">
+                    <i class="fa-solid fa-${icon}" style="color:var(--accent);width:18px;text-align:center;position:relative;z-index:1;"></i>
+                    ${last ? '' : '<span style="position:absolute;top:30px;bottom:-6px;width:2px;background-image:linear-gradient(to bottom, var(--border-color) 40%, transparent 40%);background-size:2px 5px;opacity:.75;"></span>'}
+                  </div>
+                  <div style="flex:1;min-width:0;border:1px solid var(--border-color);border-radius:12px;padding:8px 12px;background:rgba(127,140,160,.04);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(text)}</div>
+                </div>`;
               }).join('');
           }
         }
       } catch (e) { /* keep fallback */ }
 
       // --- B. artifacts for this investigation ---
-      let artifactsHtml = '<div style="color:var(--text-secondary);font-size:12px;">Tidak ada artifact untuk case ini.</div>';
+      let artifactsHtml = '<div style="color:var(--text-secondary);font-size:12px;">No artifacts for this case yet.</div>';
       try {
         const res = await fetch(`/api/v1/workspace/artifacts/?session_id=${encodeURIComponent(sessionId)}`, { credentials: 'same-origin' });
         if (res.ok) {
           const all = await res.json();
           const ours = (Array.isArray(all) ? all : []).filter(a => String(a.file_path || '').includes('/investigations/' + rawId + '/'));
           if (ours.length > 0) {
-            artifactsHtml = ours.map(a => {
+            artifactsHtml = ours.map((a, _i) => {
               const name = String(a.file_path || '').split('/').pop() || 'artifact';
               const kind = a.action_type || 'file';
               const when = a.created_at ? new Date(a.created_at).toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
-              const preview = (a.new_content || a.old_content || '').toString().replace(/\n/g, ' ').slice(0, 160);
-              return `<div style="padding:8px 0;border-bottom:1px solid var(--border-color);font-size:12px;">
-                <div style="display:flex;gap:8px;align-items:center;"><i class="fa-solid fa-file-lines" style="color:var(--purple);"></i><b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(name)}</b></div>
-                <div style="margin:4px 0 0 24px;color:var(--text-secondary);font-size:11px;">${escapeHtml(kind)} · ${escapeHtml(when)}</div>
-                ${preview ? `<div style="margin:4px 0 0 24px;color:var(--text-secondary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(preview)}</div>` : ''}
+              const content = (a.new_content || a.old_content || '');
+              const safeId = 'a_' + (a.id || _i);
+              return `<div data-artifact-id="${safeId}" data-name="${escapeHtml(name)}" data-content="${encodeURIComponent(content)}" style="display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--border-color);font-size:12px;">
+                <i class="fa-solid fa-file-lines" style="color:var(--purple);width:18px;text-align:center;"></i>
+                <div style="flex:1;min-width:0;">
+                  <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><b>${escapeHtml(name)}</b></div>
+                  <div style="color:var(--text-secondary);font-size:11px;margin-top:2px;">${escapeHtml(kind)} · ${escapeHtml(when)}</div>
+                </div>
+                <button class="sg-artifact-dl" title="Download" style="border:1px solid var(--border-color);background:transparent;color:var(--text-secondary);cursor:pointer;padding:4px 8px;border-radius:8px;font-size:11px;"><i class="fa-solid fa-download"></i></button>
               </div>`;
             }).join('');
           }
@@ -2308,15 +2319,34 @@
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:12px;">
           <div style="flex:1;min-width:300px;">
-            <div style="font-weight:700;font-size:13px;color:var(--text-strong);margin-bottom:8px;">Alur agent</div>
+            <div style="font-weight:700;font-size:13px;color:var(--text-strong);margin-bottom:8px;">Agent flow</div>
             <div style="padding:12px 14px;border:1px solid var(--border-color);border-radius:14px;background:rgba(127,140,160,.04);max-height:420px;overflow-y:auto;">${timelineHtml}</div>
           </div>
           <div style="flex:1;min-width:300px;">
-            <div style="font-weight:700;font-size:13px;color:var(--text-strong);margin-bottom:8px;">Artifacts (bukti tertulis)</div>
+            <div style="font-weight:700;font-size:13px;color:var(--text-strong);margin-bottom:8px;">Artifacts (evidence files)</div>
             <div style="padding:12px 14px;border:1px solid var(--border-color);border-radius:14px;background:rgba(127,140,160,.04);max-height:420px;overflow-y:auto;">${artifactsHtml}</div>
           </div>
         </div>`;
       document.getElementById('sg-detail-close').addEventListener('click', () => { panel.style.display = 'none'; });
+      // File-style download: click the row or the download button to save the artifact.
+      panel.querySelectorAll('[data-artifact-id]').forEach(row => {
+        const trigger = () => {
+          const name = row.dataset.name || 'artifact';
+          let content = '';
+          try { content = decodeURIComponent(row.dataset.content || ''); } catch (_) { content = ''; }
+          const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = name.endsWith('.md') ? name : (name + (name.includes('.') ? '' : '.md'));
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+        };
+        row.style.cursor = 'pointer';
+        row.addEventListener('click', trigger);
+        row.querySelector('.sg-artifact-dl')?.addEventListener('click', (e) => { e.stopPropagation(); trigger(); });
+      });
     };
 
     function renderSessionGraph(graph) {
@@ -3984,7 +4014,7 @@
 <!-- Session Case Graph Modal -->
 <div id="session-graph-modal"
   style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.68); z-index:10020; align-items:center; justify-content:center; padding:24px;">
-  <div style="position:relative; width:min(920px, 94vw); max-height:86vh; overflow:hidden; display:flex; flex-direction:column; background:var(--bg-panel); border:1px solid var(--border-color); border-radius:16px; box-shadow:0 24px 80px rgba(0,0,0,.45);">
+  <div style="position:relative; width:min(1240px, 96vw); max-height:92vh; overflow:hidden; display:flex; flex-direction:column; background:var(--bg-panel); border:1px solid var(--border-color); border-radius:18px; box-shadow:0 36px 100px rgba(0,0,0,.6);">
     <div style="display:flex; align-items:center; justify-content:space-between; padding:16px 18px; border-bottom:1px solid var(--border-color);">
       <div><div style="font-weight:700; color:var(--text-strong);">Session Graph</div><div style="font-size:11px; color:var(--text-secondary); margin-top:3px;">Each node is an isolated case. Edges show when the conversation switches to another case.</div></div>
       <button onclick="closeSessionGraph()" aria-label="Close" style="border:0; background:transparent; color:var(--text-secondary); cursor:pointer; font-size:20px;">&times;</button>
