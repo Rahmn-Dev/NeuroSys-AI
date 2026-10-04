@@ -4644,7 +4644,7 @@
         const formEl = (typeof form !== 'undefined' && form) ? form : (inputEl ? inputEl.form : null);
         if (!inputEl || !formEl) return;
         // Consume the affordance: once pressed, Retry/Cancel must not linger.
-        const owner = forSessionId || window.continueSessionId || sessionId;
+        // (owner already resolved above)
         document.querySelectorAll('.sre-run-actions').forEach((block) => {
           if (String(block.dataset.sessionId) === String(owner)) {
             block.innerHTML = '<span style="font-size:11px; color:var(--text-secondary);">' +
