@@ -2132,21 +2132,29 @@
         return;
       }
       const original = (bubble.dataset.rawText || bubble.textContent || '').trim();
+      // Hold the bubble's rendered width, otherwise it collapses to the
+      // textarea's intrinsic width and the card shrinks to a thin strip.
+      const renderedWidth = Math.round(bubble.getBoundingClientRect().width);
       bubble.innerHTML = '';
-      bubble.style.maxWidth = '85%';
+      bubble.style.maxWidth = 'none';
+      bubble.style.width = Math.max(renderedWidth, 280) + 'px';
+      bubble.style.minWidth = '280px';
       const ta = document.createElement('textarea');
       ta.value = original.replace(/\n\n\[Context Attached:[\s\S]*\]$/, '').trim();
-      ta.rows = 3;
-      ta.style.cssText = 'width:100%; background:transparent; color:var(--text-primary); border:none; outline:none;' +
+      ta.rows = Math.min(8, Math.max(2, ta.value.split('\n').length + 1));
+      ta.style.cssText = 'width:100%; box-sizing:border-box; background:rgba(0,0,0,0.14); color:#ffffff;' +
+        ' border:1px solid rgba(255,255,255,0.22); border-radius:10px; outline:none; padding:8px 10px;' +
         ' resize:vertical; font-size:14px; line-height:1.5; font-family:inherit;';
       const row = document.createElement('div');
       row.style.cssText = 'display:flex; gap:6px; justify-content:flex-end; margin-top:8px;';
       const save = document.createElement('button');
       save.textContent = 'Save & send';
-      save.style.cssText = 'background:var(--accent); color:#fff; border:none; border-radius:8px; padding:5px 12px; font-size:12px; font-weight:600; cursor:pointer;';
+      save.style.cssText = 'background:#0b6fc4; color:#fff; border:1px solid rgba(255,255,255,0.3); border-radius:8px;' +
+        ' padding:5px 12px; font-size:12px; font-weight:600; cursor:pointer;';
       const drop = document.createElement('button');
       drop.textContent = 'Cancel';
-      drop.style.cssText = 'background:transparent; color:var(--text-secondary); border:1px solid var(--border-color); border-radius:8px; padding:5px 12px; font-size:12px; cursor:pointer;';
+      drop.style.cssText = 'background:rgba(0,0,0,0.2); color:#fff; border:1px solid rgba(255,255,255,0.3);' +
+        ' border-radius:8px; padding:5px 12px; font-size:12px; cursor:pointer;';
       const err = document.createElement('div');
       err.style.cssText = 'font-size:11px; color:var(--error); margin-top:6px; display:none;';
       row.appendChild(drop); row.appendChild(save);
@@ -2184,6 +2192,12 @@
           addSystemMsg('Could not resend the message. Copy it to the composer and send again.', 'alert-triangle');
         }
       };
+      ta.addEventListener('input', () => {
+        ta.style.height = 'auto';
+        ta.style.height = Math.min(220, ta.scrollHeight) + 'px';
+        bubble.style.width = 'auto';
+        bubble.style.minWidth = Math.max(renderedWidth, 280) + 'px';
+      });
       ta.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); save.click(); }
         if (e.key === 'Escape') { e.preventDefault(); drop.click(); }
