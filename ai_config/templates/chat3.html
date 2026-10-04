@@ -715,6 +715,17 @@
           </div>
         </div>
 
+        <div id="active-runs-bar"
+          style="display: none; margin: 0 8px 8px 8px; padding: 8px 10px; gap: 8px; flex-direction: column;
+                 border: 1px solid rgba(88,166,255,0.35); border-radius: 10px; background: rgba(88,166,255,0.08);">
+          <div style="display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700;
+                      color: var(--text-strong); text-transform: uppercase; letter-spacing: 0.4px;">
+            <i class="fa-solid fa-circle-notch spin-anim" style="color: var(--accent); font-size: 10px;"></i>
+            <span id="active-runs-count">1 run active</span>
+          </div>
+          <div id="active-runs-list" style="display: flex; flex-direction: column; gap: 6px;"></div>
+        </div>
+
         <div id="history-list"
           style="border: 1px solid rgb(132 132 132 / 16%); flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px;">
           <!-- history items populated by JS -->
@@ -1509,6 +1520,7 @@
           if (['completed', 'failed', 'cancelled', 'blocked', 'denied', 'denied_timeout', 'security_blocked', 'error', 'finalized'].includes(data.status)) {
             isProcessing = false;
             sendBtn.disabled = false;
+            window.markRunFinished(window.liveRunSessionId || sessionId, data.status === 'completed');
             // Any terminal state brings the bot avatar back.
             window.setProgressOrb('done');
           } else if (!window.isLoadingHistory) {
@@ -1834,6 +1846,7 @@
           window.agentCompletedRuns = window.agentCompletedRuns || new Set();
           if (data.run_id && window.agentCompletedRuns.has(data.run_id)) break;
           if (data.run_id) window.agentCompletedRuns.add(data.run_id);
+          window.markRunFinished(window.liveRunSessionId || sessionId, true);
           updateRunStateCard(data.run_id, 'completed', data.duration);
           finalizeRunWrap('completed', data.duration);
           if (activeInvestigationId && investigations[activeInvestigationId]) {
@@ -1890,6 +1903,7 @@
           break;
 
         case 'error':
+          window.markRunFinished(window.liveRunSessionId || sessionId, false);
           stopAllAgentStepTimers();
           updateRunStateCard(data.run_id, 'failed');
           finalizeRunWrap('failed');
@@ -1898,7 +1912,13 @@
             const retryDiv = document.createElement('div');
             retryDiv.style.cssText = 'margin: 8px 0;';
             window.continueSessionId = sessionId;
-            retryDiv.innerHTML = `<button onclick="window.continueRun()" style="background: rgba(88,166,255,0.12); color: var(--text-strong); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 14px; font-size: 12px; cursor: pointer; font-weight: 600;">▶ Continue from here</button> <span style="font-size: 11px; color: var(--text-secondary);">resuming the active case with re-verification</span>`;
+            retryDiv.innerHTML =
+              `<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">` +
+              `<button onclick="window.continueRun()" style="background: rgba(88,166,255,0.12); color: var(--text-strong); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 14px; font-size: 12px; cursor: pointer; font-weight: 600;">` +
+              `<i class="fa-solid fa-rotate-right" style="font-size:11px;"></i> Retry</button>` +
+              `<button onclick="window.cancelRunForSession(window.continueSessionId || sessionId)" style="background: transparent; color: var(--text-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 12px; font-size: 12px; cursor: pointer; font-weight: 600;">` +
+              `<i class="fa-solid fa-xmark" style="font-size:11px;"></i> Cancel</button>` +
+              `<span style="font-size: 11px; color: var(--text-secondary);">the run stopped; retry continues the active case with re-verification</span></div>`;
             messagesDiv.appendChild(retryDiv);
             scrollToBottom();
           }
@@ -2544,6 +2564,109 @@
     // reverted the operator's choice back to Need Approval.
     window.addSystemMsg = addSystemMsg;
 
+    // --- Global run registry -------------------------------------------------
+    // A run belongs to a chat, but the operator must always be able to see
+    // that something is executing, from any chat, and cancel it.
+    window.runsBySession = window.runsBySession || {};
+    window.unreadSessions = window.unreadSessions || {};
+
+    window.markRunActive = function (sid, label) {
+      if (!sid) return;
+      window.runsBySession[String(sid)] = {
+        id: String(sid),
+        label: label || 'Agent run',
+        startedAt: Date.now(),
+      };
+      delete window.unreadSessions[String(sid)];
+      window.renderActiveRuns();
+    };
+
+    window.markRunFinished = function (sid, ok) {
+      if (!sid) return;
+      delete window.runsBySession[String(sid)];
+      if (String(sid) !== String(sessionId)) window.unreadSessions[String(sid)] = { ok: !!ok, at: Date.now() };
+      window.renderActiveRuns();
+    };
+
+    window.cancelRunForSession = function (sid) {
+      if (!sid) return;
+      try {
+        if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'cancel', session_id: String(sid) }));
+      } catch (err) { /* socket closing */ }
+      if (String(sid) === String(sessionId)) {
+        isProcessing = false;
+        if (sendBtn) { sendBtn.disabled = false; sendBtn.style.opacity = ''; }
+        if (window.activeRunOrb) window.applyOrbTo(window.activeRunOrb, 'done');
+        window.activeRunOrb = null;
+        setBeamRunning(false);
+        stopAllAgentStepTimers();
+        addSystemMsg('Run cancelled.', 'circle-xmark');
+      }
+      delete window.runsBySession[String(sid)];
+      window.renderActiveRuns();
+    };
+
+    window.renderActiveRuns = function () {
+      const bar = document.getElementById('active-runs-bar');
+      const list = document.getElementById('active-runs-list');
+      const count = document.getElementById('active-runs-count');
+      if (!bar || !list) return;
+      const runs = Object.values(window.runsBySession || {});
+      if (!runs.length) { bar.style.display = 'none'; list.innerHTML = ''; return; }
+      bar.style.display = 'flex';
+      if (count) {
+        count.textContent = runs.length === 1 ? '1 run active' : runs.length + ' runs active';
+      }
+      list.innerHTML = '';
+      runs.forEach((run) => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex; align-items:center; gap:8px; font-size:11px; color:var(--text-secondary);';
+        const mine = String(run.id) === String(sessionId);
+        row.innerHTML =
+          '<i class="fa-solid fa-spinner spin-anim" style="color:var(--accent); font-size:10px;"></i>' +
+          '<span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' +
+          (mine ? 'This chat' : 'Another chat') + ' · ' + escapeHtml(run.label) + '</span>';
+        const btn = document.createElement('button');
+        btn.textContent = 'Cancel';
+        btn.style.cssText = 'background:transparent; border:1px solid var(--border-color); color:var(--text-strong);' +
+          ' border-radius:6px; padding:2px 8px; font-size:11px; cursor:pointer; font-weight:600;';
+        btn.onclick = (e) => { e.stopPropagation(); window.cancelRunForSession(run.id); };
+        row.appendChild(btn);
+        list.appendChild(row);
+      });
+    };
+
+    window.updateForeignRunBadge = function (payload) {
+      const sid = window.liveRunSessionId;
+      if (!sid) return;
+      const terminal = ['completed', 'error', 'failed', 'cancelled', 'blocked', 'denied', 'security_blocked'];
+      if (!terminal.includes(String(payload.type))) return;
+      window.markRunFinished(sid, payload.type === 'completed');
+      const title = payload.type === 'completed' ? 'Run finished' : 'Run ended: ' + payload.type;
+      const body = payload.type === 'completed'
+        ? 'The run in another chat completed. Open it to read the result.'
+        : 'The run in another chat ended with ' + payload.type + '.';
+      if (typeof window.sreToast === 'function') window.sreToast(title, body, payload.type === 'completed');
+    };
+
+    // Global toast so background news is never silent.
+    window.sreToast = function (title, body, ok) {
+      if (document.getElementById('sre-toast')) return;
+      const host = document.createElement('div');
+      host.id = 'sre-toast';
+      host.style.cssText = 'position:fixed; bottom:18px; right:18px; z-index:9999; max-width:340px; padding:12px 14px;' +
+        ' border-radius:12px; border:1px solid var(--border-color); background:var(--bg-panel); color:var(--text-strong);' +
+        ' box-shadow:0 10px 30px rgba(0,0,0,0.35); font-size:12px;';
+      host.innerHTML =
+        '<div style="display:flex; align-items:center; gap:8px; font-weight:700; margin-bottom:4px;">' +
+        '<i class="fa-solid ' + (ok ? 'fa-circle-check' : 'fa-circle-exclamation') + '" style="color:' +
+        (ok ? 'var(--success-text)' : 'var(--warning)') + ';"></i>' + escapeHtml(title) + '</div>' +
+        '<div style="color:var(--text-secondary); line-height:1.45;">' + escapeHtml(body || '') + '</div>';
+      document.body.appendChild(host);
+      setTimeout(() => { host.remove(); }, 9000);
+      host.onclick = () => host.remove();
+    };
+
     function addSystemMsg(text, iconName = 'info') {
       if (text.includes('Connected to NeuroSysAI') || text.includes('🚀')) {
         if (messagesDiv.querySelector('[data-agent-connection-card="true"]')) return;
@@ -3114,6 +3237,7 @@
     // --- History ---
     async function loadHistory() {
       window.loadHistoryGlobal = loadHistory;
+      window.renderActiveRuns && window.renderActiveRuns();
       window.onSessionDeleted = function (deletedId) {
         if (deletedId === sessionId) {
           window.startNewChat();
@@ -3396,6 +3520,7 @@
       }
       window.liveRunSessionId = null;
       window.continueSessionId = null;
+      window.renderActiveRuns && window.renderActiveRuns();
       stopAllAgentStepTimers();
       window.sessionStartTime = null;
       isProcessing = false;
