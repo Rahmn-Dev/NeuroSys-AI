@@ -380,6 +380,39 @@
     max-height: 300px;
   }
 
+  /* Loading placeholders. Any .sre-panel can be filled with these while its
+     content is fetched, so a slow request never looks like an empty panel. */
+  .sre-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px;
+  }
+
+  .sre-skeleton .sk-line {
+    height: 11px;
+    border-radius: 6px;
+    background: linear-gradient(90deg,
+      rgba(127, 140, 160, 0.10) 0%,
+      rgba(127, 140, 160, 0.22) 35%,
+      rgba(127, 140, 160, 0.10) 70%);
+    background-size: 220% 100%;
+    animation: sre-shimmer 1.25s ease-in-out infinite;
+  }
+
+  .sre-skeleton .sk-line.w90 { width: 90%; }
+  .sre-skeleton .sk-line.w70 { width: 70%; }
+  .sre-skeleton .sk-line.w45 { width: 45%; }
+
+  @keyframes sre-shimmer {
+    from { background-position: 140% 0; }
+    to { background-position: -60% 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sre-skeleton .sk-line { animation: none; }
+  }
+
   /* Hidden state selects: the real <select> stays in the DOM for the
      existing JS (options, value, change events) but the header shows
      the in-composer model picker instead. Declared after the header
@@ -2593,6 +2626,20 @@
     // catch block then reported as "Permission update rejected" and silently
     // reverted the operator's choice back to Need Approval.
     window.addSystemMsg = addSystemMsg;
+
+    // Placeholder content while a panel loads. Defined with the other globals
+    // so it exists before any loader can call it.
+    window.showPanelSkeleton = function (host, rows) {
+      if (!host) return;
+      const count = rows || 4;
+      const widths = ['w90', 'w70', 'w45'];
+      let html = '<div class="sre-skeleton">';
+      for (let i = 0; i < count; i++) {
+        html += '<div class="sk-line ' + widths[i % widths.length] + '"></div>';
+      }
+      html += '</div>';
+      host.innerHTML = html;
+    };
 
     // --- Global run registry -------------------------------------------------
     // A run belongs to a chat, but the operator must always be able to see
