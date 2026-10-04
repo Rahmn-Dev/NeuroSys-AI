@@ -1856,7 +1856,7 @@
       div.style.cssText = 'border-radius: 16px; padding: 16px; max-width: 85%; margin-bottom: 2px;';
       div.innerHTML = `
             <div style="font-size: 12px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;" class="sre-text-secondary">
-                <span style="display:inline-flex;width:26px;height:26px;">${window.neuroBotAvatar(26)}</span>
+                <span style="display:inline-flex;width:32px;height:32px;">${window.neuroBotAvatar(30)}</span>
                 <span style="font-weight:600;">NeuroSysAI</span>
             </div>
             <div class="ai-content sre-text-primary" style="line-height: 1.6; font-size: 14px;">${marked.parse(content || '')}</div>
@@ -2942,15 +2942,17 @@
       activeWorkers = [];
       renderWorkerActivity();
       messagesDiv.innerHTML = `
-        <div class="sre-panel p-3 my-2" style="background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 14px; max-width: 85%; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
-          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-            <div style="width: 28px; height: 28px; border-radius: 8px; background: rgba(31, 111, 235, 0.12); border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center; color: var(--accent); font-size: 13px;">
-              <i class="fa-solid fa-robot"></i>
-            </div>
-            <strong style="font-size: 13px; color: var(--text-strong);">NeuroSysAI SRE Assistant</strong>
+        <div style="display:flex; align-items:flex-start; gap:12px; max-width: 85%;">
+          <div style="flex-shrink:0; width:56px; height:56px; border-radius:50%; background:rgba(31, 111, 235, 0.12); border:1px solid var(--border-color); display:flex; align-items:center; justify-content:center; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">
+            ${window.neuroBotAvatar(42)}
           </div>
-          <div style="font-size: 13px; color: var(--text-primary); line-height: 1.6;">
-            Hello! I am ready to assist you with SRE tasks, system monitoring, incident investigation, and infrastructure automation. Please type your command or inquiry below.
+          <div class="sre-panel p-3 my-2" style="background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 14px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); flex:1;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+              <strong style="font-size: 13px; color: var(--text-strong);">NeuroSysAI SRE Assistant</strong>
+            </div>
+            <div style="font-size: 13px; color: var(--text-primary); line-height: 1.6;">
+              Hello! I am ready to assist you with SRE tasks, system monitoring, incident investigation, and infrastructure automation. Please type your command or inquiry below.
+            </div>
           </div>
         </div>
       `;
