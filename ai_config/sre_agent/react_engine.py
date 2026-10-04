@@ -100,9 +100,12 @@ def _looks_like_raw_tool_call(final_msg: str) -> bool:
 
 
 class ReactEngine:
-    def __init__(self, llm, tools: list, system_prompt: str, session_id: str, mode: str = "autonomous_multi"):
+    def __init__(self, llm, tools: list, system_prompt: str, session_id: str, mode: str = "autonomous_multi", goal: str = ""):
         self.llm = llm
         self.mode = mode
+        # The operator's goal selects the evidence checklist and drives the
+        # objective rotation between budget slices.
+        self.goal = goal
 
         if self.mode == "autonomous_single":
             # Single Agent owns the request; delegation is available only for
@@ -331,6 +334,18 @@ Do NOT stop calling tools until you are ready to call `finish_task`.
                 max_iterations = int(os.environ.get("SRE_MULTI_MAX_ITERATIONS", "20"))
             except ValueError:
                 max_iterations = 20
+        # The per-slice budget above is NOT the end of the investigation: it only
+        # decides when to rotate to a new objective. A case may use far more
+        # steps than one slice, which is what a thorough SRE investigation of a
+        # brute force or a flood actually needs.
+        try:
+            total_step_cap = int(os.environ.get("SRE_CASE_MAX_STEPS", "200"))
+        except ValueError:
+            total_step_cap = 200
+        goal_text = str(getattr(self, "goal", "") or "")
+        from .coverage import coverage_from_commands, next_objective, render_coverage_report
+        covered_checks: set = set()
+        executed_commands: list = []
         iteration = 0
         # signature -> how many times that exact call has been suppressed
         seen_tool_calls: Dict[str, int] = {}
@@ -341,13 +356,37 @@ Do NOT stop calling tools until you are ready to call `finish_task`.
         no_tool_streak = 0
         must_conclude = False
 
-        while iteration < max_iterations:
+        slice_left = max_iterations
+        objective_attempts = 0
+        while iteration < total_step_cap:
+            if slice_left <= 0:
+                # Slice exhausted: rotate to the next missing check rather than
+                # giving up. Never repeat what the earlier slice proved.
+                objective_attempts += 1
+                objective = next_objective(goal_text, covered_checks, objective_attempts)
+                if objective is None:
+                    yield evt_status(
+                        "All checks for this domain are covered; wrapping up with the evidence gathered."
+                    )
+                    break
+                item_id, instruction = objective
+                slice_left = max_iterations
+                history.append(HumanMessage(content=(
+                    "BUDGET SLICE COMPLETE. Rotate to a different check - do not repeat previous "
+                    f"commands. {instruction}. Then continue towards the original goal."
+                )))
+                yield evt_status(
+                    f"Slice complete after {iteration} step(s) - coverage {len(covered_checks)} check(s). {instruction}"
+                )
             iteration += 1
+            slice_left -= 1
             if iteration == 1:
                 yield evt_thinking("Selecting the shortest verified action...")
 
             try:
                 from .provider_runtime import invoke_with_retry
+                if executed_commands:
+                    covered_checks = coverage_from_commands(executed_commands, goal_text)
                 response = await invoke_with_retry(lambda: self.llm_with_tools.ainvoke(history))
                 history.append(response)
 
@@ -419,6 +458,8 @@ Do NOT stop calling tools until you are ready to call `finish_task`.
                     tool_name = tc["name"]
                     tool_args = tc["args"]
                     tool_call_id = tc["id"]
+                    if tool_name != "finish_task":
+                        executed_commands.append(f"{tool_name} {str(tool_args)[:300]}")
 
                     call_signature = _call_signature(tool_name, tool_args)
                     repeat_count = seen_tool_calls.get(call_signature, 0) if call_signature in executed_signatures else 0
@@ -604,12 +645,15 @@ Do NOT stop calling tools until you are ready to call `finish_task`.
                 evidence_lines = steps[-12:]
             except Exception:
                 evidence_lines = []
+            coverage_note = render_coverage_report(goal_text, covered_checks)
             synth_prompt = (
-                "The investigation reached its step budget without calling finish_task. "
+                "The investigation reached its total step cap without calling finish_task. "
                 "Write the operator's answer NOW from the evidence below. State the "
                 "conclusion, the evidence that supports it, anything still unverified, "
                 "and the single most useful next step. Do not call any tool, do not plan, "
-                "and do not ask to continue.\n\nRecent tool results:\n"
+                "and do not ask to continue.\n\n"
+                + (coverage_note + "\n\n" if coverage_note else "")
+                + "Recent tool results:\n"
                 + ("\n".join(evidence_lines) or "(none captured)")
             )
             try:
@@ -638,9 +682,9 @@ Do NOT stop calling tools until you are ready to call `finish_task`.
                 f"Step budget reached ({max_iterations}). The case is still active - "
                 "reply 'continue' to keep going, or tell me to focus on one specific step."
             )
-            yield evt_message_chunk(
-                "Investigation paused before concluding to avoid runaway looping. "
-                "All evidence collected so far is saved in the timeline; resume to continue."
-            )
+            paused_note = "Investigation paused before concluding. Evidence collected so far is saved in the timeline; resume to continue."
+            if coverage_note:
+                paused_note += "\n\n" + coverage_note
+            yield evt_message_chunk(paused_note)
             if lifecycle:
                 await lifecycle.atransition("finalization", "failed", "iteration_budget_exhausted", {"iterations": iteration})

@@ -1730,7 +1730,11 @@
           break;
 
         case 'status':
-          addSystemMsg(data.content, 'check');
+          addSystemMsg(data.content, /slice complete/i.test(String(data.content || '')) ? 'rotate' : 'check');
+          // A slice rotation is real progress: keep it inside the run card.
+          if (/slice complete/i.test(String(data.content || '')) && window.activeRunWrap) {
+            addAgentStep('Slice complete', escapeHtml(String(data.content)), 'var(--accent)', 'rotate');
+          }
           break;
 
         case 'sudo_password_required':

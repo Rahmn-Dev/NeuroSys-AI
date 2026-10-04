@@ -1128,7 +1128,8 @@ Output strictly the category name."""
             if mode == "autonomous_single":
                 from .react_engine import ReactEngine
                 current_model_name.set(self.model_name)
-                react_engine = ReactEngine(llm, discovery_result.tools, system_prompt, self.session_id, mode=mode)
+                react_engine = ReactEngine(llm, discovery_result.tools, system_prompt, self.session_id,
+                                           mode=mode, goal=effective_goal)
                 react_engine._selected_model_hint = getattr(self, "_selected_model_hint", "")
                 async for event in react_engine.astream(initial_state):
                     if event.type == AgentEventType.SECURITY_BLOCKED:

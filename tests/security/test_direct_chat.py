@@ -239,3 +239,57 @@ def test_conversation_branch_imports_its_domain_clamp():
     # the router call lives in a tuple import, so match the module import
     assert "from .direct_chat import" in source
     assert "route_turn(" in source
+
+
+# --- evidence coverage checklists -------------------------------------------
+
+from sre_agent.coverage import (  # noqa: E402
+    checklist_for,
+    coverage_from_commands,
+    domain_for,
+    next_objective,
+    render_coverage_report,
+)
+
+
+def test_domains_are_detected_from_the_goal():
+    assert domain_for("check network apakah ada anomali engga") == "network_anomaly"
+    assert domain_for("cek ada brute force ssh tidak") == "bruteforce"
+    assert domain_for("kena ddos?") == "flood_ddos"
+    assert domain_for("nginx service-nya down") == "service_health"
+    assert domain_for("disk penuh") == "resource_issue"
+    assert domain_for("halo") is None
+
+
+def test_real_network_session_counts_as_covered():
+    commands = [
+        "terminal_execute ss -tuln | head -20",
+        "terminal_execute netstat -an | grep ESTABLISHED | wc -l",
+        "terminal_execute cat /proc/net/snmp | grep -E 'Ip|Tcp|Udp'",
+        "terminal_execute ip -s link show wlp0s20f3",
+        "terminal_execute ip route show",
+        "terminal_execute ping -c 4 8.8.8.8",
+        "terminal_execute sudo iptables -L -n -v",
+        "terminal_execute sudo tcpdump -i any -n -c 50",
+    ]
+    covered = coverage_from_commands(commands, "check network apakah ada anomali engga")
+    # ss -tuln must satisfy the listening-sockets hint even though it says -tulpn
+    assert "listeners" in covered
+    assert {"counters", "interface", "route", "firewall", "capture"} <= covered
+    # and there is still something left to verify, so a slice must rotate
+    objective = next_objective("check network apakah ada anomali engga", covered)
+    assert objective is not None
+    assert "Next objective" in objective[1]
+
+
+def test_coverage_report_names_what_is_missing():
+    report = render_coverage_report("cek ada brute force ssh tidak", {"auth_failures"})
+    assert "Coverage" in report
+    assert "auth_failures" in report
+    assert "Not verified" in report
+
+
+def test_unknown_domain_has_no_checklist():
+    assert checklist_for("halo") == {}
+    assert next_objective("halo", set()) is None
+    assert render_coverage_report("halo", set()) == ""
