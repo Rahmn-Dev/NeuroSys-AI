@@ -2626,7 +2626,7 @@
         <div id="${wrapId}-body" class="sre-run-body" style="padding: 10px 10px 10px 18px; border-left: 2px solid var(--accent); margin: 4px 0 4px 20px; display: flex; flex-direction: column; gap: 8px; max-height: 420px; overflow-y: auto;"></div>
       `;
       messagesDiv.appendChild(wrap);
-      window.agentAutoScroll = true;
+      window.agentAutoScroll = window.isPinnedToBottom();
       setBeamRunning(true);
       const body = document.getElementById(wrapId + '-body');
       body.dataset.wrapId = wrapId;
@@ -2865,9 +2865,10 @@
       // so reading the runner never yanks the whole chat history.
       // Never fight the operator while they are reviewing an old run.
       const _host = stepDiv.parentElement;
-      const _live = !window.isLoadingHistory && window.agentAutoScroll !== false;
+      const _pinned = _host ? (_host.scrollHeight - _host.scrollTop - _host.clientHeight <= 40) : true;
+      const _live = !window.isLoadingHistory && window.agentAutoScroll === true;
       if (_host && _host.id && /-body$/.test(_host.id)) {
-        if (_live) _host.scrollTop = _host.scrollHeight;
+        if (_live && _pinned) _host.scrollTop = _host.scrollHeight;
       } else {
         scrollToBottom();
       }
@@ -3519,15 +3520,62 @@
       container.innerHTML = html;
     }
 
-    // Auto-scroll is a live-run convenience, not a navigation lock:
-    // it follows the newest chunk only while a run is active. Loading a
-    // past session or scrolling through it must never be overridden, and a
-    // run that already ended must not keep yanking the page down.
+    // Auto-scroll is opt-in and conditional: it only follows the newest content
+    // while the viewport is already parked at the bottom. Reading history is
+    // never interrupted - not while a reply streams either - and a 'Latest'
+    // button is offered instead of yanking the page.
+    window.SRE_SCROLL_THRESHOLD = 80;
     window.agentAutoScroll = true;
-    function scrollToBottom() {
+
+    window.isPinnedToBottom = function () {
+      if (!messagesDiv) return false;
+      return messagesDiv.scrollHeight - messagesDiv.scrollTop - messagesDiv.clientHeight <= window.SRE_SCROLL_THRESHOLD;
+    };
+
+    window.showJumpToLatest = function () {
+      if (!messagesDiv || !messagesDiv.parentElement) return;
+      let btn = document.getElementById('sre-jump-latest');
+      if (!btn) {
+        btn = document.createElement('button');
+        btn.id = 'sre-jump-latest';
+        btn.style.cssText = 'position:absolute; right:18px; bottom:16px; z-index:20; display:none;' +
+          ' align-items:center; gap:6px; padding:7px 12px; border-radius:999px; font-size:12px;' +
+          ' font-weight:600; cursor:pointer; color:#fff; border:1px solid rgba(255,255,255,.25);' +
+          ' background:rgba(31,111,235,.92); box-shadow:0 6px 18px rgba(0,0,0,.28);';
+        btn.innerHTML = '<i class="fa-solid fa-arrow-down" style="font-size:11px;"></i> Latest';
+        btn.onclick = () => {
+          messagesDiv.scrollTo({ top: messagesDiv.scrollHeight, behavior: 'smooth' });
+          window.hideJumpToLatest();
+        };
+        const host = messagesDiv.parentElement;
+        if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+        host.appendChild(btn);
+      }
+      btn.style.display = 'inline-flex';
+    };
+
+    window.hideJumpToLatest = function () {
+      const btn = document.getElementById('sre-jump-latest');
+      if (btn) btn.style.display = 'none';
+    };
+
+    function scrollToBottom(force) {
       if (window.isLoadingHistory) return;
-      if (window.agentAutoScroll === false) return;
+      if (force) {
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        window.hideJumpToLatest();
+        return;
+      }
+      if (!window.isPinnedToBottom()) { window.showJumpToLatest(); return; }
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      window.hideJumpToLatest();
+    }
+
+    if (messagesDiv) {
+      messagesDiv.addEventListener('scroll', () => {
+        if (window.isPinnedToBottom()) window.hideJumpToLatest();
+        else if (messagesDiv.scrollHeight > messagesDiv.clientHeight + 200) window.showJumpToLatest();
+      }, { passive: true });
     }
 
     // --- Form submit ---
@@ -4224,6 +4272,10 @@
         window.isLoadingHistory = false;
         window.activeRunWrap = null;
         window.agentAutoScroll = false;
+        // Opening a chat lands on its newest message; that is a deliberate jump,
+        // not an interruption of reading.
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        window.hideJumpToLatest();
         ensureConnectionCard();
         lucide.createIcons();
         loadArtifacts();
