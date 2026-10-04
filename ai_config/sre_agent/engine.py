@@ -1378,6 +1378,13 @@ Output strictly the category name."""
         """Main entry point — wraps internal loop to persist events and tool logs."""
         tool_start_times = {}
         tool_args = {}
+        def _stamp_event(d):
+            # Tag every persisted event with its active case so case-scoped UI
+            # (Session Graph detail) can replay only what belongs to that case.
+            if isinstance(d, dict):
+                d.setdefault('case_id', str(getattr(self, '_active_case_id', '') or ''))
+            return d
+
         events_history = []
         model_switch_cursor = 0
         last_persisted = 0
@@ -1413,7 +1420,7 @@ Output strictly the category name."""
                             switch_event.metadata.setdefault("run_id", str(lifecycle.run.pk))
                             switch_event.metadata.setdefault("event_id", f"{lifecycle.run.pk}:model-switch:{model_switch_cursor}")
                             switch_event.metadata.setdefault("checkpoint_version", lifecycle.run.checkpoint_version)
-                        events_history.append(switch_event.to_dict())
+                        events_history.append(_stamp_event(switch_event.to_dict()))
                         await self._log_event(switch_event)
                         yield switch_event
                     if event.type.value in {"completed", "error", "security_blocked"}:
@@ -1443,7 +1450,7 @@ Output strictly the category name."""
                         event.metadata.setdefault("run_id", str(lifecycle.run.pk))
                         event.metadata.setdefault("event_id", f"{lifecycle.run.pk}:terminal" if event.type.value == "completed" else f"{lifecycle.run.pk}:{len(events_history) + 1}")
                         event.metadata.setdefault("checkpoint_version", lifecycle.run.checkpoint_version)
-                    events_history.append(event.to_history_dict())
+                    events_history.append(_stamp_event(event.to_history_dict()))
                     if event.type.value == "completed":
                         await self._update_last_message_metadata({"events": events_history, "model_rotation": self._rotation_metadata()})
                     await self._log_event(event)
@@ -1532,7 +1539,7 @@ Output strictly the category name."""
                     switch_event.metadata.setdefault("run_id", str(lifecycle.run.pk))
                     switch_event.metadata.setdefault("event_id", f"{lifecycle.run.pk}:model-switch:{model_switch_cursor}")
                     switch_event.metadata.setdefault("checkpoint_version", lifecycle.run.checkpoint_version)
-                events_history.append(switch_event.to_dict())
+                events_history.append(_stamp_event(switch_event.to_dict()))
                 await self._log_event(switch_event)
                 yield switch_event
 
@@ -1548,7 +1555,7 @@ Output strictly the category name."""
                     error_event.metadata.setdefault("run_id", str(lifecycle.run.pk))
                     error_event.metadata.setdefault("event_id", f"{lifecycle.run.pk}:terminal")
                     error_event.metadata.setdefault("checkpoint_version", lifecycle.run.checkpoint_version)
-                events_history.append(error_event.to_dict())
+                events_history.append(_stamp_event(error_event.to_dict()))
                 await self._log_event(error_event)
                 yield error_event
             return

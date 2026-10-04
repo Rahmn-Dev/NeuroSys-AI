@@ -2209,6 +2209,103 @@
       }
     };
 
+    // --- Session Graph case detail: alur + artifacts side panel ---
+    function _sgEventLabel(evt) {
+      const t = (evt && evt.type) ? String(evt.type) : '';
+      switch (t) {
+        case 'exploring': return ['search', 'Exploring'];
+        case 'discovering_tools': return ['plug', 'Discovering tools'];
+        case 'planning': return ['list-checks', 'Planning'];
+        case 'thinking': return ['brain', 'Thinking'];
+        case 'tool_start': return ['zap', 'Executing ' + (evt.tool || '') + (evt.command ? ' — ' + evt.command : '')];
+        case 'tool_end': {
+          const len = evt && evt.result ? String(evt.result).length : 0;
+          return ['check-circle', 'Result ' + (evt.tool || '') + ' (' + (len ? len : 0) + ' chars)'];
+        }
+        case 'resolution_plan': return ['list-checks', 'Resolution plan'];
+        case 'worker_activity': return ['users', 'Worker activity'];
+        case 'completed': return ['check', 'Completed'];
+        case 'error': case 'failed': case 'cancelled': case 'blocked': case 'denied': case 'security_blocked':
+          return ['circle-exclamation', t.replace(/_/g, ' ')];
+        default: return ['circle', t || 'event'];
+      }
+    }
+
+    window.openCaseDetail = async function (rawId, label) {
+      const panel = document.getElementById('session-graph-detail');
+      if (!panel) return;
+      panel.style.display = 'block';
+      panel.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text-secondary);"><i class="fa-solid fa-circle-notch fa-spin"></i> Loading case detail…</div>';
+
+      // --- A. timeline filtered by case_id from recorded message events ---
+      let timelineHtml = '<div style="color:var(--text-secondary);font-size:12px;">Tidak ada timeline yang tercatat untuk case ini.</div>';
+      try {
+        const res = await fetch(`/api/v1/chat-sessions/${encodeURIComponent(sessionId)}/messages/`, { credentials: 'same-origin' });
+        if (res.ok) {
+          const messages = await res.json();
+          const evts = [];
+          (Array.isArray(messages) ? messages : []).forEach(m => {
+            const evs = m && m.metadata && Array.isArray(m.metadata.events) ? m.metadata.events : [];
+            evs.forEach(ev => {
+              if (!ev || typeof ev !== 'object') return;
+              // case_id is stamped onto events going forward; fall back to the
+              // run's own step when nothing is recorded yet.
+              if (String(ev.case_id || '') === String(rawId) || String(ev.inv_id || '') === String(rawId)) evts.push(ev);
+            });
+          });
+          const meaningful = evts.filter(ev => ['exploring','discovering_tools','planning','thinking','tool_start','tool_end','resolution_plan','worker_activity','completed','error','failed','cancelled','blocked','denied','security_blocked'].includes(String(ev.type)));
+          const shown = meaningful.length ? meaningful : evts;
+          if (shown.length > 0) {
+            timelineHtml = shown.map(ev => {
+              const [icon, text] = _sgEventLabel(ev);
+              return `<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border-color);font-size:12px;"><i class="fa-solid fa-${icon}" style="color:var(--accent);width:16px;text-align:center;"></i><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(text)}</span></div>`;
+            }).join('');
+          }
+        }
+      } catch (e) { /* keep fallback */ }
+
+      // --- B. artifacts for this investigation ---
+      let artifactsHtml = '<div style="color:var(--text-secondary);font-size:12px;">Tidak ada artifact untuk case ini.</div>';
+      try {
+        const res = await fetch(`/api/v1/workspace/artifacts/?session_id=${encodeURIComponent(sessionId)}`, { credentials: 'same-origin' });
+        if (res.ok) {
+          const all = await res.json();
+          const ours = (Array.isArray(all) ? all : []).filter(a => String(a.file_path || '').includes('/investigations/' + rawId + '/'));
+          if (ours.length > 0) {
+            artifactsHtml = ours.map(a => {
+              const name = String(a.file_path || '').split('/').pop() || 'artifact';
+              const kind = a.action_type || 'file';
+              const when = a.created_at ? new Date(a.created_at).toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+              const preview = (a.new_content || a.old_content || '').toString().replace(/\n/g, ' ').slice(0, 160);
+              return `<div style="padding:8px 0;border-bottom:1px solid var(--border-color);font-size:12px;">
+                <div style="display:flex;gap:8px;align-items:center;"><i class="fa-solid fa-file-lines" style="color:var(--purple);"></i><b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(name)}</b></div>
+                <div style="margin:4px 0 0 24px;color:var(--text-secondary);font-size:11px;">${escapeHtml(kind)} · ${escapeHtml(when)}</div>
+                ${preview ? `<div style="margin:4px 0 0 24px;color:var(--text-secondary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(preview)}</div>` : ''}
+              </div>`;
+            }).join('');
+          }
+        }
+      } catch (e) { /* keep fallback */ }
+
+      panel.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+          <div style="font-weight:700;color:var(--text-strong);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(label || 'Case')}</div>
+          <button id="sg-detail-close" title="Close" style="border:0;background:transparent;color:var(--text-secondary);cursor:pointer;font-size:18px;line-height:1;">&times;</button>
+        </div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:10px;">Case id: <code>${escapeHtml(rawId || '')}</code></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div>
+            <div style="font-weight:700;font-size:12px;color:var(--text-strong);margin-bottom:6px;">Alur agent</div>
+            ${timelineHtml}
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:12px;color:var(--text-strong);margin-bottom:6px;">Artifacts (bukti tertulis)</div>
+            ${artifactsHtml}
+          </div>
+        </div>`;
+      document.getElementById('sg-detail-close').addEventListener('click', () => { panel.style.display = 'none'; });
+    };
+
     function renderSessionGraph(graph) {
       const canvas = document.getElementById('session-graph-canvas');
       const nodes = graph && Array.isArray(graph.nodes) ? graph.nodes : [];
@@ -2244,9 +2341,12 @@
         const nodeColor = isCase ? statusColor : (node.node_type === 'entity' ? 'var(--purple)' : 'var(--warning)');
         const w = isCase ? 184 : 160, h = isCase ? 94 : 68;
         const secondary = isCase ? (node.kind || 'general') : node.node_type;
-        return `<g><rect x="${p.x - w / 2}" y="${p.y - h / 2}" width="${w}" height="${h}" rx="12" fill="var(--bg-panel)" stroke="${active ? 'var(--accent)' : nodeColor}" stroke-opacity="${active ? 1 : .65}" stroke-width="${active ? 3 : 1.5}"/><text x="${p.x}" y="${p.y - 12}" text-anchor="middle" fill="var(--text-secondary)" font-size="10">${escapeHtml(secondary)}</text><text x="${p.x}" y="${p.y + 9}" text-anchor="middle" fill="var(--text-strong)" font-size="12" font-weight="600">${escapeHtml(label)}</text>${isCase ? `<text x="${p.x}" y="${p.y + 31}" text-anchor="middle" fill="${statusColor}" font-size="10">${escapeHtml(node.status || 'active')}</text>` : ''}<title>${escapeHtml(title + (node.summary ? '\n' + node.summary : ''))}</title></g>`;
+        return `<g ${isCase ? `class="sg-case" data-case-raw-id="${node.raw_id}" data-case-label="${escapeHtml(label)}" style="cursor:pointer"` : ''}><rect x="${p.x - w / 2}" y="${p.y - h / 2}" width="${w}" height="${h}" rx="12" fill="var(--bg-panel)" stroke="${active ? 'var(--accent)' : nodeColor}" stroke-opacity="${active ? 1 : .65}" stroke-width="${active ? 3 : 1.5}"/><text x="${p.x}" y="${p.y - 12}" text-anchor="middle" fill="var(--text-secondary)" font-size="10">${escapeHtml(secondary)}</text><text x="${p.x}" y="${p.y + 9}" text-anchor="middle" fill="var(--text-strong)" font-size="12" font-weight="600">${escapeHtml(label)}</text>${isCase ? `<text x="${p.x}" y="${p.y + 31}" text-anchor="middle" fill="${statusColor}" font-size="10">${escapeHtml(node.status || 'active')}</text>` : ''}<title>${escapeHtml(title + (node.summary ? '\n' + node.summary : ''))}</title></g>`;
       }).join('');
       canvas.innerHTML = `<div style="display:flex; gap:14px; flex-wrap:wrap; color:var(--text-secondary); font-size:11px; margin-bottom:8px;"><span>● Case</span><span style="color:var(--purple)">● Entity</span><span style="color:var(--warning)">● Evidence</span><span style="color:var(--success)">— Semantic correlation</span></div><svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Semantic session memory graph"><defs><marker id="case-arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="var(--accent)"/></marker></defs>${edgeSvg}${nodeSvg}</svg>`;
+      canvas.querySelectorAll('g[data-case-raw-id]').forEach(el => {
+        el.addEventListener('click', () => window.openCaseDetail(el.dataset.caseRawId, el.dataset.caseLabel));
+      });
     }
 
 
@@ -3871,12 +3971,14 @@
 <!-- Session Case Graph Modal -->
 <div id="session-graph-modal"
   style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.68); z-index:10020; align-items:center; justify-content:center; padding:24px;">
-  <div style="width:min(920px, 94vw); max-height:86vh; overflow:hidden; display:flex; flex-direction:column; background:var(--bg-panel); border:1px solid var(--border-color); border-radius:16px; box-shadow:0 24px 80px rgba(0,0,0,.45);">
+  <div style="position:relative; width:min(920px, 94vw); max-height:86vh; overflow:hidden; display:flex; flex-direction:column; background:var(--bg-panel); border:1px solid var(--border-color); border-radius:16px; box-shadow:0 24px 80px rgba(0,0,0,.45);">
     <div style="display:flex; align-items:center; justify-content:space-between; padding:16px 18px; border-bottom:1px solid var(--border-color);">
       <div><div style="font-weight:700; color:var(--text-strong);">Session Graph</div><div style="font-size:11px; color:var(--text-secondary); margin-top:3px;">Each node is an isolated case. Edges show when the conversation switches to another case.</div></div>
       <button onclick="closeSessionGraph()" aria-label="Close" style="border:0; background:transparent; color:var(--text-secondary); cursor:pointer; font-size:20px;">&times;</button>
     </div>
     <div id="session-graph-canvas" style="min-height:360px; overflow:auto; padding:18px; background:var(--bg-main);"></div>
+    <!-- Sliding case detail: alur (A) + artifacts (B) -->
+    <div id="session-graph-detail" style="display:none; position:absolute; top:0; right:0; bottom:0; width:min(460px, 92%); background:var(--bg-panel); border-left:1px solid var(--border-color); padding:14px 16px; overflow-y:auto; box-shadow:-14px 0 36px rgba(0,0,0,.4); z-index:5;"></div>
   </div>
 </div>
 
