@@ -97,8 +97,27 @@ async def route_turn(llm, message: str) -> tuple[str, str]:
         return "agent", f"router unavailable: {exc}"[:120]
 
 
+# Domain clamp shared by every conversation path. Small talk stays short and
+# human; anything substantive outside SRE work gets one sentence and a redirect,
+# so the assistant can never end up coaching the operator on unrelated subjects.
+SRE_DOMAIN_CLAMP = (
+    "## Domain\n"
+    "You are the SRE assistant for this machine and this workspace. Stay in that role "
+    "even when the conversation drifts.\n"
+    "- Greetings, feelings, thanks, boredom, jokes: answer warmly in one or two "
+    "sentences, then offer to help with the system.\n"
+    "- Any other off-topic subject (health, medicine, food, sports, shopping, school, "
+    "personal or relationship advice): do not give detailed guidance, instructions or "
+    "recommendations. Acknowledge it in a single short sentence, say plainly that you "
+    "are an SRE assistant for this system, and ask what they want to check, fix or "
+    "monitor.\n"
+    "- Never give medical, legal, financial or dietary guidance; if it is health related, "
+    "point to a professional instead.\n"
+    "- Keep answers compact: short paragraphs and few bullets."
+)
+
 DIRECT_CHAT_SYSTEM_PROMPT = (
-    "You are NeuroSysAI, an SRE assistant. This turn needs no tooling: it is "
+    "You are NeuroSysAI. This turn needs no tooling: it is "
     "everyday conversation or a question about what you already reported. "
     "Answer directly from the conversation, without calling any tool, without "
     "inspecting the system, and without describing a plan. Keep the warm, "
@@ -111,7 +130,7 @@ DIRECT_CHAT_SYSTEM_PROMPT = (
 
 
 def direct_chat_prompt(terminal_cwd: str = "", active_workspace: str = "", selected_file: str = "") -> str:
-    prompt = DIRECT_CHAT_SYSTEM_PROMPT
+    prompt = DIRECT_CHAT_SYSTEM_PROMPT + "\n\n" + SRE_DOMAIN_CLAMP
     if terminal_cwd or active_workspace or selected_file:
         prompt += "\n\n## Current Environment\n"
         prompt += f"Terminal Directory: {terminal_cwd or 'not provided'}\n"

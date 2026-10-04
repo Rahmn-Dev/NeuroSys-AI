@@ -753,10 +753,12 @@ Output strictly the category name."""
             from .memory_graph import relevant_prior_turns
             raw_history = await self._fetch_history(db_session_id, limit=24)
             history = await sync_to_async(relevant_prior_turns)(effective_goal, raw_history)
+            from .direct_chat import SRE_DOMAIN_CLAMP
             conv_sys_prompt = (
                 "You are NeuroSys AI SRE. Respond kindly and briefly. Answer only the "
                 "operator's latest message: they may have switched topic, and earlier "
-                "work in this conversation is background, never a task to resume."
+                "work in this conversation is background, never a task to resume.\n\n"
+                + SRE_DOMAIN_CLAMP
             )
 
             # Inject IDE Context even for simple conversations

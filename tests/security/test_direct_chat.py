@@ -175,3 +175,25 @@ def test_memory_window_is_budgeted():
     long_history.append(_Turn("user", "halo"))
     kept = relevant_prior_turns("halo", long_history, max_chars=1000)
     assert sum(len(t.message) for t in kept) <= 1000
+
+
+# --- SRE domain clamp ------------------------------------------------------
+
+from sre_agent.direct_chat import SRE_DOMAIN_CLAMP, DIRECT_CHAT_SYSTEM_PROMPT  # noqa: E402
+
+
+def test_domain_clamp_is_part_of_the_direct_chat_prompt():
+    prompt = direct_chat_prompt()
+    assert SRE_DOMAIN_CLAMP in prompt
+    assert "SRE assistant" in prompt
+
+
+def test_domain_clamp_blocks_off_topic_guidance():
+    assert "off-topic" in SRE_DOMAIN_CLAMP
+    assert "do not give detailed guidance" in SRE_DOMAIN_CLAMP
+    assert "medical" in SRE_DOMAIN_CLAMP
+
+
+def test_direct_chat_prompt_still_forbids_tools_and_invention():
+    assert "without calling any tool" in DIRECT_CHAT_SYSTEM_PROMPT
+    assert "Never invent findings" in DIRECT_CHAT_SYSTEM_PROMPT
