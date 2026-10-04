@@ -2239,6 +2239,10 @@
       if (window.activeRunWrap && window.activeRunWrap.dataset.open === '1') {
         toggleRunWrap(window.activeRunWrap.dataset.wrapId, false);
       }
+      if (window.lastRunBody && window.lastRunBody.dataset.open === '1') {
+        toggleRunWrap(window.lastRunBody.dataset.wrapId, false);
+      }
+      window.lastRunBody = null;
       const wrapId = 'runwrap-' + Math.random().toString(36).substr(2, 9);
       const wrap = document.createElement('div');
       wrap.id = wrapId;
@@ -2306,6 +2310,11 @@
       if (window.activeRunOrb) window.applyOrbTo(window.activeRunOrb, 'done');
       window.activeRunOrb = null;
       window.orbInRun = false;
+      // Finished run folds itself away: the header (status icon, duration and
+      // phase label) stays visible, the step list does not compete with the
+      // reply that is about to arrive.
+      window.lastRunBody = body;
+      toggleRunWrap(wrapId, false);
       setBeamRunning(false);
       window.agentAutoScroll = false;
       // Stay OPEN so the just-finished run stays visible; it collapses when
