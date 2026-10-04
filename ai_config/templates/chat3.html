@@ -1503,8 +1503,11 @@
           break;
 
         case 'tool_end':
-          const result = (data.result || '').substring(0, 1000);
-          addAgentStep('Result', `<pre class="sre-layout" style="padding: 8px; border-radius: 6px; overflow-x: auto; font-size: 12px; max-height: 200px; overflow-y: auto; margin: 4px 0; border: 1px solid var(--border-color);">${escapeHtml(result)}</pre>`, 'var(--success)', 'check-circle', data.step_id, true);
+          const resultTxt = (data.result || '').trim();
+          const resultHtml = resultTxt
+            ? escapeHtml(resultTxt.substring(0, 1000))
+            : 'Captured in the artifact record (see Artifacts tab).';
+          addAgentStep('Result', `<pre class="sre-layout" style="padding: 8px; border-radius: 6px; overflow-x: auto; font-size: 12px; max-height: 200px; overflow-y: auto; margin: 4px 0; border: 1px solid var(--border-color);">${resultHtml}</pre>`, 'var(--success)', 'check-circle', data.step_id, true);
           break;
 
         case 'approval_required':
@@ -2895,8 +2898,11 @@
                     break;
 
                   case 'tool_end':
-                    const result = (evt.result || '').substring(0, 1000);
-                    addAgentStep('Result', `<pre class="sre-layout" style="padding: 8px; border-radius: 6px; overflow-x: auto; font-size: 12px; max-height: 200px; overflow-y: auto; margin: 4px 0; border: 1px solid var(--border-color);">${escapeHtml(result)}</pre>`, 'var(--success)', 'check-circle', evt.step_id, true, time);
+                    const resultTxt = (evt.result || '').trim();
+                    const resultHtml = resultTxt
+                      ? escapeHtml(resultTxt.substring(0, 1000))
+                      : 'Captured in the artifact record (see Artifacts tab).';
+                    addAgentStep('Result', `<pre class="sre-layout" style="padding: 8px; border-radius: 6px; overflow-x: auto; font-size: 12px; max-height: 200px; overflow-y: auto; margin: 4px 0; border: 1px solid var(--border-color);">${resultHtml}</pre>`, 'var(--success)', 'check-circle', evt.step_id, true, time);
                     break;
 
                   case 'message_chunk':

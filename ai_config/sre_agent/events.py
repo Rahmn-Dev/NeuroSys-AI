@@ -142,11 +142,16 @@ class AgentEvent:
             d.update(public_value(self.metadata))
         if self.type.value in {"thinking", "analyzing", "observing"}:
             d["content"] = {"thinking": "Evaluating collected evidence", "analyzing": "Analyzing collected evidence", "observing": "Observation recorded"}[self.type.value]
+        # Never stream raw tool args/results over the socket: they can carry
+        # untrusted or secret material. The operator sees a sanitized command
+        # (evt_tool_start already summarizes/redacts it), and the captured
+        # output is stored as an artifact (Artifacts tab) for auditability.
         if self.type.value in {"tool_start", "tool_end", "executing"}:
             d.pop("args", None)
             d.pop("result", None)
-            d.pop("command", None)
             d["content"] = "Tool result recorded" if self.type.value == "tool_end" else "Tool execution started"
+            if isinstance(d.get("command"), str):
+                d["command"] = public_text(d["command"])
         return d
 
     def to_history_dict(self) -> Dict[str, Any]:
