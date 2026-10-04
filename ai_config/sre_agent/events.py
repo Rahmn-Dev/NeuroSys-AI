@@ -142,16 +142,16 @@ class AgentEvent:
             d.update(public_value(self.metadata))
         if self.type.value in {"thinking", "analyzing", "observing"}:
             d["content"] = {"thinking": "Evaluating collected evidence", "analyzing": "Analyzing collected evidence", "observing": "Observation recorded"}[self.type.value]
-        # Never stream raw tool args/results over the socket: they can carry
-        # untrusted or secret material. The operator sees a sanitized command
-        # (evt_tool_start already summarizes/redacts it), and the captured
-        # output is stored as an artifact (Artifacts tab) for auditability.
+        # Tool events stream the operator-visible command and a bounded,
+        # redacted copy of the result. Raw *args* are never sent (they can
+        # contain passwords or keys), and every string passes through
+        # public_text/public_value which mask API keys, tokens and secrets.
         if self.type.value in {"tool_start", "tool_end", "executing"}:
             d.pop("args", None)
-            d.pop("result", None)
-            d["content"] = "Tool result recorded" if self.type.value == "tool_end" else "Tool execution started"
             if isinstance(d.get("command"), str):
                 d["command"] = public_text(d["command"])
+            if isinstance(d.get("result"), str):
+                d["result"] = public_text(d["result"])[:1000]
         return d
 
     def to_history_dict(self) -> Dict[str, Any]:

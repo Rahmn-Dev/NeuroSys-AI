@@ -335,9 +335,20 @@ def test_public_events_exclude_reasoning_secrets_and_sensitive_tool_args():
     assert 'private reasoning' not in payload['content']
     assert 'secret123' not in payload['content']
     assert 'token123' not in payload['content']
-    event = AgentEvent(AgentEventType.TOOL_END, 'raw secret', {'args': {'password': 'unsafe'}, 'result': 'unsafe', 'tool': 'fixture'})
-    assert 'unsafe' not in json.dumps(event.to_dict())
-    assert 'raw secret' not in json.dumps(event.to_dict())
+    # Raw args never leave the event; secret *values* in the result are
+    # masked by public_value/public_text (that is what can be checked with
+    # real markers), while ordinary output text is streamed to the UI.
+    event = AgentEvent(
+        AgentEventType.TOOL_END,
+        'Result: ok\nunexpected api_key=secret123\nAuthorization: Bearer token123',
+        {'args': {'password': 'unsafe'}, 'result': 'ok api_key=secret123', 'tool': 'fixture'},
+    )
+    payload = event.to_dict()
+    dumped = json.dumps(payload)
+    assert 'unsafe' not in dumped          # raw args were dropped
+    assert 'secret123' not in dumped       # secret value masked
+    assert 'token123' not in dumped        # bearer token masked
+    assert payload['result'].startswith('ok') or payload['content'].startswith('ok')
 
 
 def test_multi_duplicate_tasks_share_real_evidence(monkeypatch):

@@ -1503,10 +1503,10 @@
           break;
 
         case 'tool_end':
-          const resultTxt = (data.result || '').trim();
+          const resultTxt = (data.result || data.content || '').trim();
           const resultHtml = resultTxt
             ? escapeHtml(resultTxt.substring(0, 1000))
-            : 'Captured in the artifact record (see Artifacts tab).';
+            : '(no output)';
           addAgentStep('Result', `<pre class="sre-layout" style="padding: 8px; border-radius: 6px; overflow-x: auto; font-size: 12px; max-height: 200px; overflow-y: auto; margin: 4px 0; border: 1px solid var(--border-color);">${resultHtml}</pre>`, 'var(--success)', 'check-circle', data.step_id, true);
           break;
 
@@ -2898,10 +2898,10 @@
                     break;
 
                   case 'tool_end':
-                    const resultTxt = (evt.result || '').trim();
+                    const resultTxt = (evt.result || evt.content || '').trim();
                     const resultHtml = resultTxt
                       ? escapeHtml(resultTxt.substring(0, 1000))
-                      : 'Captured in the artifact record (see Artifacts tab).';
+                      : '(no output)';
                     addAgentStep('Result', `<pre class="sre-layout" style="padding: 8px; border-radius: 6px; overflow-x: auto; font-size: 12px; max-height: 200px; overflow-y: auto; margin: 4px 0; border: 1px solid var(--border-color);">${resultHtml}</pre>`, 'var(--success)', 'check-circle', evt.step_id, true, time);
                     break;
 
