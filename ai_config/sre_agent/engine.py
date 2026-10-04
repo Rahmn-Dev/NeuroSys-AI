@@ -438,7 +438,7 @@ class SREAgentEngine:
         # Recent conversation is the whole point of a direct answer: a question
         # about the previous case can only be answered from what was said.
         # Fetched before the new turn is stored so it is not duplicated.
-        history = await self._fetch_history(db_session_id)
+        history = await self._fetch_history(db_session_id, limit=12)
         await self._save_message(db_session_id, "user", user_message)
 
         llm = await self._get_llm()
@@ -745,8 +745,10 @@ Output strictly the category name."""
             intent = resp_intent.content.strip().lower()
 
         if intent == "conversation" or any(ci in intent for ci in ["greeting", "thanks", "casual", "identity", "capability"]):
-            # Bypass all heavy tooling and respond directly
-            history = await self._fetch_history(db_session_id, case_id=self._active_case_id)
+            # Bypass all heavy tooling and respond directly. The history is
+            # session-wide and must reach the prompt, otherwise every casual
+            # turn starts blind and contradicts what was just discussed.
+            history = await self._fetch_history(db_session_id, limit=12)
             conv_sys_prompt = "You are NeuroSys AI SRE. Respond kindly and briefly."
 
             # Inject IDE Context even for simple conversations
@@ -757,6 +759,14 @@ Output strictly the category name."""
                 conv_sys_prompt += f"Selected File:\n{selected_file if selected_file else 'None'}\n"
 
             messages = [SystemMessage(content=conv_sys_prompt)]
+            for entry in history:
+                text = (getattr(entry, "message", "") or "").strip()
+                if not text:
+                    continue
+                if getattr(entry, "sender", "") == "ai":
+                    messages.append(AIMessage(content=text[:4000]))
+                else:
+                    messages.append(HumanMessage(content=text[:4000]))
             messages.append(HumanMessage(content=effective_goal))
 
             full_response = ""
@@ -1810,7 +1820,13 @@ Output strictly the category name."""
                 msg.save(update_fields=['metadata'])
         await _db()
 
-    async def _fetch_history(self, session_id, case_id=None):
+    async def _fetch_history(self, session_id, case_id=None, limit: int = 9):
+        """Recent messages, oldest first.
+
+        Without `case_id` this is session-wide: ordinary conversation lives in
+        its own case per turn, so a case-scoped window returns nothing and the
+        assistant loses the thread.
+        """
         from chatbot.models import ChatMessage
 
         @sync_to_async
@@ -1818,7 +1834,7 @@ Output strictly the category name."""
             query = ChatMessage.objects.filter(session_id=session_id)
             if case_id:
                 query = query.filter(metadata__case_id=str(case_id))
-            return list(reversed(list(query.order_by("-created_at")[:9])))
+            return list(reversed(list(query.order_by("-created_at")[:limit])))
 
         return await _db()
 
