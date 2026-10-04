@@ -490,33 +490,34 @@
      highlight, so the word reads as alive without changing its colours. */
   .sre-name-shimmer,
   .sre-name-shimmer .theme-gradient {
+    /* Brand colours only: no white stop, so the word never washes out or
+       looks like it disappeared at any point in the sweep. */
     background-image: linear-gradient(100deg,
-      #12B5DE 0%,
-      #307bc3 18%,
-      #3bbaff 30%,
-      #ffffff 42%,
-      #3bbaff 54%,
-      #307bc3 70%,
-      #12B5DE 86%,
-      #12B5DE 100%);
-    background-size: 260% 100%;
+      #0e93b8 0%,
+      #1f7fc0 16%,
+      #2f9fd6 32%,
+      #56c2e8 48%,
+      #2f9fd6 64%,
+      #1f7fc0 80%,
+      #0e93b8 100%);
+    background-size: 220% 100%;
     background-repeat: no-repeat;
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
     color: transparent;
-    animation: sre-name-shimmer 3.4s linear infinite;
+    animation: sre-name-shimmer 1.9s linear infinite;
     display: inline-block;
   }
 
   @keyframes sre-name-shimmer {
-    from { background-position: 170% 0; }
-    to { background-position: -70% 0; }
+    from { background-position: 140% 0; }
+    to { background-position: -40% 0; }
   }
 
   @media (prefers-reduced-motion: reduce) {
     .sre-name-shimmer,
-    .sre-name-shimmer .theme-gradient { animation: none; background-position: 40% 0; }
+    .sre-name-shimmer .theme-gradient { animation: none; background-position: 30% 0; }
   }
 
   .sre-run-phase {
