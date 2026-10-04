@@ -162,10 +162,12 @@ def test_topic_switch_drops_the_old_thread():
         _Turn("ai", "Madu punya sifat antibakteri untuk luka ringan"),
         _Turn("user", "sepatu roda"),
     ]
-    # The new topic owns the last exchange; the honey thread is not relevant.
+    # Only the last exchange is always kept (so a thread is never lost); older
+    # turns from the previous subject must not come along.
     kept = relevant_prior_turns("sepatu roda", honey)
     texts = " ".join(t.message for t in kept)
-    assert "Madu" not in texts
+    assert "Madu bertahan bertahun-tahun" not in texts
+    assert "dipakai buat luka" not in texts
 
 
 def test_memory_window_is_budgeted():
