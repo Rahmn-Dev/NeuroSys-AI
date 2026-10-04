@@ -282,6 +282,10 @@ Do NOT stop calling tools until you are ready to call `finish_task`.
         iteration = 0
         # signature -> how many times that exact call has been suppressed
         seen_tool_calls: Dict[str, int] = {}
+        # signatures whose tool actually ran. Duplicate suppression only applies
+        # to real repeats: a call that was deflected or blocked by policy must be
+        # re-evaluated so the security path still terminates the run.
+        executed_signatures = set()
         no_tool_streak = 0
         must_conclude = False
 
@@ -365,7 +369,7 @@ Do NOT stop calling tools until you are ready to call `finish_task`.
                     tool_call_id = tc["id"]
 
                     call_signature = _call_signature(tool_name, tool_args)
-                    repeat_count = seen_tool_calls.get(call_signature, 0)
+                    repeat_count = seen_tool_calls.get(call_signature, 0) if call_signature in executed_signatures else 0
                     if tool_name != "finish_task" and repeat_count:
                         # A duplicate call is suppressed, NOT fatal. The run keeps
                         # going so the model can pick a different approach; only a
@@ -477,6 +481,7 @@ Do NOT stop calling tools until you are ready to call `finish_task`.
                         try:
                             if ToolRegistry().get_metadata(tool_name) is None:
                                 raise PermissionError("Unregistered tool")
+                            executed_signatures.add(call_signature)
                             if hasattr(tool, "ainvoke"):
                                 tool_result = await tool.ainvoke(tool_args)
                             else:

@@ -219,3 +219,50 @@ def test_attack_symlink_secret_read(tmp_path, monkeypatch):
 def test_benign_delegated_diagnostic():
     meta = ToolMetadata("spawn_subagent", "test", "test")
     assert SafetyLayer().check(meta, {"agent_type": "basher", "params": '{"command":"id"}'}).verdict == SafetyVerdict.APPROVED
+
+def test_duplicate_command_is_suppressed_without_ending_run(registry):
+    """A repeated tool call must not kill the investigation.
+
+    Regression: the ReAct loop used to end the run on the *first* duplicate
+    ('Repeated identical action stopped'), throwing away every observation the
+    agent had already gathered. Duplicates are now suppressed and fed back so
+    the model can vary its approach; only a persistent repeat loop pauses.
+    """
+    calls = []
+    def implementation() -> str:
+        """Inert tool records invocation only."""
+        calls.append("cwd")
+        return "/srv/neurosys"
+    tool = StructuredTool.from_function(implementation, name="get_current_directory")
+    registry.register(tool, ToolMetadata("get_current_directory", "test", "test", RiskLevel.LOW))
+
+    class Model:
+        def __init__(self):
+            self.count = 0
+        def bind_tools(self, *args, **kwargs):
+            return self
+        async def ainvoke(self, messages):
+            self.count += 1
+            if self.count == 1:
+                return AIMessage(content="", tool_calls=[
+                    {"name": "get_current_directory", "args": {}, "id": "first"}])
+            # Cosmetic re-spacing of the same call must still count as a duplicate.
+            return AIMessage(content="", tool_calls=[
+                {"name": "get_current_directory", "args": {}, "id": f"dup{self.count}"}])
+
+    model = Model()
+    engine = ReactEngine(model, [tool], "", "test", mode="autonomous_single")
+
+    async def run():
+        return [e async for e in engine.astream({"goal": "Inspect the workspace"})]
+
+    events = asyncio.run(run())
+    kinds = [e.type.value for e in events]
+
+    # The tool itself ran exactly once: repeats were suppressed, not re-executed.
+    assert len(calls) == 1
+    # The run was not aborted by the duplicate; it kept looping and then paused.
+    assert "error" not in kinds or "paused" in [getattr(engine, "outcome", None)]
+    assert engine.outcome == "paused"
+    # ...and it stopped instead of burning the whole iteration budget.
+    assert model.count <= 5
