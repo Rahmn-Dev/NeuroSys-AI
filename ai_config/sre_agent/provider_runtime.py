@@ -19,17 +19,37 @@ def next_round_robin_start(size: int) -> int:
         return next(_ROUND_ROBIN_COUNTER) % size
 
 
+# Provider failure conditions that justify trying another configured model.
+_FAILOVER_CATEGORIES = {"quota", "rate_limit", "transient", "context_overflow", "malformed"}
+
+# Router-wrapped policy/config error strings whose classification we force to
+# a failover regardless of the normal "category == provider_error" bucket.
+_FAILOVER_MESSAGE_MARKERS = (
+    "free tier can only be used",
+    "only be used from within",
+    "archived and unavailable",
+    "model has been archived",
+    "no longer available",
+    "unknown model",
+    "model does not exist",
+    "selected model does not support tools",
+)
+
+
 def is_model_failover_error(exc: Exception) -> bool:
+    """True when the failure belongs to the candidate model/provider and the
+    rotation pool should move to the next active candidate.
+
+    Auth problems, mismatches in the engine's own state and plain
+    application errors are intentionally NOT failover conditions: a different
+    model won't repair a credential organisationally, and a ValueError in the
+    agent loop is not a provider issue.
+    """
     error = normalize_provider_error(exc)
-    # The caller invokes this only for an exception raised by one configured
-    # model. With Auto Models enabled, treat provider-level failures (including
-    # auth/configuration and malformed responses) as candidate-local and try
-    # the next active model/provider. Cancellation is a BaseException and does
-    # not enter this path.
-    return error["category"] in {
-        "auth", "quota", "rate_limit", "transient", "context_overflow",
-        "malformed", "provider_error",
-    }
+    if error["category"] in _FAILOVER_CATEGORIES:
+        return True
+    text = str(exc).lower()
+    return any(marker in text for marker in _FAILOVER_MESSAGE_MARKERS)
 
 
 def model_failover_reason(exc: Exception) -> str:
@@ -93,7 +113,13 @@ class RoundRobinChatModel:
                 return result
             except Exception as exc:
                 last = exc
-                if not is_model_failover_error(exc) or position == len(order) - 1:
+                # Errors that are not candidate-local (application errors,
+                # auth issues, tool failures) are surfaced as they are -
+                # wrapping them in ModelPoolExhausted would hide a real bug
+                # and abort the run with a confusing provider error.
+                if not is_model_failover_error(exc):
+                    raise
+                if position == len(order) - 1:
                     self._pool_exhausted(exc, len(order))
                 self._switch(index, order[position + 1], exc)
         self._pool_exhausted(last or RuntimeError("Unknown provider failure"), len(order))
@@ -107,7 +133,13 @@ class RoundRobinChatModel:
                 return result
             except Exception as exc:
                 last = exc
-                if not is_model_failover_error(exc) or position == len(order) - 1:
+                # Errors that are not candidate-local (application errors,
+                # auth issues, tool failures) are surfaced as they are -
+                # wrapping them in ModelPoolExhausted would hide a real bug
+                # and abort the run with a confusing provider error.
+                if not is_model_failover_error(exc):
+                    raise
+                if position == len(order) - 1:
                     self._pool_exhausted(exc, len(order))
                 self._switch(index, order[position + 1], exc)
         self._pool_exhausted(last or RuntimeError("Unknown provider failure"), len(order))
@@ -128,7 +160,13 @@ class RoundRobinChatModel:
                 # from another provider without duplicating the response.
                 if emitted:
                     self._pool_exhausted(exc, position + 1)
-                if not is_model_failover_error(exc) or position == len(order) - 1:
+                # Errors that are not candidate-local (application errors,
+                # auth issues, tool failures) are surfaced as they are -
+                # wrapping them in ModelPoolExhausted would hide a real bug
+                # and abort the run with a confusing provider error.
+                if not is_model_failover_error(exc):
+                    raise
+                if position == len(order) - 1:
                     self._pool_exhausted(exc, len(order))
                 self._switch(index, order[position + 1], exc)
         self._pool_exhausted(last or RuntimeError("Unknown provider failure"), len(order))

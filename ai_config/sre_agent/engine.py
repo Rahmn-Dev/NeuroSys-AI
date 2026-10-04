@@ -231,6 +231,30 @@ class SREAgentEngine:
 
     MAX_ITERATIONS = 15
 
+    @staticmethod
+    def _model_transport_key(model) -> str:
+        """Stable transport identifier used for Auto Models rotation.
+
+        ChatOpenAI-style providers that receive a custom or defaulted base
+        URL (9router/OpenRouter, NVIDIA proxy, ...) all ride on the same
+        transport even when the raw provider label disagrees. Native Anthropic
+        and Ollama are separate transports.
+        """
+        provider = (getattr(model, "provider", "") or "").lower().strip()
+        base_url = getattr(model, "base_url", "") or ""
+        if not isinstance(base_url, str):
+            base_url = ""
+        base_url = base_url.strip().rstrip("/")
+
+        if provider == "ollama":
+            return "ollama:" + (base_url or "http://127.0.0.1:11434")
+        if (getattr(model, "endpoint_type", None) or "").strip() == "anthropic" and not base_url:
+            return "anthropic:native"
+        effective = base_url
+        if not effective:
+            effective = "https://api.openai.com/v1" if provider == "openai" else "http://localhost:20128/v1"
+        return "chat-openai:" + effective
+
     def __init__(self, session_id: str = "", model_name: str = "mistral-large-latest", rsa_private_key=None, encrypted_sudo_pwd: str = "", user_id: str = "", operational_scope=None, approval_id=None, auto_model_rotation: bool = False):
         self.session_id = session_id or str(uuid.uuid4())
         self.model_name = model_name
