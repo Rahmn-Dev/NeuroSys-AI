@@ -4151,7 +4151,6 @@
       const data = await res.json();
       if (data.status === 'success' && Array.isArray(data.models)) {
         currentLoadedAIModels = data.models;
-        updateModelPickerLabel();
         const selector = document.getElementById('model-selector');
         if (!selector) return;
 
@@ -4173,6 +4172,8 @@
         } else if (selector.options.length > 0) {
           localStorage.setItem('sre_selected_model', selector.options[0].value);
         }
+        // Only now is the select authoritative - refresh the visible label.
+        updateModelPickerLabel();
         updateAutoModelsButton();
       }
     } catch (err) {
@@ -5145,7 +5146,11 @@
       hiddenMode.addEventListener('change', syncComposerModeFromHidden);
     }
     updateModePickerLabel();
-    updateModelPickerLabel();
+    {
+      const lbl = document.getElementById('model-picker-label');
+      const saved = localStorage.getItem('sre_selected_model');
+      if (lbl) lbl.textContent = saved || 'Model';
+    }
     applyBeamPalette(localStorage.getItem('sre_beam_palette') || 'aurora');
     purgeBootstrapSelect();
     loadAIModels();
