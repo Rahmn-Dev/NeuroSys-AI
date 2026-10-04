@@ -18,6 +18,51 @@ from .registry import ToolRegistry, ToolMetadata, RiskLevel
 # Tool implementations
 # ---------------------------------------------------------------------------
 
+def _write_file_direct(abs_path: str, content: str) -> None:
+    """Write as the service user (requires write permission)."""
+    with open(abs_path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+
+def _write_file_via_sudo(abs_path: str, content: str) -> bool:
+    """Write protected paths by routing through the operator's sudo secret.
+
+    The temp file is written as the service user, then `sudo cp` moves it
+    into place as root. The sudo password comes from the session's encrypted
+    secret (same one terminal_execute uses), so no password ever appears in
+    the command or the tool log.
+    """
+    try:
+        from ..context import current_session_context
+        from ..crypto import decrypt_rsa_oaep
+        import tempfile
+
+        ctx = current_session_context.get()
+        if not (ctx and getattr(ctx, "encrypted_sudo_pwd", "") and getattr(ctx, "rsa_private_key", None)):
+            return False
+        pwd = decrypt_rsa_oaep(ctx.rsa_private_key, ctx.encrypted_sudo_pwd)
+
+        fd, tmp_path = tempfile.mkstemp()
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(content)
+            os.chmod(tmp_path, 0o644)
+            proc = subprocess.run(
+                ["sudo", "-S", "-p", "", "cp", tmp_path, abs_path],
+                input=(pwd + "\n").encode(),
+                capture_output=True,
+                timeout=30,
+            )
+            return proc.returncode == 0
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+    except Exception:
+        return False
+
+
 @tool
 def get_current_directory() -> str:
     """Get the current working directory of the user's terminal session.
@@ -58,9 +103,19 @@ def write_file(path: str, content: str) -> str:
     Returns a success or error message."""
     try:
         abs_path = os.path.abspath(path)
-        os.makedirs(os.path.dirname(abs_path), exist_ok=True)
-        with open(abs_path, "w", encoding="utf-8") as f:
-            f.write(content)
+        try:
+            os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+        except PermissionError:
+            pass
+        try:
+            _write_file_direct(abs_path, content)
+        except PermissionError:
+            if not _write_file_via_sudo(abs_path, content):
+                return (
+                    f"Error writing file: permission denied and sudo fallback is "
+                    f"unavailable. Run the write via terminal_execute with 'sudo tee'/'sudo cp', "
+                    f"or set the sudo password via the lock button."
+                )
         from ..verification import verify_file_readback, require_verification
         require_verification(verify_file_readback(abs_path, expected_content=content))
         return f"Successfully wrote and verified {len(content.encode('utf-8'))} bytes to {abs_path}"
@@ -79,8 +134,15 @@ def edit_file(path: str, old_text: str, new_text: str) -> str:
         if old_text not in content:
             return f"Error: Could not find the target text in {abs_path}"
         new_content = content.replace(old_text, new_text, 1)
-        with open(abs_path, "w", encoding="utf-8") as f:
-            f.write(new_content)
+        try:
+            _write_file_direct(abs_path, new_content)
+        except PermissionError:
+            if not _write_file_via_sudo(abs_path, new_content):
+                return (
+                    f"Error editing file: permission denied and sudo fallback is "
+                    f"unavailable. Run the change via terminal_execute with 'sudo tee', "
+                    f"or set the sudo password via the lock button."
+                )
         from ..verification import verify_file_readback, require_verification
         require_verification(verify_file_readback(abs_path, expected_content=new_content))
         return f"Successfully edited and verified {abs_path}"

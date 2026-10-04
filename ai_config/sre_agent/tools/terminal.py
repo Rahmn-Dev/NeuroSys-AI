@@ -21,17 +21,41 @@ def terminal_execute(command: str, timeout: int = 30) -> str:
     
     pwd_to_inject = None
     if command.strip().startswith("sudo "):
+        # When a sudo command is attempted without a configured sudo secret we
+        # must say so - otherwise sudo silently prompts on a dead terminal and
+        # the run looks like it executed but did nothing.
+        from ..context import current_session_context
         try:
-            from ..context import current_session_context
-            from ..crypto import decrypt_rsa_oaep
             ctx = current_session_context.get()
-            if ctx and ctx.encrypted_sudo_pwd and ctx.rsa_private_key:
+        except LookupError:
+            ctx = None
+        reason = ""
+        if ctx is None:
+            reason = "no session context"
+        elif not getattr(ctx, "encrypted_sudo_pwd", ""):
+            reason = "sudo secret not set for this session"
+        elif not getattr(ctx, "rsa_private_key", None):
+            reason = "no RSA key for this session"
+        else:
+            try:
+                from ..crypto import decrypt_rsa_oaep
                 pwd_to_inject = decrypt_rsa_oaep(ctx.rsa_private_key, ctx.encrypted_sudo_pwd)
-                # Replace 'sudo ' with 'sudo -S '
-                command = command.replace("sudo ", "sudo -S ", 1)
-        except Exception as e:
-            pass # Ignore decryption errors, fallback to hanging/timeout
-            
+            except Exception as e:
+                reason = f"sudo secret could not be decrypted ({e})"
+
+        if pwd_to_inject is None:
+            return json.dumps({
+                "error": (
+                    "Sudo command blocked: " + (reason or "sudo secret unavailable") + ". "
+                    "Ask the operator to set the sudo password from the lock button, then retry with `sudo ...`."
+                ),
+                "command": command,
+            })
+        # 'sudo -S' is idempotent; only add it when absent so "-S -S" is never
+        # produced when the model already typed it.
+        if not command.lstrip().startswith("sudo -S"):
+            command = command.replace("sudo", "sudo -S", 1)
+
     try:
         start_time = time.time()
         p = subprocess.Popen(

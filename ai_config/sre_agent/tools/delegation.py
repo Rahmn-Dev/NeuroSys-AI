@@ -185,17 +185,30 @@ def _run_basher(args: dict) -> str:
     
     pwd_to_inject = None
     if command.strip().startswith("sudo "):
+        from ..context import current_session_context
         try:
-            from ..context import current_session_context
-            from ..crypto import decrypt_rsa_oaep
             ctx = current_session_context.get()
-            if ctx and ctx.encrypted_sudo_pwd and ctx.rsa_private_key:
+        except LookupError:
+            ctx = None
+        reason = ""
+        if ctx is None:
+            reason = "no session context"
+        elif not getattr(ctx, "encrypted_sudo_pwd", ""):
+            reason = "sudo secret not set"
+        elif not getattr(ctx, "rsa_private_key", None):
+            reason = "no RSA key for this session"
+        else:
+            try:
+                from ..crypto import decrypt_rsa_oaep
                 pwd_to_inject = decrypt_rsa_oaep(ctx.rsa_private_key, ctx.encrypted_sudo_pwd)
-                # Replace 'sudo ' with 'sudo -S '
-                command = command.replace("sudo ", "sudo -S ", 1)
-        except Exception as e:
-            pass
-            
+            except Exception as e:
+                reason = f"sudo secret cannot be decrypted: {e}"
+        if pwd_to_inject is None:
+            return ("ERROR: sudo command blocked - " + reason +
+                    ". Set the sudo password from the lock button first. Raw output:")
+        if not command.lstrip().startswith("sudo -S"):
+            command = command.replace("sudo", "sudo -S", 1)
+
     try:
         p = subprocess.Popen(
             command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
