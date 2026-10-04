@@ -2933,21 +2933,11 @@
     }
 
 
-    window.startNewChat = function () {
-
-      stopSnapshotPolling();
-      stopAllAgentStepTimers();
-      window.sessionStartTime = null;
-      isProcessing = false;
-      sendBtn.disabled = false;
-      window.activeAgentRunId = null;
-      sessionId = null;
-      lastSnapshotCheckpoint = 0;
-      rehydratedSessionId = null;
-      document.querySelectorAll('.sre-history-item').forEach(i => i.classList.remove('active'));
-      activeWorkers = [];
-      renderWorkerActivity();
-      messagesDiv.innerHTML = `
+    // The welcome bubble is a front-end greeting only - it is never stored in
+    // the database. Rendered at the top of every chat surface: fresh chat,
+    // loaded history, and history replays.
+    function welcomeBubbleHtml() {
+      return `
         <div style="display:flex; align-items:flex-start; gap:12px; max-width: 85%;">
           <div style="flex-shrink:0; width:56px; height:56px; border-radius:50%; background:rgba(31, 111, 235, 0.12); border:1px solid var(--border-color); display:flex; align-items:center; justify-content:center; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">
             ${window.neuroBotAvatar(42)}
@@ -2962,6 +2952,23 @@
           </div>
         </div>
       `;
+    }
+
+    window.startNewChat = function () {
+
+      stopSnapshotPolling();
+      stopAllAgentStepTimers();
+      window.sessionStartTime = null;
+      isProcessing = false;
+      sendBtn.disabled = false;
+      window.activeAgentRunId = null;
+      sessionId = null;
+      lastSnapshotCheckpoint = 0;
+      rehydratedSessionId = null;
+      document.querySelectorAll('.sre-history-item').forEach(i => i.classList.remove('active'));
+      activeWorkers = [];
+      renderWorkerActivity();
+      messagesDiv.innerHTML = welcomeBubbleHtml();
       ensureConnectionCard();
 
       investigations = {};
@@ -2991,7 +2998,7 @@
       try {
         const res = await fetch(`/api/v1/chat-sessions/${id}/messages/`);
         const data = await res.json();
-        messagesDiv.innerHTML = '';
+        messagesDiv.innerHTML = welcomeBubbleHtml();
         window.agentSeenEvents = new Set();
         window.agentCompletedRuns = new Set();
         const replayMessages = new Set();
