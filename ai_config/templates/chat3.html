@@ -2052,6 +2052,45 @@
       }
     }
 
+    // Paints (or repaints) a prompt bubble. Reused when a prompt is revised so
+    // the edited bubble looks exactly like a freshly sent one.
+    window.paintUserBubble = function (div, text, options) {
+      const opts = options || {};
+      const contextRegex = /\n\n\[Context Attached: (file:\/\/[^\]]+)\]/g;
+      const body = escapeHtml(text.replace(contextRegex, '').trim()).replace(/\n/g, '<br>');
+      div.innerHTML = body;
+      div.dataset.rawText = text;
+      div.style.width = '';
+      div.style.minWidth = '';
+      div.style.maxWidth = '70%';
+
+      if (opts.edited) {
+        const tag = document.createElement('div');
+        tag.style.cssText = 'font-size:10px; opacity:0.75; margin-top:4px; text-align:right;';
+        tag.textContent = 'edited';
+        div.appendChild(tag);
+      }
+
+      if (opts.animate) {
+        div.classList.add('sre-sending');
+        div.addEventListener('animationend', () => div.classList.remove('sre-sending'), { once: true });
+      }
+
+      const actions = document.createElement('div');
+      actions.style.cssText = 'display:flex; justify-content:flex-end; gap:6px; margin-top:6px; opacity:0;' +
+        ' transition:opacity 0.15s ease;';
+      actions.innerHTML =
+        `<button title="Edit this message" class="sre-msg-edit-btn" onclick="window.editUserMessage(this)"` +
+        ` style="background:rgba(0, 0, 0, 0.18); border:1px solid rgba(255,255,255,0.35);` +
+        ` color:#ffffff; border-radius:6px; padding:3px 8px; font-size:10px; cursor:pointer;` +
+        ` font-weight:600; display:inline-flex; align-items:center; gap:4px; transition:background 0.15s ease;">` +
+        `<i class="fa-solid fa-pen" style="font-size:9px;"></i> Edit</button>`;
+      div.appendChild(actions);
+      div.onmouseenter = () => { actions.style.opacity = '1'; };
+      div.onmouseleave = () => { actions.style.opacity = '0'; };
+      return div;
+    };
+
     function addUserMessage(text, ts) {
       const div = document.createElement('div');
       div.className = 'sre-msg-user';
@@ -2080,30 +2119,7 @@
       }
 
       if (html) {
-        div.innerHTML = html;
-        // iMessage-style arrival: replayed history must not re-animate.
-        if (!window.isLoadingHistory) {
-          div.classList.add('sre-sending');
-          div.addEventListener('animationend', () => div.classList.remove('sre-sending'), { once: true });
-        }
-        // Hover actions: the newest prompt can be revised before it is sent on.
-        const actions = document.createElement('div');
-        actions.style.cssText = 'display:flex; justify-content:flex-end; gap:6px; margin-top:6px; opacity:0;' +
-          ' transition:opacity 0.15s ease;';
-        // Same translucent blue plate as the bot avatar, so the control stays
-        // readable on top of the solid accent bubble.
-        actions.innerHTML =
-          `<button title="Edit this message" class="sre-msg-edit-btn" onclick="window.editUserMessage(this)"` +
-          ` style="background:rgba(0, 0, 0, 0.18); border:1px solid rgba(255,255,255,0.35);` +
-          ` color:#ffffff; border-radius:6px; padding:3px 8px; font-size:10px; cursor:pointer;` +
-          ` font-weight:600; display:inline-flex; align-items:center; gap:4px; transition:background 0.15s ease;">` +
-          `<i class="fa-solid fa-pen" style="font-size:9px;"></i> Edit</button>`;
-        div.appendChild(actions);
-        div.addEventListener('mouseenter', () => { actions.style.opacity = '1'; });
-        div.addEventListener('mouseleave', () => {
-          if (!div.querySelector('.sre-msg-edit-btn')) actions.style.opacity = '0';
-        });
-        div.dataset.rawText = text;
+        window.paintUserBubble(div, text, { animate: !window.isLoadingHistory });
         messagesDiv.appendChild(div);
       }
       const timeDiv = document.createElement('div');
@@ -2163,25 +2179,17 @@
       ta.setSelectionRange(ta.value.length, ta.value.length);
 
       drop.onclick = () => {
-        addUserMessage(bubble.dataset.rawText || original);
-        // remove the editor instance so the duplicate is not kept
-        const dup = messagesDiv.querySelectorAll('.sre-msg-user');
-        if (dup.length) {
-          const idx = Array.from(messagesDiv.children).indexOf(bubble);
-          if (idx > -1) messagesDiv.removeChild(bubble);
-        }
+        window.paintUserBubble(bubble, original, {});
       };
       save.onclick = () => {
         const text = ta.value.trim();
         if (!text) { err.textContent = 'Message cannot be empty.'; err.style.display = 'block'; return; }
         drop.onclick = null;
-        const idx = Array.from(messagesDiv.children).indexOf(bubble);
-        if (idx > -1) messagesDiv.removeChild(bubble);
-        // Drop everything this prompt produced so the revision is unambiguous:
-        // the old answer, its run card and its steps all go with it.
-        const after = Array.from(messagesDiv.children).slice(idx);
-        after.forEach(el => messagesDiv.removeChild(el));
-        addUserMessage(text);
+        // Editing is non-destructive: the bubble is repainted in place and the
+        // earlier answer, run card and error cards stay exactly where they are.
+        // The revised request is simply sent again below them.
+        window.paintUserBubble(bubble, text, { edited: true, animate: true });
+        addSystemMsg('Sent again with the revised request. The earlier answer is kept above for reference.', 'pen');
         const inputEl = document.getElementById('chat-input');
         if (inputEl) { inputEl.value = text; inputEl.dispatchEvent(new Event('input')); }
         const formEl = document.getElementById('chat-form') || (inputEl && inputEl.form);
