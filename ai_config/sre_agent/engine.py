@@ -35,6 +35,10 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 _GRAPH_TRACE_ENABLED = os.environ.get("SRE_GRAPH_TRACE", "").strip().lower() in {"1", "true", "yes", "on"}
 _GRAPH_LOGGER = logging.getLogger("neurosys.sre.graph")
 
+from datetime import timedelta
+
+from django.utils import timezone
+
 from .context import current_model_name
 from .discovery import ToolDiscoveryAgent
 from .events import (
@@ -557,7 +561,21 @@ class SREAgentEngine:
         generic_continuation = is_generic_continuation(user_message)
         contextual_continuation = is_contextual_continuation(user_message)
         resume_request = generic_continuation or contextual_continuation
-        resumable_case = next((case for case in recent_cases if case.status == "active"), None)
+        # "continue" must only ever resume the newest case of this chat, and
+        # only while it is still fresh. Picking any 'active' case in the
+        # session let a stale investigation from hours earlier (a failed run is
+        # deliberately left active) hijack an unrelated new conversation.
+        resume_ttl_minutes = int(getattr(settings, "SRE_RESUME_TTL_MINUTES", 180) or 180)
+        resume_cutoff = timezone.now() - timedelta(minutes=resume_ttl_minutes)
+        latest = recent_cases[0] if recent_cases else None
+        resumable_case = None
+        if latest is not None and latest.status == "active" and latest.updated_at >= resume_cutoff:
+            resumable_case = latest
+        elif latest is not None and latest.status == "active":
+            # Too old to resume: close it out so it can never be picked again.
+            await sync_to_async(
+                lambda _pk=latest.pk: Investigation.objects.filter(pk=_pk).update(status="expired")
+            )()
         relation_type = case_relation(latest_case.title if latest_case else "", user_message)
         case_info = classify_case(user_message)
         from .memory_graph import best_case_candidate, extract_features, refresh_relations
@@ -736,6 +754,16 @@ User message: {effective_goal}
 Output strictly the category name."""
         from .provider_runtime import invoke_with_retry
         from .direct_chat import is_lookup_turn as _is_lookup_turn
+        if generic_continuation and not resumable_case:
+            # Nothing to resume in this chat: say so instead of starting an
+            # investigation with an empty goal, which is what used to make the
+            # agent wander off executing unrelated commands.
+            note = "There is no active case in this chat to continue. Describe what you want checked or fixed."
+            await self._save_message(db_session_id, "ai", note)
+            yield evt_direct_chat("Nothing to continue in this chat")
+            yield evt_message_chunk(note)
+            yield evt_completed(note, duration=time.time() - start_time)
+            return
         if generic_continuation:
             intent = "investigation"
         elif getattr(self, "_router_verdict", None) == "agent":

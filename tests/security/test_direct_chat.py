@@ -201,3 +201,18 @@ def test_domain_clamp_redirects_without_cutting_the_helpfulness():
 def test_direct_chat_prompt_still_forbids_tools_and_invention():
     assert "without calling any tool" in DIRECT_CHAT_SYSTEM_PROMPT
     assert "Never invent findings" in DIRECT_CHAT_SYSTEM_PROMPT
+
+
+# --- resume scoping ---------------------------------------------------------
+
+from sre_agent.canonical_lifecycle import is_generic_continuation  # noqa: E402
+
+
+@pytest.mark.parametrize("message", ["continue", "lanjut", "lanjutkan", "resume"])
+def test_bare_continuation_words_are_recognised(message):
+    assert is_generic_continuation(message) is True
+
+
+def test_resume_ttl_setting_has_a_default():
+    from django.conf import settings
+    assert getattr(settings, "SRE_RESUME_TTL_MINUTES", 180) == 180

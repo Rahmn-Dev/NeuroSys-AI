@@ -1422,7 +1422,19 @@
 
       ws.onmessage = (e) => {
         agentLastActivity = Date.now();
-        try { handleEvent(JSON.parse(e.data)); }
+        try {
+          const payload = JSON.parse(e.data);
+          // A run belongs to the chat that started it. If the operator switched
+          // history while it was live, its events must never be rendered into
+          // the chat now on screen.
+          if (payload.type === 'session_id') {
+            window.liveRunSessionId = String(payload.content || '');
+          } else if (window.liveRunSessionId && sessionId && window.liveRunSessionId !== String(sessionId)) {
+            window.updateForeignRunBadge && window.updateForeignRunBadge(payload);
+            return;
+          }
+          handleEvent(payload);
+        }
         catch (error) { badge.textContent = 'Message error'; console.warn('Invalid Agent event', error); }
       };
     }
@@ -1885,6 +1897,7 @@
           {
             const retryDiv = document.createElement('div');
             retryDiv.style.cssText = 'margin: 8px 0;';
+            window.continueSessionId = sessionId;
             retryDiv.innerHTML = `<button onclick="window.continueRun()" style="background: rgba(88,166,255,0.12); color: var(--text-strong); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 14px; font-size: 12px; cursor: pointer; font-weight: 600;">▶ Continue from here</button> <span style="font-size: 11px; color: var(--text-secondary);">resuming the active case with re-verification</span>`;
             messagesDiv.appendChild(retryDiv);
             scrollToBottom();
@@ -3337,6 +3350,8 @@
 
     window.startNewChat = function () {
 
+      window.liveRunSessionId = null;
+      window.continueSessionId = null;
       stopSnapshotPolling();
       stopAllAgentStepTimers();
       window.sessionStartTime = null;
@@ -3365,6 +3380,22 @@
     async function loadSession(id) {
 
       const previousSessionId = sessionId;
+      // Never leave a run executing behind a chat the operator just left.
+      if ((previousSessionId !== id) && (typeof isProcessing !== 'undefined') && isProcessing) {
+        try {
+          if (ws && ws.readyState === 1) {
+            ws.send(JSON.stringify({ type: 'cancel', session_id: previousSessionId || sessionId || '' }));
+          }
+        } catch (err) { /* the socket may already be closing */ }
+        isProcessing = false;
+        if (sendBtn) { sendBtn.disabled = false; sendBtn.style.opacity = ''; }
+        if (window.activeRunOrb) window.applyOrbTo(window.activeRunOrb, 'done');
+        window.activeRunOrb = null;
+        window.activeRunWrap = null;
+        setBeamRunning(false);
+      }
+      window.liveRunSessionId = null;
+      window.continueSessionId = null;
       stopAllAgentStepTimers();
       window.sessionStartTime = null;
       isProcessing = false;
@@ -3976,6 +4007,12 @@
     window.continueRun = function () {
       try {
         if (typeof isProcessing !== 'undefined' && isProcessing) return;
+        // Refuse to continue a case that belongs to a chat the operator has
+        // since navigated away from.
+        if (window.continueSessionId && String(window.continueSessionId) !== String(sessionId)) {
+          addSystemMsg('That case belongs to another chat. Open it there to continue.', 'alert-triangle');
+          return;
+        }
         const inputEl = document.getElementById('chat-input') || (typeof input !== 'undefined' ? input : null);
         const formEl = (typeof form !== 'undefined' && form) ? form : (inputEl ? inputEl.form : null);
         if (!inputEl || !formEl) return;
