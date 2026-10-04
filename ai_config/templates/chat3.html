@@ -161,6 +161,11 @@
     box-shadow: 0 4px 14px 0 rgba(0, 118, 255, 0.2);
   }
 
+  .sre-msg-edit-btn:hover {
+    background: rgba(31, 111, 235, 0.28) !important;
+    color: #ffffff !important;
+  }
+
   .sre-msg-ai {
     /* The wrapper row merely holds the avatar + bubble card; the card itself
        contributes the background/border/shadow, so nothing more here. */
@@ -2035,13 +2040,19 @@
         const actions = document.createElement('div');
         actions.style.cssText = 'display:flex; justify-content:flex-end; gap:6px; margin-top:6px; opacity:0;' +
           ' transition:opacity 0.15s ease;';
+        // Same translucent blue plate as the bot avatar, so the control stays
+        // readable on top of the solid accent bubble.
         actions.innerHTML =
-          `<button title="Edit this message" onclick="window.editUserMessage(this)" style="background:transparent;` +
-          ` border:1px solid var(--border-color); color:var(--text-secondary); border-radius:6px; padding:2px 7px;` +
-          ` font-size:10px; cursor:pointer;"><i class="fa-solid fa-pen" style="font-size:9px;"></i> Edit</button>`;
+          `<button title="Edit this message" class="sre-msg-edit-btn" onclick="window.editUserMessage(this)"` +
+          ` style="background:rgba(31, 111, 235, 0.12); border:1px solid var(--border-color);` +
+          ` color:var(--text-strong); border-radius:6px; padding:3px 8px; font-size:10px; cursor:pointer;` +
+          ` font-weight:600; display:inline-flex; align-items:center; gap:4px; transition:background 0.15s ease;">` +
+          `<i class="fa-solid fa-pen" style="font-size:9px;"></i> Edit</button>`;
         div.appendChild(actions);
         div.addEventListener('mouseenter', () => { actions.style.opacity = '1'; });
-        div.addEventListener('mouseleave', () => { actions.style.opacity = '0'; });
+        div.addEventListener('mouseleave', () => {
+          if (!div.querySelector('.sre-msg-edit-btn')) actions.style.opacity = '0';
+        });
         div.dataset.rawText = text;
         messagesDiv.appendChild(div);
       }
