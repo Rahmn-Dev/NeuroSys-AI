@@ -394,6 +394,37 @@
     50% { opacity: 1; }
   }
 
+  /* Phase label in the Agent Run header: a shimmer sweep over the word so the
+     current agent phase (observing / exploring / planning / ...) reads as
+     live instead of a static "running" pill. */
+  .sre-run-phase {
+    background-image: linear-gradient(100deg,
+      var(--text-secondary) 0%,
+      var(--text-strong) 22%,
+      #ffffff 38%,
+      var(--accent) 50%,
+      #ffffff 62%,
+      var(--text-strong) 78%,
+      var(--text-secondary) 100%);
+    background-size: 260% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    animation: neuro-phase-shimmer 2.6s linear infinite;
+  }
+
+  .sre-run-phase::-webkit-scrollbar { display: none; }
+
+  @keyframes neuro-phase-shimmer {
+    from { background-position: 180% 0; }
+    to { background-position: -80% 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sre-run-phase { animation: none; }
+  }
+
   .ws-chip {
     font-size: 11px;
     padding: 3px 10px;
@@ -1453,12 +1484,25 @@
             // Any terminal state brings the bot avatar back.
             window.setProgressOrb('done');
           } else if (!window.isLoadingHistory) {
-            window.setProgressOrb('working');
+            var phase = {
+              starting: ['exploring', 'starting'],
+              resuming: ['exploring', 'resuming'],
+              exploring: ['exploring', 'observing'],
+              discovering_tools: ['search', 'discovering tools'],
+              planning: ['planning', 'planning'],
+              thinking: ['thinking', 'thinking'],
+              verifying: ['thinking', 'verifying'],
+              executing: ['working', 'executing'],
+              running: ['working', 'executing'],
+              awaiting_approval: ['listening', 'awaiting approval'],
+            }[data.status] || ['working', data.status || 'executing'];
+            window.setProgressOrb(phase[0], phase[1]);
           }
           break;
 
         case 'verifying':
           addAgentStep('Verifying', data.content || 'Checking postconditions...', '#79c0ff', 'shield-check');
+          window.setProgressOrb('thinking', 'verifying');
           break;
 
         case 'provider_fallback':
@@ -2032,12 +2076,34 @@
       box.innerHTML = window.neuroOrbAvatar(state, orbSize);
     };
 
-    window.setProgressOrb = function (state) {
+    window.orbPhaseLabels = {
+      exploring: 'observing',
+      search: 'discovering tools',
+      planning: 'planning',
+      thinking: 'thinking',
+      working: 'executing',
+      listening: 'awaiting approval',
+      composing: 'composing',
+    };
+
+    window.setRunPhaseLabel = function (state, label) {
+      var wrapId = window.activeRunWrap ? window.activeRunWrap.dataset.wrapId : null;
+      if (!wrapId) return;
+      var pill = document.getElementById(wrapId + '-pill');
+      if (!pill) return;
+      var text = label || window.orbPhaseLabels[state];
+      if (!text) return;
+      pill.textContent = text;
+      pill.classList.add('sre-run-phase');
+    };
+
+    window.setProgressOrb = function (state, label) {
       window.activeProgressState = state;
       // History replay must never mutate stored avatars.
       if (window.isLoadingHistory) return;
       var slot = window.activeRunOrb;
       if (!slot) return;
+      window.setRunPhaseLabel(state, label);
       // The Agent Run header owns the orb for the whole run. While the reply is
       // streaming the bubble shows the bot avatar instead, so the header orb
       // steps aside; the next agent phase brings it back.
@@ -2139,10 +2205,10 @@
       wrap.style.cssText = 'border: 1px solid var(--border-color); border-radius: 12px; margin-bottom: 10px; background: transparent;';
       wrap.innerHTML = `
         <div onclick="toggleRunWrap('${wrapId}')" style="cursor: pointer; padding: 10px 14px; display: flex; align-items: center; gap: 8px; background: var(--bg-panel); user-select: none; border-radius: 11px 11px 0 0;">
-          <span id="${wrapId}-orb" data-orb-size="20" data-orb-only="1" style="width:30px; height:30px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">${window.neuroOrbAvatar('exploring', 24)}</span>
-          <span id="${wrapId}-spin" style="color: var(--accent); display: flex; align-items: center;"><i class="fa-solid fa-spinner spin-anim"></i></span>
+          <span id="${wrapId}-orb" data-orb-size="34" data-orb-only="1" style="width:38px; height:38px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">${window.neuroOrbAvatar('exploring', 34)}</span>
+          <span id="${wrapId}-spin" style="color: var(--accent); display: flex; align-items: center; width: 14px;"></span>
           <strong style="font-size: 13px;">Agent Run</strong>
-          <span id="${wrapId}-pill" style="font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; background: rgba(88,166,255,0.15); color: var(--text-strong); text-transform: uppercase;">running</span>
+          <span id="${wrapId}-pill" class="sre-run-phase" style="font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; background: rgba(88,166,255,0.15); text-transform: uppercase; letter-spacing: 0.4px;">observing</span>
           <span id="${wrapId}-dur" style="font-size: 11px; color: var(--text-secondary);"></span>
           <i class="fa-solid fa-chevron-down" id="${wrapId}-chev" style="margin-left: auto; font-size: 10px; color: var(--text-secondary); transition: transform 0.2s; transform: rotate(180deg);"></i>
         </div>
@@ -2183,6 +2249,7 @@
         pill.style.color = ok ? 'var(--success-text)' : (terminal ? 'var(--error)' : 'var(--text-strong)');
       }
       if (dur && duration != null) dur.textContent = `✓ ${Number(duration).toFixed(1)}s`;
+      if (pill && terminal) pill.classList.remove('sre-run-phase');
       if (spin && terminal) spin.innerHTML = `<i class="fa-solid ${ok ? 'fa-circle-check' : 'fa-circle-exclamation'}" style="color: ${ok ? 'var(--success-text)' : 'var(--error)'};"></i>`;
     }
 
