@@ -52,7 +52,13 @@
   .sre-layout {
     background: linear-gradient(135deg, #0a0c10 0%, #161b22 50%, #0a0c10 100%);
     color: var(--text-primary);
-    font-family: 'Inter', 'Segoe UI', sans-serif;
+    font-family: 'Poppins', 'Segoe UI', sans-serif;
+  }
+
+  #chat-messages,
+  #chat-input,
+  .sre-panel {
+    font-family: 'Poppins', 'Segoe UI', sans-serif;
   }
 
   .sre-panel {
@@ -156,16 +162,52 @@
   }
 
   .sre-msg-user {
-    /* Same translucent plate as the bot avatar disc (rgba(31,111,235,.12)),
-       instead of a solid accent block. */
-    background: rgba(31, 111, 235, 0.12) !important;
-    color: var(--text-primary) !important;
-    border: 1px solid var(--border-color) !important;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    background: #1da6ff !important;
+    color: #ffffff !important;
+    border: 1px solid rgba(255, 255, 255, 0.22) !important;
+    box-shadow: 0 4px 16px rgba(29, 166, 255, 0.28);
+  }
+
+  /* iMessage-style send: the bubble springs up into place with a slight
+     overshoot, and the tap target reacts while it travels. */
+  @keyframes sre-send-pop {
+    0% { opacity: 0; transform: translateY(14px) scale(0.94); }
+    55% { opacity: 1; transform: translateY(-2px) scale(1.015); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  @keyframes sre-send-stamp {
+    0% { opacity: 0; transform: translateY(8px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes sre-send-press {
+    0% { transform: scale(1); }
+    35% { transform: scale(0.86); }
+    70% { transform: scale(1.06); }
+    100% { transform: scale(1); }
+  }
+
+  .sre-msg-user.sre-sending {
+    animation: sre-send-pop 420ms cubic-bezier(.22, 1.2, .36, 1) both;
+  }
+
+  .sre-msg-user.sre-sending + .sre-msg-time.sre-sending {
+    animation: sre-send-stamp 320ms ease-out 120ms both;
+  }
+
+  #send-btn.sre-press {
+    animation: sre-send-press 260ms ease-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sre-msg-user.sre-sending,
+    .sre-msg-user.sre-sending + .sre-msg-time.sre-sending,
+    #send-btn.sre-press { animation: none; }
   }
 
   .sre-msg-edit-btn:hover {
-    background: rgba(31, 111, 235, 0.38) !important;
+    background: rgba(0, 0, 0, 0.34) !important;
     color: #ffffff !important;
   }
 
@@ -2039,6 +2081,11 @@
 
       if (html) {
         div.innerHTML = html;
+        // iMessage-style arrival: replayed history must not re-animate.
+        if (!window.isLoadingHistory) {
+          div.classList.add('sre-sending');
+          div.addEventListener('animationend', () => div.classList.remove('sre-sending'), { once: true });
+        }
         // Hover actions: the newest prompt can be revised before it is sent on.
         const actions = document.createElement('div');
         actions.style.cssText = 'display:flex; justify-content:flex-end; gap:6px; margin-top:6px; opacity:0;' +
@@ -2047,8 +2094,8 @@
         // readable on top of the solid accent bubble.
         actions.innerHTML =
           `<button title="Edit this message" class="sre-msg-edit-btn" onclick="window.editUserMessage(this)"` +
-          ` style="background:rgba(31, 111, 235, 0.20); border:1px solid var(--border-color);` +
-          ` color:var(--text-strong); border-radius:6px; padding:3px 8px; font-size:10px; cursor:pointer;` +
+          ` style="background:rgba(0, 0, 0, 0.18); border:1px solid rgba(255,255,255,0.35);` +
+          ` color:#ffffff; border-radius:6px; padding:3px 8px; font-size:10px; cursor:pointer;` +
           ` font-weight:600; display:inline-flex; align-items:center; gap:4px; transition:background 0.15s ease;">` +
           `<i class="fa-solid fa-pen" style="font-size:9px;"></i> Edit</button>`;
         div.appendChild(actions);
@@ -2060,8 +2107,12 @@
         messagesDiv.appendChild(div);
       }
       const timeDiv = document.createElement('div');
+      timeDiv.className = 'sre-msg-time';
       timeDiv.style.cssText = 'align-self: flex-end; font-size: 10px; color: var(--text-secondary); opacity: 0.7; margin-bottom: 8px; padding-right: 4px;';
       timeDiv.textContent = chatTimeLabel(ts);
+      if (!window.isLoadingHistory && div.classList.contains('sre-sending')) {
+        timeDiv.classList.add('sre-sending');
+      }
       messagesDiv.appendChild(timeDiv);
       scrollToBottom();
     }
@@ -3387,6 +3438,10 @@
       window.setSendButtonState('running');
 
       window.lastSubmittedMessage = msg;
+      sendBtn.classList.remove('sre-press');
+      // Force a reflow so the press animation replays on every send.
+      void sendBtn.offsetWidth;
+      sendBtn.classList.add('sre-press');
       ws.send(JSON.stringify({
         type: 'message',
         message: msg,
