@@ -1565,6 +1565,7 @@
           break;
 
         case 'discovering_tools':
+          window.ensureRunWrap();
           let toolsHtml = data.content;
           if (data.tools && data.tools.length) {
             toolsHtml += '<div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px;">';
@@ -1578,6 +1579,7 @@
           break;
 
         case 'planning':
+          window.ensureRunWrap();
           addAgentStep('Planning', data.content, '#dac654', 'list-todo');
           window.setProgressOrb('planning');
           break;
@@ -1587,6 +1589,7 @@
             currentAIMsg.remove();
             currentAIMsg = null;
           }
+          window.ensureRunWrap();
           addAgentStep('Thinking', data.content, '#ff69b4', 'brain');
           window.setProgressOrb('thinking');
           break;
@@ -1605,6 +1608,7 @@
         }
 
         case 'tool_start':
+          window.ensureRunWrap();
           addAgentStep('Executing', `<code>${escapeHtml(data.tool || '')}</code> ${escapeHtml(data.command || '')}`, 'var(--warning)', 'zap', data.step_id, false);
           window.setProgressOrb('working');
           break;
@@ -2076,6 +2080,14 @@
       box.innerHTML = window.neuroOrbAvatar(state, orbSize);
     };
 
+    // A phase event must never be dropped because the run wrap is missing
+    // (resumed socket, run started before the wrap existed, ...).
+    window.ensureRunWrap = function () {
+      if (window.isLoadingHistory) return null;
+      if (!window.activeRunWrap) startRunWrap();
+      return window.activeRunWrap;
+    };
+
     window.orbPhaseLabels = {
       exploring: 'observing',
       search: 'discovering tools',
@@ -2205,7 +2217,7 @@
       wrap.style.cssText = 'border: 1px solid var(--border-color); border-radius: 12px; margin-bottom: 10px; background: transparent;';
       wrap.innerHTML = `
         <div onclick="toggleRunWrap('${wrapId}')" style="cursor: pointer; padding: 10px 14px; display: flex; align-items: center; gap: 8px; background: var(--bg-panel); user-select: none; border-radius: 11px 11px 0 0;">
-          <span id="${wrapId}-orb" data-orb-size="34" data-orb-only="1" style="width:38px; height:38px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">${window.neuroOrbAvatar('exploring', 34)}</span>
+          <span id="${wrapId}-orb" data-orb-size="42" data-orb-only="1" style="width:46px; height:46px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">${window.neuroOrbAvatar('exploring', 42)}</span>
           <span id="${wrapId}-spin" style="color: var(--accent); display: flex; align-items: center; width: 14px;"></span>
           <strong style="font-size: 13px;">Agent Run</strong>
           <span id="${wrapId}-pill" class="sre-run-phase" style="font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; background: rgba(88,166,255,0.15); text-transform: uppercase; letter-spacing: 0.4px;">observing</span>
@@ -2224,6 +2236,11 @@
       window.activeRunOrb = document.getElementById(wrapId + '-orb');
       window.orbInRun = true;
       window.activeRunOrb.style.display = '';
+      const startPill = document.getElementById(wrapId + '-pill');
+      if (startPill) {
+        startPill.textContent = 'starting';
+        startPill.classList.add('sre-run-phase');
+      }
       scrollToBottom();
     }
 
