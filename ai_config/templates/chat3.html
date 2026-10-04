@@ -689,7 +689,7 @@
                 <textarea id="chat-input" placeholder="Ask anything" class="sre-input sre-text-strong"
                   style="flex: 1; background: transparent; border: none; font-size: 15px; outline: none; resize: none; overflow-y: auto; padding: 12px 12px; line-height: 1.5; min-height: 46px; max-height: 200px; box-sizing: border-box;"
                   rows="1"></textarea>
-                <button type="submit" id="send-btn" title="Kirim"
+                <button type="submit" id="send-btn" title="Send"
                   style="background: var(--accent); color: #ffffff; border: none; border-radius: 50%; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; transition: all 0.2s; margin-bottom: 2px;">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                     stroke-linecap="round" stroke-linejoin="round" style="margin-left: -2px;">
@@ -700,7 +700,7 @@
               </div>
               <div class="composer-toolbar">
                 <button type="button" id="beam-palette-btn" class="composer-pill"
-                  onclick="cycleBeamPalette()" title="Ganti warna beam"
+                  onclick="cycleBeamPalette()" title="Change beam colour"
                   style="width: 28px; padding: 0; justify-content: center;">
                   <span id="beam-palette-swatch"
                     style="width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--border-color); display: inline-block;"></span>
@@ -722,17 +722,12 @@
                   <div id="mode-picker-panel" class="model-picker-panel"
                     style="width: min(330px, 92vw);"></div>
                 </div>
-                <div style="position: relative;">
-                  <button type="button" id="permission-picker-btn" class="composer-pill"
-                    onclick="togglePermissionPicker(event)" title="Izin agent">
-                    <i class="fa-solid fa-shield-halved" id="permission-picker-icon" style="font-size: 11px;"></i>
-                    <span id="permission-picker-label">Need Approval</span>
-                    <i class="fa-solid fa-chevron-up" style="font-size: 9px; opacity: 0.7;"></i>
-                  </button>
-                  <div id="permission-picker-panel" class="model-picker-panel"
-                    style="width: min(340px, 92vw);"></div>
-                </div>
-                <button type="button" class="composer-pill" onclick="openModelManagerModal(); closeModelPicker(); closeModePicker(); closePermissionPicker();"
+                <button type="button" id="permission-picker-btn" class="composer-pill"
+                  onclick="toggleAgentPermission()" title="Agent authorization: click to switch">
+                  <i class="fa-solid fa-shield-halved" id="permission-picker-icon" style="font-size: 11px;"></i>
+                  <span id="permission-picker-label">Need Approval</span>
+                </button>
+                <button type="button" class="composer-pill" onclick="openModelManagerModal(); closeModelPicker(); closeModePicker();"
                   title="Model Manager: endpoint, provider, API key, status">
                   <i class="fa-solid fa-sliders"></i>
                   <span>Models</span>
@@ -918,13 +913,13 @@
     } catch (e) { }
     console.error(`${what} failed: ${res.status}`, detail);
     if (res.status === 403) {
-      return 'CSRF ditolak (403). Halaman ini dimuat sebelum service restart, '
-        + 'jadi token CSRF-nya sudah tidak cocok. Tekan Ctrl+Shift+R untuk hard refresh, lalu ulangi.';
+      return 'CSRF rejected (403). This page was loaded before the service restart, '
+        + 'so its CSRF token no longer matches. Press Ctrl+Shift+R to hard refresh, then retry.';
     }
     if (res.status === 404) {
-      return `${what}: data sudah tidak ada (404).`;
+      return `${what}: the record no longer exists (404).`;
     }
-    return `${what} gagal (${res.status}). ${detail || ''}`;
+    return `${what} failed (${res.status}). ${detail || ''}`;
   }
 
   function getCSRFToken() {
@@ -1025,74 +1020,35 @@
     permissionSelector.addEventListener('change', updatePermissionPickerLabel);
   }
 
-  // Authorization modes for the composer popover. Full Access still keeps every
-  // hard security boundary; it only removes the per-action human gate.
   const PERMISSION_MODES = [
-    { value: 'need_approval', label: 'Need Approval', icon: 'fa-shield-halved', hint: 'Aksi berisiko/wubah data minta izin dulu' },
-    { value: 'full_access', label: 'Full Access', icon: 'fa-unlock-keyhole', hint: 'Auto-approve, hard block tetap berlaku' }
+    { value: 'need_approval', label: 'Need Approval', icon: 'fa-shield-halved' },
+    { value: 'full_access', label: 'Full Access', icon: 'fa-unlock-keyhole' }
   ];
 
-  function closePermissionPicker() {
-    const panel = document.getElementById('permission-picker-panel');
-    if (panel) panel.classList.remove('open');
-  }
-
-  function togglePermissionPicker(ev) {
-    if (ev) ev.stopPropagation();
-    const panel = document.getElementById('permission-picker-panel');
-    if (!panel) return;
-    const willOpen = !panel.classList.contains('open');
-    if (willOpen) {
-      closeModelPicker();
-      closeModePicker();
-      renderPermissionPickerPanel();
-      panel.classList.add('open');
-    } else {
-      panel.classList.remove('open');
-    }
-  }
-
-  function renderPermissionPickerPanel() {
-    const panel = document.getElementById('permission-picker-panel');
-    const hidden = document.getElementById('permission-selector');
-    if (!panel) return;
-    const current = hidden ? hidden.value : 'need_approval';
-    panel.innerHTML = PERMISSION_MODES.map(p => `
-      <button type="button" class="model-picker-item ${p.value === current ? 'selected' : ''}"
-        onclick="selectPermissionFromPicker('${p.value}')">
-        <i class="fa-solid ${p.icon}" style="font-size: 12px; width: 16px; color: var(--accent);"></i>
-        <span style="flex: 1; min-width: 0;">
-          <span class="mp-name">${p.label}</span>
-          <span class="mp-sub" style="font-family: inherit;">${p.hint}</span>
-        </span>
-        ${p.value === current ? '<i class="fa-solid fa-check" style="color: var(--success-text); font-size: 11px;"></i>' : ''}
-      </button>`).join('');
-  }
-
-  function selectPermissionFromPicker(value) {
+  // Direct toggle instead of a two-row popover. With the popover it was
+  // possible to activate the wrong row: the server audit recorded
+  // full_access -> need_approval requests seconds after the operator had asked
+  // for Full Access, and the popover was a second place where the label and
+  // the real state could drift apart.
+  function toggleAgentPermission() {
     const hidden = document.getElementById('permission-selector');
     if (!hidden) return;
     if (hidden.disabled) {
-      // Fail-closed: the server preference could not be read at all.
-      alert('Izin agent belum bisa diubah: preferensi server belum terbaca. Coba muat ulang halaman.');
+      alert('Agent authorization cannot be changed: the server preference could not be read. Reload the page.');
       return;
     }
-    if (hidden.value === value && !permissionSaving) {
-      closePermissionPicker();
-      return;
-    }
-    // Show the choice immediately, then persist it. If a PUT is still in
-    // flight the value is queued and flushed as soon as it settles, so rapid
-    // toggling always ends on the last click.
-    hidden.value = value;
+    const current = hidden.value === 'full_access' ? 'full_access' : 'need_approval';
+    const next = current === 'full_access' ? 'need_approval' : 'full_access';
+    // Reflect the click immediately, then persist. Last click always wins.
+    hidden.value = next;
     updatePermissionPickerLabel();
-    closePermissionPicker();
     permissionUserPicked = true;
+    console.info('[permission] requested=' + next + ' (was ' + current + ')');
     if (permissionSaving) {
-      permissionQueuedMode = value;
+      permissionQueuedMode = next;
       return;
     }
-    saveAgentPermission(value);
+    saveAgentPermission(next);
   }
 
   function updatePermissionPickerLabel() {
@@ -1107,9 +1063,10 @@
     if (btn) {
       btn.style.color = mode.value === 'full_access' ? 'var(--warning)' : 'var(--text-secondary)';
       btn.style.opacity = hidden.disabled ? '0.5' : '1';
+      btn.setAttribute('aria-pressed', mode.value === 'full_access' ? 'true' : 'false');
       btn.title = permissionSaving
-        ? 'Menyimpan preferensi izin...'
-        : 'Izin agent: ' + mode.label;
+        ? 'Saving authorization preference...'
+        : `Agent authorization: ${mode.label} (click to switch)`;
     }
   }
 
@@ -4825,7 +4782,6 @@
     if (!panel) return;
     const willOpen = !panel.classList.contains('open');
     if (willOpen) {
-      closePermissionPicker();
       renderModelPickerPanel();
       panel.classList.add('open');
     } else {
@@ -4901,7 +4857,7 @@
   // Agent modes shown in the composer popover. The hidden #mode-selector stays
   // the single source of truth for the submit payload.
   const AGENT_MODES = [
-    { value: 'autonomous_single', label: 'Single Agent', icon: 'fa-user-tie', hint: 'One agent runs the whole loop with tools' },
+    { value: 'autonomous_single', label: 'Single Agent', icon: 'fa-user-tie', hint: 'One agent runs the whole loop' },
     { value: 'guided', label: 'Guided Investigation', icon: 'fa-compass', hint: 'Senior planner + workers, human checkpoints' },
     { value: 'autonomous_multi', label: 'Multi Agent', icon: 'fa-users', hint: 'Parallel workers split by service domain' }
   ];
@@ -4918,7 +4874,6 @@
     const willOpen = !panel.classList.contains('open');
     if (willOpen) {
       closeModelPicker();
-      closePermissionPicker();
       renderModePickerPanel();
       panel.classList.add('open');
     } else {
@@ -4989,20 +4944,12 @@
         modePanel.classList.remove('open');
       }
     }
-    const permPanel = document.getElementById('permission-picker-panel');
-    if (permPanel && permPanel.classList.contains('open')) {
-      const permBtn = document.getElementById('permission-picker-btn');
-      if (!permPanel.contains(ev.target) && !(permBtn && permBtn.contains(ev.target))) {
-        permPanel.classList.remove('open');
-      }
-    }
   });
 
   document.addEventListener('keydown', function (ev) {
     if (ev.key === 'Escape') {
       closeModelPicker();
       closeModePicker();
-      closePermissionPicker();
     }
   });
 
