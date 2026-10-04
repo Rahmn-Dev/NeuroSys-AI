@@ -188,10 +188,14 @@ def test_domain_clamp_is_part_of_the_direct_chat_prompt():
     assert "SRE assistant" in prompt
 
 
-def test_domain_clamp_blocks_off_topic_guidance():
+def test_domain_clamp_redirects_without_cutting_the_helpfulness():
     assert "off-topic" in SRE_DOMAIN_CLAMP
-    assert "do not give detailed guidance" in SRE_DOMAIN_CLAMP
+    assert "answer properly and in real detail" in SRE_DOMAIN_CLAMP
+    assert "do not refuse simply because the subject is off-topic" in SRE_DOMAIN_CLAMP
     assert "medical" in SRE_DOMAIN_CLAMP
+    # It must not turn the assistant curt.
+    assert "one or two sentences" not in SRE_DOMAIN_CLAMP
+    assert "single short sentence" not in SRE_DOMAIN_CLAMP
 
 
 def test_direct_chat_prompt_still_forbids_tools_and_invention():
