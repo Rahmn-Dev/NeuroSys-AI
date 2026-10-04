@@ -489,6 +489,7 @@ class SREAgentEngine:
         """
         Internal loop — runs the full agent loop and yields events.
         """
+        self._router_verdict = None
         start_time = time.time()
 
         from .security_boundary import INJECTION, audit
@@ -504,16 +505,25 @@ class SREAgentEngine:
         from .approvals import bind_approval_id
         bind_approval_id(self.approval_id)
 
-        # --- Everyday conversation: answer directly, touch nothing ---
-        # Runs before the case/plan pipeline and without any provider call, so
-        # a greeting never pays for tools, discovery or a case in the graph.
-        from .direct_chat import is_direct_conversation, direct_chat_prompt
-        if is_direct_conversation(user_message):
-            async for event in self._run_direct_chat(
-                user_message, terminal_cwd, active_workspace, selected_file,
-            ):
-                yield event
-            return
+        # --- Route first: conversation or operational work ---
+        # The model decides (it is the only thing that understands intent), so
+        # this replaces the later intent-classification call instead of adding
+        # one. Anything the router does not clearly call 'direct' continues
+        # into the full pipeline.
+        from .direct_chat import is_lookup_turn, is_secret_or_destructive, route_turn
+        if not is_lookup_turn(user_message) and not is_secret_or_destructive(user_message):
+            router_llm = await self._get_llm()
+            route, route_reason = await route_turn(router_llm, user_message)
+            if "unavailable" not in route_reason and "unparsable" not in route_reason:
+                self._router_verdict = route
+            if route == "direct":
+                self._provider_usage_fn = getattr(router_llm, "get_usage_summary", None)
+                async for event in self._run_direct_chat(
+                    user_message, terminal_cwd, active_workspace, selected_file,
+                ):
+                    yield event
+                return
+            self._last_route_reason = route_reason
 
         # --- Phase 1: Session setup ---
         db_session_id = await self._get_or_create_session()
@@ -723,8 +733,13 @@ Rules:
 User message: {effective_goal}
 Output strictly the category name."""
         from .provider_runtime import invoke_with_retry
+        from .direct_chat import is_lookup_turn as _is_lookup_turn
         if generic_continuation:
             intent = "investigation"
+        elif getattr(self, "_router_verdict", None) == "agent":
+            # The router already answered this exact question before the case
+            # pipeline, so do not spend a second provider call on it.
+            intent = "simple_action" if _is_lookup_turn(effective_goal) else "investigation"
         else:
             resp_intent = await invoke_with_retry(lambda: llm.ainvoke([HumanMessage(content=intent_prompt)]))
             intent = resp_intent.content.strip().lower()
