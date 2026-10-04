@@ -1335,7 +1335,7 @@ Output strictly the category name."""
         if 'inv_id' in locals() and inv_id:
             await sync_to_async(lambda _i=inv_id: Investigation.objects.filter(id=_i).update(status="active"))()
         if not terminal_failure:
-            yield evt_error("Case belum selesai dan tetap aktif. Kirim 'lanjut' dalam bahasa Anda untuk meneruskannya.")
+            yield evt_error("The case is not finished and stays active. Send 'continue' in your language to resume it.")
 
     # -----------------------------------------------------------------------
     # Logging & Wrapper

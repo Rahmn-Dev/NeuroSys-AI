@@ -1855,7 +1855,7 @@
                         </summary>
                         <div style="padding: 16px; font-size: 13px; background: var(--bg-panel); border-top: 1px solid var(--border-color);">
                             <details style="margin-bottom: 12px;">
-                                <summary style="cursor: pointer; font-size: 12px; color: var(--text-secondary);">Lihat ringkasan hasil (sudah tampil di pesan di atas)</summary>
+                                <summary style="cursor: pointer; font-size: 12px; color: var(--text-secondary);">View result summary (already shown in the message above)</summary>
                                 <p style="margin: 8px 0 0 0;">${escapeHtml(data.content || "")}</p>
                             </details>
                             <table style="width: 100%; border-collapse: collapse; font-size: 12px; border: 1px solid var(--border-color);">
@@ -1886,7 +1886,7 @@
           {
             const retryDiv = document.createElement('div');
             retryDiv.style.cssText = 'margin: 8px 0;';
-            retryDiv.innerHTML = `<button onclick="window.continueRun()" style="background: rgba(88,166,255,0.12); color: var(--text-strong); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 14px; font-size: 12px; cursor: pointer; font-weight: 600;">▶ Lanjutkan dari sini</button> <span style="font-size: 11px; color: var(--text-secondary);">melanjutkan case aktif dengan verifikasi ulang</span>`;
+            retryDiv.innerHTML = `<button onclick="window.continueRun()" style="background: rgba(88,166,255,0.12); color: var(--text-strong); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 14px; font-size: 12px; cursor: pointer; font-weight: 600;">▶ Continue from here</button> <span style="font-size: 11px; color: var(--text-secondary);">resuming the active case with re-verification</span>`;
             messagesDiv.appendChild(retryDiv);
             scrollToBottom();
           }
@@ -2869,7 +2869,7 @@
                 const fid = 'finding-' + (window.findingSeq = (window.findingSeq || 0) + 1);
                 window.findingContents = window.findingContents || {};
                 window.findingContents[fid] = text;
-                text = `<span id="${fid}-short">${escapeHtml(text.slice(0, 300))}… </span><span id="${fid}-full" style="display: none;">${escapeHtml(text)}</span><a href="javascript:void(0)" onclick="window.toggleFinding('${fid}')" id="${fid}-btn" style="color: var(--text-strong); font-size: 11px; white-space: nowrap;">tampilkan semua</a>`;
+                text = `<span id="${fid}-short">${escapeHtml(text.slice(0, 300))}… </span><span id="${fid}-full" style="display: none;">${escapeHtml(text)}</span><a href="javascript:void(0)" onclick="window.toggleFinding('${fid}')" id="${fid}-btn" style="color: var(--text-strong); font-size: 11px; white-space: nowrap;">show all</a>`;
               } else {
                 text = escapeHtml(text);
               }
@@ -3569,7 +3569,7 @@
                                       </summary>
                                       <div style="padding: 16px; font-size: 13px; background: var(--bg-panel); border-top: 1px solid var(--border-color);">
                                           <details style="margin-bottom: 12px;">
-                                              <summary style="cursor: pointer; font-size: 12px; color: var(--text-secondary);">Lihat ringkasan hasil (sudah tampil di pesan di atas)</summary>
+                                              <summary style="cursor: pointer; font-size: 12px; color: var(--text-secondary);">View result summary (already shown in the message above)</summary>
                                               <p style="margin: 8px 0 0 0;">${escapeHtml(evt.content || "")}</p>
                                           </details>
                                           <table style="width: 100%; border-collapse: collapse; font-size: 12px; border: 1px solid var(--border-color);">
@@ -3957,7 +3957,7 @@
           alert('Rollback sukses!');
           loadArtifacts();
         } else {
-          alert('Rollback gagal.');
+          alert('Rollback failed.');
         }
       } catch (e) {
         alert('Error rollback');
@@ -3972,7 +3972,7 @@
         const inputEl = document.getElementById('chat-input') || (typeof input !== 'undefined' ? input : null);
         const formEl = (typeof form !== 'undefined' && form) ? form : (inputEl ? inputEl.form : null);
         if (!inputEl || !formEl) return;
-        inputEl.value = 'lanjut';
+        inputEl.value = 'continue';
         if (formEl.requestSubmit) formEl.requestSubmit();
         else formEl.dispatchEvent(new Event('submit', { cancelable: true }));
       } catch (e) { /* no-op */ }
@@ -3986,7 +3986,7 @@
       const expanded = fullEl.style.display !== 'none';
       fullEl.style.display = expanded ? 'none' : 'inline';
       shortEl.style.display = expanded ? 'inline' : 'none';
-      btn.textContent = expanded ? 'tampilkan semua' : 'ringkas';
+      btn.textContent = expanded ? 'show all' : 'summarize';
     };
 
     window.toggleArtifactFull = function (cardId) {
@@ -4012,9 +4012,9 @@
       if (!entry) return;
       try {
         await navigator.clipboard.writeText(entry.full);
-        alert('Artifact disalin ke clipboard!');
+        alert('Artifact copied to clipboard!');
       } catch (e) {
-        alert('Gagal menyalin.');
+        alert('Copy failed.');
       }
     };
 

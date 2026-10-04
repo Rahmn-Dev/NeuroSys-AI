@@ -587,8 +587,8 @@ Do NOT stop calling tools until you are ready to call `finish_task`.
                 error_info = normalize_provider_error(e)
                 active_model = getattr(self.llm_with_tools, "active_label", "selected model")
                 yield evt_error(
-                    f"Single Agent gagal pada {active_model} ({error_info['category']}). "
-                    "Case tetap aktif; Auto Models akan melewati model yang tidak tersedia."
+                    f"Single Agent failed on {active_model} ({error_info['category']}). "
+                    "The case stays active; Auto Models will skip unavailable models."
                 )
                 break
 
