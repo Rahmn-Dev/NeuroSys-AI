@@ -1992,6 +1992,7 @@
           if (data.run_id && window.agentCompletedRuns.has(data.run_id)) break;
           if (data.run_id) window.agentCompletedRuns.add(data.run_id);
           window.markRunFinished(window.liveRunSessionId || sessionId, true);
+          window.setAgentDotState('done');
           updateRunStateCard(data.run_id, 'completed', data.duration);
           finalizeRunWrap('completed', data.duration);
           if (activeInvestigationId && investigations[activeInvestigationId]) {
@@ -2047,6 +2048,7 @@
 
         case 'error':
           window.markRunFinished(window.liveRunSessionId || sessionId, false);
+          window.setAgentDotState('idle');
           stopAllAgentStepTimers();
           updateRunStateCard(data.run_id, 'failed');
           finalizeRunWrap('failed');
@@ -2446,8 +2448,17 @@
       pill.classList.add('sre-run-phase');
     };
 
+    // The dot mirrors the run state: informative, and it never washes out text.
+    window.setAgentDotState = function (state) {
+      document.querySelectorAll('.sre-agent-dot').forEach((dot) => {
+        dot.dataset.state = state;
+        dot.title = state === 'running' ? 'Agent working' : (state === 'done' ? 'Run finished' : 'Agent idle');
+      });
+    };
+
     window.setProgressOrb = function (state, label) {
       window.activeProgressState = state;
+      if (state !== 'done') window.setAgentDotState('running');
       // History replay must never mutate stored avatars.
       if (window.isLoadingHistory) return;
       var slot = window.activeRunOrb;
@@ -3497,6 +3508,7 @@
       window.setSendButtonState('running');
 
       window.lastSubmittedMessage = msg;
+      window.setAgentDotState('running');
       sendBtn.classList.remove('sre-press');
       // Force a reflow so the press animation replays on every send.
       void sendBtn.offsetWidth;
