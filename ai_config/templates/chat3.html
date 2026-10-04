@@ -1941,8 +1941,17 @@
         var aiMsgs = document.querySelectorAll('.agent-msg.sre-msg-ai');
         msg = aiMsgs.length ? aiMsgs[aiMsgs.length - 1] : null;
       }
-      if (!msg) return;
-      var box = msg.querySelector('[data-avatar="agent"]') || msg.querySelector(':scope > div:first-child');
+      var box = null;
+      if (msg) {
+        // The reply has started: the avatar moves down into the message bubble
+        // and the run header gives up its copy.
+        box = msg.querySelector('[data-avatar="agent"]') || msg.querySelector(':scope > div:first-child');
+        if (window.activeRunOrb) window.activeRunOrb.style.display = 'none';
+      } else if (window.activeRunOrb) {
+        // Still working through the steps: the orb lives in the Agent Run header.
+        box = window.activeRunOrb;
+        box.style.display = '';
+      }
       if (!box) return;
       if (!box.dataset.botHtml) box.dataset.botHtml = box.innerHTML;
       if (!state || state === 'done') {
@@ -2040,6 +2049,7 @@
       wrap.style.cssText = 'border: 1px solid var(--border-color); border-radius: 12px; margin-bottom: 10px; background: transparent;';
       wrap.innerHTML = `
         <div onclick="toggleRunWrap('${wrapId}')" style="cursor: pointer; padding: 10px 14px; display: flex; align-items: center; gap: 8px; background: var(--bg-panel); user-select: none; border-radius: 11px 11px 0 0;">
+          <span id="${wrapId}-orb" style="width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; overflow:hidden; background: rgba(31, 111, 235, 0.10); border:1px solid var(--border-color);">${window.neuroBotAvatar(20)}</span>
           <span id="${wrapId}-spin" style="color: var(--accent); display: flex; align-items: center;"><i class="fa-solid fa-spinner spin-anim"></i></span>
           <strong style="font-size: 13px;">Agent Run</strong>
           <span id="${wrapId}-pill" style="font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; background: rgba(88,166,255,0.15); color: var(--text-strong); text-transform: uppercase;">running</span>
@@ -2055,6 +2065,7 @@
       body.dataset.wrapId = wrapId;
       body.dataset.open = '1';
       window.activeRunWrap = body;
+      window.activeRunOrb = document.getElementById(wrapId + '-orb');
       scrollToBottom();
     }
 
@@ -2088,6 +2099,10 @@
       if (!body) return;
       const wrapId = body.dataset.wrapId;
       paintRunWrap(wrapId, status, duration);
+      if (window.activeRunOrb && !window.activeRunOrb.dataset.botHtml) {
+        window.activeRunOrb.innerHTML = window.neuroBotAvatar(20);
+      }
+      window.activeRunOrb = null;
       setBeamRunning(false);
       window.agentAutoScroll = false;
       // Stay OPEN so the just-finished run stays visible; it collapses when
