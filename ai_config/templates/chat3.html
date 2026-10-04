@@ -318,8 +318,8 @@
     width: 100%;
     max-width: 800px;
     margin: 0 auto;
-    padding: 2px;
-    border-radius: 28px;
+    padding: 3px;
+    border-radius: 29px;
     isolation: isolate;
   }
 
@@ -328,8 +328,8 @@
   .beam-layer {
     position: absolute;
     inset: 0;
-    border-radius: 29px;
-    padding: 1.5px;
+    border-radius: 30px;
+    padding: 2.5px;
     background: conic-gradient(from var(--beam-angle),
         #7c8cf8 0%,
         #a996ef 14%,
@@ -344,7 +344,7 @@
     mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     mask-composite: exclude;
     animation: beam-spin 9s linear infinite;
-    opacity: 0.32;
+    opacity: 0.45;
     filter: saturate(0.85);
     pointer-events: none;
     transition: opacity 0.35s ease, filter 0.35s ease;
@@ -382,6 +382,16 @@
   select#mode-selector,
   select#permission-selector {
     display: none !important;
+  }
+
+  @keyframes neuro-orb-rotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  @keyframes neuro-orb-pulse {
+    0%, 100% { opacity: 0.72; }
+    50% { opacity: 1; }
   }
 
   .ws-chip {
@@ -1440,6 +1450,10 @@
           if (['completed', 'failed', 'cancelled', 'blocked', 'denied', 'denied_timeout', 'security_blocked', 'error', 'finalized'].includes(data.status)) {
             isProcessing = false;
             sendBtn.disabled = false;
+            // Any terminal state brings the bot avatar back.
+            window.setProgressOrb('done');
+          } else if (!window.isLoadingHistory) {
+            window.setProgressOrb('working');
           }
           break;
 
@@ -1503,6 +1517,7 @@
           // without a fresh submit), open one so steps stay grouped.
           if (!window.isLoadingHistory && !window.activeRunWrap) startRunWrap();
           addAgentStep('Exploring', data.content, 'var(--accent)', 'search');
+          window.setProgressOrb('exploring');
           break;
 
         case 'discovering_tools':
@@ -1515,10 +1530,12 @@
             toolsHtml += '</div>';
           }
           addAgentStep('Discovering Tools', toolsHtml, 'var(--purple)', 'wrench');
+          window.setProgressOrb('search');
           break;
 
         case 'planning':
           addAgentStep('Planning', data.content, '#dac654', 'list-todo');
+          window.setProgressOrb('planning');
           break;
 
         case 'thinking':
@@ -1527,6 +1544,7 @@
             currentAIMsg = null;
           }
           addAgentStep('Thinking', data.content, '#ff69b4', 'brain');
+          window.setProgressOrb('thinking');
           break;
 
         case 'hypothesis':
@@ -1544,6 +1562,7 @@
 
         case 'tool_start':
           addAgentStep('Executing', `<code>${escapeHtml(data.tool || '')}</code> ${escapeHtml(data.command || '')}`, 'var(--warning)', 'zap', data.step_id, false);
+          window.setProgressOrb('working');
           break;
 
         case 'tool_end':
@@ -1556,6 +1575,7 @@
 
         case 'approval_required':
           addAgentStep('Approval Required', data.content, 'var(--warning)', 'lock');
+          window.setProgressOrb('listening');
           showApprovalCard(data);
           break;
 
@@ -1622,6 +1642,7 @@
         case 'investigation_started':
           if (!window.isLoadingHistory && activeInvestigationId && investigations[activeInvestigationId]) {
             investigations[activeInvestigationId].status = 'completed';
+            window.setProgressOrb('done');
           }
           const invId = data.investigation_id || (data.metadata && data.metadata.investigation_id);
           if (invId) {
@@ -1726,6 +1747,7 @@
           finalizeRunWrap('completed', data.duration);
           if (activeInvestigationId && investigations[activeInvestigationId]) {
             investigations[activeInvestigationId].status = 'completed';
+            window.setProgressOrb('done');
             if (sessionId) {
               loadHistory();
             }
@@ -1884,12 +1906,58 @@
       </svg>`;
     };
 
+    // --- Thinking Orb: replaces the bot avatar in the current AI bubble while
+    // the agent works, then snaps back to the bot on completion. Small conic
+    // gradient orb with spin + opacity pulse; colors and speed tell the
+    // operator what the agent is doing, no heavy library.
+    window.activeProgressState = null;
+
+    window.neuroOrbAvatar = function (state, size) {
+      var s = size || 42;
+      var palettes = {
+        exploring:   ['#6e7ffb', '#7bd6c2', '#58a6ff'],
+        search:      ['#58a6ff', '#79c0ff', '#a5d6ff'],
+        planning:    ['#b392f0', '#9a65d9', '#e17be8'],
+        thinking:    ['#8957e5', '#b392f0', '#c297ff'],
+        working:     ['#f6c343', '#e3b341', '#d29922'],
+        listening:   ['#f0c000', '#ffd866', '#ffe9a8'],
+        composing:   ['#3fb950', '#7bd6c2', '#58a6ff'],
+      };
+      var speeds = {
+        exploring: '2.1s', search: '1.9s', planning: '1.5s', thinking: '1.7s',
+        working: '1.1s', listening: '2.6s', composing: '1.4s',
+      };
+      var c = palettes[state] || palettes.thinking;
+      var dur = speeds[state] || '1.6s';
+      return '<div style="width:' + s + 'px;height:' + s + 'px;border-radius:50%;background:conic-gradient(from 0deg, ' + c[0] + ', ' + c[1] + ', ' + c[2] + ', ' + c[0] + '); filter: blur(5px); animation: neuro-orb-rotate ' + dur + ' linear infinite, neuro-orb-pulse ' + (parseFloat(dur) * 0.8).toFixed(2) + 's ease-in-out infinite;"></div>';
+    };
+
+    window.setProgressOrb = function (state) {
+      window.activeProgressState = state;
+      // History replay must never mutate old avatars.
+      if (window.isLoadingHistory) return;
+      var msg = currentAIMsg;
+      if (!msg) {
+        var aiMsgs = document.querySelectorAll('.agent-msg.sre-msg-ai');
+        msg = aiMsgs.length ? aiMsgs[aiMsgs.length - 1] : null;
+      }
+      if (!msg) return;
+      var box = msg.querySelector('[data-avatar="agent"]') || msg.querySelector(':scope > div:first-child');
+      if (!box) return;
+      if (!box.dataset.botHtml) box.dataset.botHtml = box.innerHTML;
+      if (!state || state === 'done') {
+        box.innerHTML = box.dataset.botHtml;
+        return;
+      }
+      box.innerHTML = window.neuroOrbAvatar(state, 42);
+    };
+
     function addAIMessage(content, ts) {
       const div = document.createElement('div');
       div.className = 'agent-msg sre-msg-ai';
       div.style.cssText = 'display:flex; align-items:flex-start; gap:12px; max-width: 85%; margin-bottom: 2px;';
       div.innerHTML = `
-            <div style="flex-shrink:0; width:56px; height:56px; border-radius:50%; background:rgba(31, 111, 235, 0.12); border:1px solid var(--border-color); display:flex; align-items:center; justify-content:center; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">
+            <div data-avatar="agent" style="flex-shrink:0; width:56px; height:56px; border-radius:50%; background:rgba(31, 111, 235, 0.12); border:1px solid var(--border-color); display:flex; align-items:center; justify-content:center; box-shadow: 0 4px 12px rgba(0,0,0,0.08); flex-wrap: nowrap; overflow: hidden;">
                 ${window.neuroBotAvatar(42)}
             </div>
             <div class="sre-panel p-3 my-2" style="background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 14px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); flex:1; min-width: 0;">
@@ -3174,6 +3242,7 @@
                     break;
 
                   case 'message_chunk':
+          window.setProgressOrb('composing');
                     break;
 
                   case 'worker_activity':
