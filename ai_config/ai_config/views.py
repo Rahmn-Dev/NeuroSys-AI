@@ -132,7 +132,7 @@ def chat3(request):
     # ensure_csrf_cookie: the chat page issues fetch/DELETE calls (session
     # delete, model CRUD, approvals) that send X-CSRFToken. Without the cookie
     # being set here those requests fail with 403 after a hard refresh.
-    return render(request, "chat3.html", {'headTitle': 'NeuroSysAI SRE Agent', 'toggle': "true"})
+    return render(request, "chat3.html", {'headTitle': 'NeuroSysAI SRE Agent', 'toggle': "true", 'project_root': __import__('pathlib').Path(settings.BASE_DIR).parent.as_posix()})
 # config detector
 @login_required
 def config_detector(request):

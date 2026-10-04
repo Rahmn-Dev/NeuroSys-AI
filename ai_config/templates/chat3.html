@@ -384,6 +384,23 @@
     display: none !important;
   }
 
+  .ws-chip {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 14px;
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
+  .ws-chip:hover {
+    background: var(--bg-panel);
+    color: var(--text-primary);
+    border-color: var(--accent);
+  }
+
   /* Composer toolbar: model picker + mode + model manager sit with the
      input box, not in the header. */
   .composer-toolbar {
@@ -798,19 +815,34 @@
         <!-- Explorer Tab -->
         <div id="tab-explorer" class="sre-panel tab-content"
           style="backdrop-filter: blur(20px); background: rgba(255, 255, 255, 0); display: none; flex-direction: column; overflow-y: auto; flex: 1;">
-          <div style="padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-            <div style="font-size: 12px; opacity: 0.7; margin-bottom: 4px; font-weight: 600;">Workspace Context</div>
-            <select id="workspace-selector" class="sre-input"
-              style="width: 100%; font-size: 12px; padding: 6px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text-primary); border-radius: 4px;"
-              onchange="window.onWorkspaceSelectorChange()">
-              <option value="auto">Auto (Follow Terminal CWD)</option>
-              <option value="/home/paul/project-ai/NeuroSys-AI">NeuroSysAI Project</option>
-              <option value="/">Root (/)</option>
-              <option value="custom">Custom Path...</option>
-            </select>
+          <div style="padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.08);">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+              <i class="fa-solid fa-folder-open" style="color:var(--accent);"></i>
+              <span style="font-size:13px; font-weight:700; color:var(--text-primary);">Workspace</span>
+              <span style="margin-left:auto; display:inline-flex; gap:6px; align-items:center;">
+                <button id="workspace-follow-btn" title="When on, the view follows the terminal's current directory" onclick="window.toggleWorkspaceFollow()"
+                  style="font-size:11px; padding:3px 10px; border-radius:14px; border:1px solid var(--border-color); background:transparent; color:var(--text-secondary); cursor:pointer;">
+                  Follow
+                </button>
+                <button title="Reload current folder" onclick="window.refreshExplorer()"
+                  style="font-size:11px; padding:3px 9px; border-radius:14px; border:1px solid var(--border-color); background:transparent; color:var(--text-secondary); cursor:pointer;">
+                  <i class="fa-solid fa-rotate-right"></i>
+                </button>
+              </span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; border:1px solid var(--border-color); border-radius:12px; padding:8px 10px; background:var(--bg-main);">
+              <i class="fa-solid fa-location-dot" style="color:var(--text-secondary);"></i>
+              <input id="workspace-path-input" placeholder="Workspace path" onkeydown="if(event.key==='Enter') setWorkspacePath(this.value)"
+                style="flex:1;background:transparent;border:none;outline:none;color:var(--text-primary);font-size:12px;" />
+            </div>
+            <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
+              <button class="ws-chip" onclick="setWorkspacePath(window.WORKSPACE_PROJECT_ROOT || '/')">Project</button>
+              <button class="ws-chip" onclick="setWorkspacePath(window.currentTerminalCwd || window.WORKSPACE_PROJECT_ROOT || '/')">Terminal CWD</button>
+              <button class="ws-chip" onclick="setWorkspacePath('/')">Root /</button>
+            </div>
           </div>
-          <div id="explorer-tree" style="padding: 16px; font-family: monospace; font-size: 13px; line-height: 1.6;">
-            Membangun struktur direktori...
+          <div id="explorer-tree" style="padding:10px; font-size:13px; line-height:1.5; overflow-x:auto;">
+            <div class="sre-text-secondary" style="padding:12px; font-style:italic;">Looking for workspace...</div>
           </div>
         </div>
 
@@ -3284,114 +3316,160 @@
     }
 
     // --- Explorer Logic ---
-    window.customWorkspaceOverride = null;
+    window.WORKSPACE_PROJECT_ROOT = "{{ project_root }}" || "";
+    window.workspaceFollow = true;
 
-    window.onWorkspaceSelectorChange = function () {
-      const selector = document.getElementById('workspace-selector');
-      if (selector.value === 'auto') {
-        window.customWorkspaceOverride = null;
-      } else if (selector.value === 'custom') {
-        const customPath = prompt("Enter absolute path for workspace:");
-        if (customPath) {
-          const opt = document.createElement('option');
-          opt.value = customPath;
-          opt.text = customPath;
-          selector.add(opt, selector.options[1]);
-          selector.value = customPath;
-          window.customWorkspaceOverride = customPath;
-        } else {
-          selector.value = 'auto';
-          window.customWorkspaceOverride = null;
-        }
-      } else {
-        window.customWorkspaceOverride = selector.value;
+    function workspaceInput() {
+      return document.getElementById('workspace-path-input');
+    }
+
+    function effectiveWorkspacePath() {
+      const input = workspaceInput();
+      if (window.workspaceFollow && window.currentTerminalCwd) return window.currentTerminalCwd;
+      if (input && input.value.trim()) return input.value.trim();
+      return window.currentTerminalCwd || window.WORKSPACE_PROJECT_ROOT || '/';
+    }
+
+    function paintWorkspacePath() {
+      const input = workspaceInput();
+      const followBtn = document.getElementById('workspace-follow-btn');
+      const current = effectiveWorkspacePath();
+      if (input && document.activeElement !== input) input.value = current;
+      if (followBtn) {
+        followBtn.setAttribute('aria-pressed', window.workspaceFollow ? 'true' : 'false');
+        followBtn.style.color = window.workspaceFollow ? '#fff' : 'var(--text-secondary)';
+        followBtn.style.background = window.workspaceFollow ? 'var(--accent)' : 'transparent';
+        followBtn.style.borderColor = window.workspaceFollow ? 'var(--accent)' : 'var(--border-color)';
       }
+    }
+
+    window.setWorkspacePath = function (path) {
+      window.workspaceFollow = false;
+      const input = workspaceInput();
+      if (input) input.value = path;
+      try { localStorage.setItem('sre_workspace_path', path); } catch (e) {}
+      paintWorkspacePath();
       loadExplorer();
     };
 
+    window.toggleWorkspaceFollow = function () {
+      window.workspaceFollow = !window.workspaceFollow;
+      const input = workspaceInput();
+      if (window.workspaceFollow && window.currentTerminalCwd && input) {
+        input.value = window.currentTerminalCwd;
+      }
+      try { localStorage.setItem('sre_workspace_follow', window.workspaceFollow ? '1' : '0'); } catch (e) {}
+      paintWorkspacePath();
+      loadExplorer();
+    };
+
+    window.refreshExplorer = function () { loadExplorer(); };
+
+    (function () {
+      try {
+        const storedFollow = localStorage.getItem('sre_workspace_follow');
+        window.workspaceFollow = storedFollow === null ? true : storedFollow === '1';
+        const storedPath = localStorage.getItem('sre_workspace_path');
+        const input = workspaceInput();
+        if (input && storedPath && !window.workspaceFollow) input.value = storedPath;
+      } catch (e) {}
+      paintWorkspacePath();
+    })();
+
     async function loadExplorer() {
       try {
-        const targetPath = window.customWorkspaceOverride || window.currentTerminalCwd;
+        const targetPath = effectiveWorkspacePath();
         if (!targetPath) return;
+
+        const input = workspaceInput();
+        if (input && window.workspaceFollow && window.currentTerminalCwd) input.value = window.currentTerminalCwd;
 
         const cwdParam = `?path=${encodeURIComponent(targetPath)}`;
         const res = await fetch(`/api/v1/workspace/tree/${cwdParam}`);
         const data = await res.json();
         const container = document.getElementById('explorer-tree');
         container.innerHTML = '';
-
-        if (targetPath) {
-          let header = document.createElement('div');
-          header.style.padding = '8px 4px';
-          header.style.marginBottom = '8px';
-          header.style.borderBottom = '1px solid var(--border-color)';
-          header.style.fontWeight = 'bold';
-          header.style.wordBreak = 'break-all';
-          header.innerHTML = `<span style="color: var(--accent)">Workspace:</span> ${targetPath}`;
-          container.appendChild(header);
+        const rows = Array.isArray(data) ? data : (Array.isArray(data.children) ? data.children : []);
+        if (rows.length === 0) {
+          container.innerHTML = `<div class="sre-text-secondary" style="padding: 12px; font-style: italic;">No entries found in this workspace.</div>`;
+        } else {
+          renderTree(rows, container, 0);
         }
-
-        function renderTree(nodes, parentEl) {
-          nodes.forEach(node => {
-            let el = document.createElement('div');
-            el.style.paddingLeft = '12px';
-            el.style.paddingTop = '4px';
-
-            if (node.type === 'directory') {
-              let details = document.createElement('details');
-              let summary = document.createElement('summary');
-              summary.style.cursor = 'pointer';
-              summary.style.userSelect = 'none';
-              summary.innerHTML = `📁 ${node.name}`;
-              details.appendChild(summary);
-
-              if (node.children && node.children.length > 0) {
-                let childContainer = document.createElement('div');
-                renderTree(node.children, childContainer);
-                details.appendChild(childContainer);
-              } else if (node.has_children) {
-                details.addEventListener('toggle', async function (e) {
-                  if (details.open && !details.dataset.loaded) {
-                    details.dataset.loaded = 'true';
-                    let loading = document.createElement('div');
-                    loading.style.paddingLeft = '12px';
-                    loading.innerText = 'Loading...';
-                    details.appendChild(loading);
-
-                    try {
-                      const subRes = await fetch(`/api/v1/workspace/tree/?path=${encodeURIComponent(node.path)}`);
-                      const subData = await subRes.json();
-                      details.removeChild(loading);
-                      let childContainer = document.createElement('div');
-                      renderTree(subData, childContainer);
-                      details.appendChild(childContainer);
-                    } catch (err) {
-                      loading.innerText = 'Error loading';
-                    }
-                  }
-                });
-              }
-              el.appendChild(details);
-            } else {
-              let fileDiv = document.createElement('div');
-              fileDiv.style.cursor = 'pointer';
-              fileDiv.innerHTML = `<span>📄 ${node.name}</span>`;
-              fileDiv.onclick = (e) => {
-                e.stopPropagation();
-                window.selectedFile = node.path;
-                localStorage.setItem('sre_selected_file', node.path);
-                updateContextAttachments();
-              };
-              el.appendChild(fileDiv);
-            }
-            parentEl.appendChild(el);
-          });
-        }
-
-        renderTree(data, container);
       } catch (e) {
-        document.getElementById('explorer-tree').innerHTML = 'Error loading workspace.';
+        document.getElementById('explorer-tree').innerHTML = `<div class="sre-text-secondary" style="padding: 12px;">Error loading workspace.</div>`;
       }
+    }
+
+    function renderTree(nodes, parentEl, depth) {
+      depth = depth || 0;
+      nodes.forEach(node => {
+        let el = document.createElement('div');
+        el.style.paddingLeft = (depth * 14) + 'px';
+
+        if (node.type === 'directory') {
+          let wrap = document.createElement('div');
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex; align-items:center; gap:6px; padding:4px 8px; border-radius:8px; cursor:pointer; user-select:none; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; transition:background .12s;';
+          row.onmouseover = () => row.style.background = 'rgba(127,140,160,.08)';
+          row.onmouseout = () => row.style.background = 'transparent';
+          const arrow = document.createElement('i');
+          arrow.className = 'fa-solid fa-chevron-right';
+          arrow.style.cssText = 'font-size:10px;color:var(--text-secondary);width:12px;text-align:center;transition:transform .15s;';
+          const labelText = document.createElement('span');
+          labelText.innerHTML = `<i class="fa-solid fa-folder" style="font-size:12px;color:#e3b341;margin-right:6px;"></i>${escapeHtml(node.name)}`;
+          labelText.style.cssText = 'font-size:13px;font-weight:600;color:var(--text-primary);';
+          row.appendChild(arrow);
+          row.appendChild(labelText);
+          wrap.appendChild(row);
+
+          let childrenWrap = document.createElement('div');
+          childrenWrap.style.cssText = 'display:none; border-left:1px dotted var(--border-color); margin-left:12px;';
+          childrenWrap.dataset.loaded = node.children && node.children.length ? 'true' : '';
+          if (node.children && node.children.length > 0) {
+            renderTree(node.children, childrenWrap, depth + 1);
+          }
+          wrap.appendChild(childrenWrap);
+
+          row.onclick = async (e) => {
+            e.stopPropagation();
+            childrenWrap.style.display = childrenWrap.style.display === 'none' ? 'block' : 'none';
+            arrow.style.transform = childrenWrap.style.display === 'none' ? 'rotate(0deg)' : 'rotate(90deg)';
+            if (childrenWrap.style.display !== 'none' && !childrenWrap.dataset.loaded && node.has_children) {
+              childrenWrap.dataset.loaded = 'true';
+              let loading = document.createElement('div');
+              loading.style.cssText = 'padding:4px 8px;color:var(--text-secondary);font-style:italic;';
+              loading.innerText = 'Loading...';
+              childrenWrap.appendChild(loading);
+              try {
+                const subRes = await fetch(`/api/v1/workspace/tree/?path=${encodeURIComponent(node.path)}`);
+                const subData = await subRes.json();
+                childrenWrap.removeChild(loading);
+                const rows = Array.isArray(subData) ? subData : (Array.isArray(subData.children) ? subData.children : []);
+                let childContainer = document.createElement('div');
+                renderTree(rows, childContainer, depth + 1);
+                childrenWrap.appendChild(childContainer);
+              } catch (err) {
+                loading.innerText = 'Error loading';
+              }
+            }
+          };
+          el.appendChild(wrap);
+        } else {
+          const fileDiv = document.createElement('div');
+          fileDiv.style.cssText = 'display:flex; align-items:center; gap:6px; padding:4px 8px; border-radius:8px; cursor:pointer; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; transition:background .12s;';
+          fileDiv.onmouseover = () => fileDiv.style.background = 'rgba(127,140,160,.08)';
+          fileDiv.onmouseout = () => fileDiv.style.background = 'transparent';
+          fileDiv.innerHTML = `<i class="fa-solid fa-file-lines" style="font-size:12px;color:var(--text-secondary);width:14px;text-align:center;"></i><span style="font-size:13px;color:var(--text-primary);">${escapeHtml(node.name)}</span>`;
+          fileDiv.onclick = (e) => {
+            e.stopPropagation();
+            window.selectedFile = node.path;
+            try { localStorage.setItem('sre_selected_file', node.path); } catch (err) {}
+            updateContextAttachments();
+          };
+          el.appendChild(fileDiv);
+        }
+        parentEl.appendChild(el);
+      });
     }
 
     // --- Artifacts ---
@@ -3668,7 +3746,11 @@
             if (window.currentTerminalCwd !== msg.cwd) {
               window.currentTerminalCwd = msg.cwd;
               localStorage.setItem('sre_terminal_cwd', msg.cwd);
-              loadExplorer();
+              if (window.workspaceFollow) {
+                const input = document.getElementById('workspace-path-input');
+                if (input) input.value = msg.cwd;
+                loadExplorer();
+              }
             }
           }
         } catch (err) {
