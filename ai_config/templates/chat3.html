@@ -374,9 +374,26 @@
     }
   }
 
-  /* The Agent Run card scrolls with the chat like any other message; only its
-     step list scrolls inside the card. No floating/sticky behaviour. */
-  .sre-run-body {
+  /* A running Agent Run stays pinned at the bottom of the chat: the step list
+     scrolls inside the card, the chat history behind it does not move. */
+  .sre-run-live {
+    position: sticky;
+    bottom: 12px;
+    z-index: 8;
+    isolation: isolate;
+    /* Opaque so the chat behind never shows through the pinned card, and a
+       single soft shadow instead of a stack of them when scrolling. */
+    background-color: var(--bg-main) !important;
+    background-image: linear-gradient(var(--bg-main), var(--bg-main));
+    border-radius: 12px;
+    box-shadow: 0 1px 0 rgba(127, 140, 160, 0.18), 0 6px 16px rgba(0, 0, 0, 0.14);
+  }
+
+  .sre-run-live > div:first-child {
+    border-radius: 11px 11px 0 0;
+  }
+
+  .sre-run-live .sre-run-body {
     max-height: 300px;
   }
 
@@ -2253,6 +2270,7 @@
       const wrap = document.createElement('div');
       wrap.id = wrapId;
       wrap.style.cssText = 'border: 1px solid var(--border-color); border-radius: 12px; margin-bottom: 10px;';
+      wrap.classList.add('sre-run-live');
       wrap.innerHTML = `
         <div onclick="toggleRunWrap('${wrapId}')" style="cursor: pointer; padding: 10px 14px; display: flex; align-items: center; gap: 8px; background: var(--bg-panel); user-select: none; border-radius: 11px 11px 0 0;">
           <span id="${wrapId}-orb" data-orb-size="42" data-orb-only="1" style="width:46px; height:46px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">${window.neuroOrbAvatar('exploring', 42)}</span>
@@ -2320,6 +2338,8 @@
       // phase label) stays visible, the step list does not compete with the
       // reply that is about to arrive.
       window.lastRunBody = body;
+      const wrapEl = document.getElementById(wrapId);
+      if (wrapEl) wrapEl.classList.remove('sre-run-live');
       toggleRunWrap(wrapId, false);
       setBeamRunning(false);
       window.agentAutoScroll = false;
