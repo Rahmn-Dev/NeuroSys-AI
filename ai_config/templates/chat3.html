@@ -417,37 +417,6 @@
     color: var(--text-primary);
   }
 
-  select.composer-mode {
-    appearance: none;
-    -webkit-appearance: none;
-    height: 28px;
-    padding: 0 24px 0 10px;
-    border-radius: 14px;
-    font-size: 11px;
-    font-weight: 600;
-    cursor: pointer;
-    outline: none;
-    background-color: transparent;
-    border: 1px solid transparent;
-    color: var(--text-secondary);
-    background-image: url('data:image/svg+xml;utf8,<svg fill=\'%238b949e\' height=\'12\' viewBox=\'0 0 24 24\' width=\'12\' xmlns=\'http://www.w3.org/2000/svg\'><path d=\'M7 10l5 5 5-5z\'/></svg>');
-    background-repeat: no-repeat;
-    background-position-x: calc(100% - 8px);
-    background-position-y: 50%;
-    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-  }
-
-  select.composer-mode:hover {
-    background-color: var(--bg-panel);
-    border-color: var(--border-color);
-    color: var(--text-primary);
-  }
-
-  select.composer-mode option {
-    background: var(--bg-main);
-    color: var(--text-primary);
-  }
-
   .model-picker-panel {
     display: none;
     position: absolute;
@@ -742,13 +711,17 @@
                   <i class="fa-solid fa-chevron-up" style="font-size: 9px; opacity: 0.7;"></i>
                 </button>
                 <div id="model-picker-panel" class="model-picker-panel"></div>
-                <select id="mode-selector-composer" class="composer-mode" title="Mode agent"
-                  onchange="syncComposerMode(this.value)">
-                  <option value="guided">Guided</option>
-                  <option value="autonomous_single" selected>Single Agent</option>
-                  <option value="autonomous_multi">Multi Agent</option>
-                </select>
-                <button type="button" class="composer-pill" onclick="openModelManagerModal(); closeModelPicker();"
+                <div style="position: relative;">
+                  <button type="button" id="mode-picker-btn" class="composer-pill"
+                    onclick="toggleModePicker(event)" title="Mode agent">
+                    <i class="fa-solid fa-user-tie" id="mode-picker-icon" style="font-size: 11px;"></i>
+                    <span id="mode-picker-label">Single Agent</span>
+                    <i class="fa-solid fa-chevron-up" style="font-size: 9px; opacity: 0.7;"></i>
+                  </button>
+                  <div id="mode-picker-panel" class="model-picker-panel"
+                    style="width: min(330px, 92vw);"></div>
+                </div>
+                <button type="button" class="composer-pill" onclick="openModelManagerModal(); closeModelPicker(); closeModePicker();"
                   title="Model Manager: endpoint, provider, API key, status">
                   <i class="fa-solid fa-sliders"></i>
                   <span>Models</span>
@@ -4756,34 +4729,103 @@
     hint.textContent = bits.join(' \u00b7 ');
   }
 
-  // Keep the hidden header select and the visible composer select in sync.
-  function syncComposerMode(value) {
-    const hidden = document.getElementById('mode-selector');
-    if (hidden && hidden.value !== value) {
-      hidden.value = value;
-      hidden.dispatchEvent(new Event('change'));
+  // Agent modes shown in the composer popover. The hidden #mode-selector stays
+  // the single source of truth for the submit payload.
+  const AGENT_MODES = [
+    { value: 'autonomous_single', label: 'Single Agent', icon: 'fa-user-tie', hint: 'One agent runs the whole loop with tools' },
+    { value: 'guided', label: 'Guided Investigation', icon: 'fa-compass', hint: 'Senior planner + workers, human checkpoints' },
+    { value: 'autonomous_multi', label: 'Multi Agent', icon: 'fa-users', hint: 'Parallel workers split by service domain' }
+  ];
+
+  function closeModePicker() {
+    const panel = document.getElementById('mode-picker-panel');
+    if (panel) panel.classList.remove('open');
+  }
+
+  function toggleModePicker(ev) {
+    if (ev) ev.stopPropagation();
+    const panel = document.getElementById('mode-picker-panel');
+    if (!panel) return;
+    const willOpen = !panel.classList.contains('open');
+    if (willOpen) {
+      closeModelPicker();
+      renderModePickerPanel();
+      panel.classList.add('open');
+    } else {
+      panel.classList.remove('open');
     }
   }
 
-  function syncComposerModeFromHidden() {
+  function renderModePickerPanel() {
+    const panel = document.getElementById('mode-picker-panel');
     const hidden = document.getElementById('mode-selector');
-    const composer = document.getElementById('mode-selector-composer');
-    if (hidden && composer && composer.value !== hidden.value) {
-      composer.value = hidden.value;
+    if (!panel) return;
+    const current = hidden ? hidden.value : 'autonomous_single';
+    panel.innerHTML = AGENT_MODES.map(m => `
+      <button type="button" class="model-picker-item ${m.value === current ? 'selected' : ''}"
+        onclick="selectModeFromPicker('${m.value}')">
+        <i class="fa-solid ${m.icon}" style="font-size: 12px; width: 16px; color: var(--accent);"></i>
+        <span style="flex: 1; min-width: 0;">
+          <span class="mp-name">${m.label}</span>
+          <span class="mp-sub" style="font-family: inherit;">${m.hint}</span>
+        </span>
+        ${m.value === current ? '<i class="fa-solid fa-check" style="color: var(--success-text); font-size: 11px;"></i>' : ''}
+      </button>`).join('');
+  }
+
+  function selectModeFromPicker(value) {
+    const hidden = document.getElementById('mode-selector');
+    if (!hidden) return;
+    if (!Array.from(hidden.options).some(o => o.value === value)) {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = value;
+      hidden.appendChild(opt);
     }
+    hidden.value = value;
+    try { localStorage.setItem('sre_selected_mode', value); } catch (e) { }
+    updateModePickerLabel();
+    closeModePicker();
+    hidden.dispatchEvent(new Event('change'));
+  }
+
+  function updateModePickerLabel() {
+    const hidden = document.getElementById('mode-selector');
+    const label = document.getElementById('mode-picker-label');
+    const icon = document.getElementById('mode-picker-icon');
+    if (!hidden) return;
+    const mode = AGENT_MODES.find(m => m.value === hidden.value) || AGENT_MODES[0];
+    if (label) label.textContent = mode.label;
+    if (icon) icon.className = 'fa-solid ' + mode.icon;
+  }
+
+  // Keep the hidden select authoritative and mirror changes back to the label.
+  function syncComposerModeFromHidden() {
+    updateModePickerLabel();
   }
 
   document.addEventListener('click', function (ev) {
-    const panel = document.getElementById('model-picker-panel');
-    if (!panel || !panel.classList.contains('open')) return;
-    if (panel.contains(ev.target)) return;
-    const btn = document.getElementById('model-picker-btn');
-    if (btn && btn.contains(ev.target)) return;
-    panel.classList.remove('open');
+    const modelPanel = document.getElementById('model-picker-panel');
+    if (modelPanel && modelPanel.classList.contains('open')) {
+      const modelBtn = document.getElementById('model-picker-btn');
+      if (!modelPanel.contains(ev.target) && !(modelBtn && modelBtn.contains(ev.target))) {
+        modelPanel.classList.remove('open');
+      }
+    }
+    const modePanel = document.getElementById('mode-picker-panel');
+    if (modePanel && modePanel.classList.contains('open')) {
+      const modeBtn = document.getElementById('mode-picker-btn');
+      if (!modePanel.contains(ev.target) && !(modeBtn && modeBtn.contains(ev.target))) {
+        modePanel.classList.remove('open');
+      }
+    }
   });
 
   document.addEventListener('keydown', function (ev) {
-    if (ev.key === 'Escape') closeModelPicker();
+    if (ev.key === 'Escape') {
+      closeModelPicker();
+      closeModePicker();
+    }
   });
 
   // --- Beam palettes: curated, low-saturation color-picker sets ---
@@ -4868,17 +4910,15 @@
         updateAutoModelsButton();
       });
     }
-    syncComposerModeFromHidden();
-    const modeComposer = document.getElementById('mode-selector-composer');
-    if (modeComposer) {
-      modeComposer.addEventListener('change', function () {
-        syncComposerMode(this.value);
-      });
-    }
     const hiddenMode = document.getElementById('mode-selector');
     if (hiddenMode) {
+      const savedMode = localStorage.getItem('sre_selected_mode');
+      if (savedMode && Array.from(hiddenMode.options).some(o => o.value === savedMode)) {
+        hiddenMode.value = savedMode;
+      }
       hiddenMode.addEventListener('change', syncComposerModeFromHidden);
     }
+    updateModePickerLabel();
     updateModelPickerLabel();
     applyBeamPalette(localStorage.getItem('sre_beam_palette') || 'aurora');
     purgeBootstrapSelect();
