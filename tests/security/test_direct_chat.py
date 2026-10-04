@@ -105,3 +105,71 @@ def test_prompt_carries_environment_only_when_present():
     assert "Terminal Directory" not in bare
     with_env = direct_chat_prompt("/srv/app", "/srv/app", "/srv/app/main.py")
     assert "/srv/app/main.py" in with_env
+
+# --- selective conversation memory -----------------------------------------
+
+from sre_agent.memory_graph import relevant_prior_turns  # noqa: E402
+
+
+class _Turn:
+    def __init__(self, sender, message):
+        self.sender = sender
+        self.message = message
+
+
+def _ops_history():
+    return [
+        _Turn("user", "tolong cek error nginx 502 di /etc/nginx"),
+        _Turn("ai", "Upstream timeout, saya perbaiki config nginx"),
+        _Turn("user", "sekarang lanjut ke backend python"),
+        _Turn("ai", "Backend python sudah di-restart"),
+        _Turn("user", "sepatu roda"),
+    ]
+
+
+def test_unrelated_topic_does_not_inherit_the_previous_case():
+    kept = relevant_prior_turns("sepatu roda", _ops_history())
+    texts = [t.message for t in kept]
+    assert not any("nginx" in t for t in texts)
+    assert not any("Upstream" in t for t in texts)
+
+
+def test_related_topic_keeps_the_relevant_case_turns():
+    kept = relevant_prior_turns("nginx 502 lagi muncul", _ops_history())
+    texts = " ".join(t.message for t in kept)
+    assert "nginx" in texts
+
+
+def test_running_thread_is_kept_when_it_is_named():
+    """Naming the subject keeps the thread, even mid-conversation."""
+    honey = [
+        _Turn("user", "berarti madunya awet ya"),
+        _Turn("ai", "Madu bertahan bertahun-tahun jika disimpan kering"),
+        _Turn("user", "dipakai buat luka"),
+        _Turn("ai", "Madu punya sifat antibakteri untuk luka ringan"),
+        _Turn("user", "sekarang balik ke topicserius"),
+    ]
+    kept = relevant_prior_turns("tadi soal madu untuk luka bagaimana", honey)
+    texts = " ".join(t.message for t in kept)
+    assert "Madu" in texts
+
+
+def test_topic_switch_drops_the_old_thread():
+    honey = [
+        _Turn("user", "berarti madunya awet ya"),
+        _Turn("ai", "Madu bertahan bertahun-tahun jika disimpan kering"),
+        _Turn("user", "dipakai buat luka"),
+        _Turn("ai", "Madu punya sifat antibakteri untuk luka ringan"),
+        _Turn("user", "sepatu roda"),
+    ]
+    # The new topic owns the last exchange; the honey thread is not relevant.
+    kept = relevant_prior_turns("sepatu roda", honey)
+    texts = " ".join(t.message for t in kept)
+    assert "Madu" not in texts
+
+
+def test_memory_window_is_budgeted():
+    long_history = [_Turn("user", "x" * 5000) for _ in range(10)]
+    long_history.append(_Turn("user", "halo"))
+    kept = relevant_prior_turns("halo", long_history, max_chars=1000)
+    assert sum(len(t.message) for t in kept) <= 1000

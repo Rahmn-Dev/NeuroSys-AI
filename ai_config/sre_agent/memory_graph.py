@@ -77,6 +77,11 @@ def refresh_relations(case_id: str) -> None:
     ranked.sort(key=lambda row: row[1], reverse=True)
     keep = set()
     for candidate, score, shared in ranked[:5]:
+        # Only real overlap creates a link. Two unrelated investigations that
+        # happen to share a diagnostic domain must not become each other's
+        # context, or a new topic inherits the previous one's evidence.
+        if not shared and score < 0.45:
+            continue
         keep.add(candidate.pk)
         relation_type = "same_entity" if shared else "semantically_related"
         InvestigationRelation.objects.update_or_create(
@@ -109,6 +114,67 @@ def update_case_memory(case_id: str, goal: str, answer: str) -> None:
     refresh_relations(case.pk)
 
 
+class _Turn:
+    """Adapter so a plain chat turn can be scored like a case."""
+
+    def __init__(self, text: str, sender: str = "user"):
+        self.sender = sender
+        self.message = text
+        features = extract_features(text)
+        self.entities = features["entities"]
+        self.keywords = features["keywords"]
+        self.case_kind = features["kind"]
+        self.title = text
+
+
+def relevant_prior_turns(message: str, history, max_chars: int = 4000,
+                         always_last: int = 2, min_score: float = 0.30,
+                         per_turn_chars: int = 900):
+    """Pick the prior turns worth spending context on.
+
+    Always keeps the last exchange so a running thread is never lost, then
+    adds older turns only while they share real signal with the current
+    message (entity or keyword overlap). Unrelated earlier work - a finished
+    nginx case while the operator asks about something else - is dropped
+    instead of steering the answer.
+    """
+    turns = list(history or [])
+    if not turns:
+        return []
+    keep = turns[-always_last:] if always_last > 0 else []
+    seen_ids = {id(t) for t in keep}
+    probe = extract_features(message or "")
+    scored = []
+    for turn in turns[:-always_last] if always_last > 0 else turns:
+        text = getattr(turn, "message", "") or ""
+        if not text.strip() or id(turn) in seen_ids:
+            continue
+        score, shared = similarity(probe, _Turn(text))
+        if score >= min_score or shared:
+            scored.append((score, turns.index(turn), turn))
+    scored.sort(key=lambda row: row[0], reverse=True)
+    chosen = keep + [row[2] for row in scored]
+    chosen.sort(key=lambda t: turns.index(t))
+
+    budget = max_chars
+    trimmed = []
+    for turn in reversed(chosen):  # newest first while trimming
+        text = (getattr(turn, "message", "") or "").strip()
+        if not text:
+            continue
+        text = text[:per_turn_chars]
+        if len(text) > budget:
+            text = text[:max(0, budget)]
+        if not text:
+            break
+        budget -= len(text)
+        # Return trimmed copies so the caller cannot accidentally re-inject the
+        # full message and blow the budget.
+        trimmed.append(_Turn(text, getattr(turn, "sender", "user")))
+    trimmed.reverse()
+    return trimmed
+
+
 def retrieval_context(case_id: str, max_cases: int = 3, max_chars: int = 4800) -> dict:
     from chatbot.models import Investigation, InvestigationRelation
     active = Investigation.objects.filter(pk=case_id).first()
@@ -118,7 +184,12 @@ def retrieval_context(case_id: str, max_cases: int = 3, max_chars: int = 4800) -
     incoming = list(InvestigationRelation.objects.filter(target=active).select_related('source'))
     related = []
     seen = set()
-    for relation in sorted(outgoing + incoming, key=lambda item: item.confidence, reverse=True):
+    ordered = sorted(outgoing + incoming, key=lambda item: item.confidence, reverse=True)
+    for relation in ordered:
+        if relation.confidence < 0.35 and not relation.shared_entities:
+            # Weak correlation is not context; drop it instead of nudging the
+            # agent back towards an unrelated earlier case.
+            continue
         other = relation.target if relation.source_id == active.pk else relation.source
         if other.pk in seen:
             continue

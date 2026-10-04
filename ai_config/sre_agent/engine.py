@@ -438,7 +438,9 @@ class SREAgentEngine:
         # Recent conversation is the whole point of a direct answer: a question
         # about the previous case can only be answered from what was said.
         # Fetched before the new turn is stored so it is not duplicated.
-        history = await self._fetch_history(db_session_id, limit=12)
+        from .memory_graph import relevant_prior_turns
+        raw_history = await self._fetch_history(db_session_id, limit=24)
+        history = await sync_to_async(relevant_prior_turns)(user_message, raw_history)
         await self._save_message(db_session_id, "user", user_message)
 
         llm = await self._get_llm()
@@ -748,8 +750,14 @@ Output strictly the category name."""
             # Bypass all heavy tooling and respond directly. The history is
             # session-wide and must reach the prompt, otherwise every casual
             # turn starts blind and contradicts what was just discussed.
-            history = await self._fetch_history(db_session_id, limit=12)
-            conv_sys_prompt = "You are NeuroSys AI SRE. Respond kindly and briefly."
+            from .memory_graph import relevant_prior_turns
+            raw_history = await self._fetch_history(db_session_id, limit=24)
+            history = await sync_to_async(relevant_prior_turns)(effective_goal, raw_history)
+            conv_sys_prompt = (
+                "You are NeuroSys AI SRE. Respond kindly and briefly. Answer only the "
+                "operator's latest message: they may have switched topic, and earlier "
+                "work in this conversation is background, never a task to resume."
+            )
 
             # Inject IDE Context even for simple conversations
             if active_workspace or terminal_cwd or selected_file:
