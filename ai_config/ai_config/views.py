@@ -13,7 +13,7 @@ import requests
 import logging
 import json
 from django.core.paginator import Paginator
-from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 from django.views.decorators.http import require_POST
 from two_factor.views import LoginView as TwoFactorLoginView
 from two_factor.utils import default_device
@@ -125,7 +125,11 @@ llm = KantorOllamaLLM(
 #     # testing
 #     return render(request,"chat.html",{'headTitle' : 'Chat AI','toggle' : "true"})
 @login_required
+@ensure_csrf_cookie
 def chat3(request):
+    # ensure_csrf_cookie: the chat page issues fetch/DELETE calls (session
+    # delete, model CRUD, approvals) that send X-CSRFToken. Without the cookie
+    # being set here those requests fail with 403 after a hard refresh.
     return render(request, "chat3.html", {'headTitle': 'NeuroSysAI SRE Agent', 'toggle': "true"})
 # config detector
 @login_required
