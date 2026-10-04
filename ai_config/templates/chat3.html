@@ -377,7 +377,8 @@
      the in-composer model picker instead. Declared after the header
      dropdown overrides so the !important display:none wins. */
   select#model-selector,
-  select#mode-selector {
+  select#mode-selector,
+  select#permission-selector {
     display: none !important;
   }
 
@@ -550,8 +551,8 @@
           style="background:var(--bg-panel); color:var(--text-secondary); border:1px solid var(--border-color); font-size:12px; height:32px; padding:0 13px; border-radius:20px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; font-weight:600; white-space:nowrap;">
           <i class="fa-solid fa-rotate"></i> Auto Models: Off
         </button>
-        <select id="permission-selector" class="sre-input" title="Agent action authorization"
-          style="appearance: none; -webkit-appearance: none; font-size: 12px; height: 32px; min-width: 132px; padding: 0 28px 0 14px; border-radius: 20px; cursor: pointer; outline: none; transition: all 0.2s ease; font-weight: 500; box-sizing: border-box; line-height: 1; flex-shrink: 0; background-image: url('data:image/svg+xml;utf8,<svg fill=\'%238b949e\' height=\'16\' viewBox=\'0 0 24 24\' width=\'16\' xmlns=\'http://www.w3.org/2000/svg\'><path d=\'M7 10l5 5 5-5z\'/></svg>'); background-repeat: no-repeat; background-position-x: calc(100% - 6px); background-position-y: 50%;">
+        <!-- Authorization state now lives in the composer picker; hidden select stays as the source of truth for the existing JS. -->
+        <select id="permission-selector" class="sre-input" aria-hidden="true" tabindex="-1" style="display:none !important;">
           <option value="need_approval" selected>Need Approval</option>
           <option value="full_access">Full Access</option>
         </select>
@@ -721,7 +722,17 @@
                   <div id="mode-picker-panel" class="model-picker-panel"
                     style="width: min(330px, 92vw);"></div>
                 </div>
-                <button type="button" class="composer-pill" onclick="openModelManagerModal(); closeModelPicker(); closeModePicker();"
+                <div style="position: relative;">
+                  <button type="button" id="permission-picker-btn" class="composer-pill"
+                    onclick="togglePermissionPicker(event)" title="Izin agent">
+                    <i class="fa-solid fa-shield-halved" id="permission-picker-icon" style="font-size: 11px;"></i>
+                    <span id="permission-picker-label">Need Approval</span>
+                    <i class="fa-solid fa-chevron-up" style="font-size: 9px; opacity: 0.7;"></i>
+                  </button>
+                  <div id="permission-picker-panel" class="model-picker-panel"
+                    style="width: min(340px, 92vw);"></div>
+                </div>
+                <button type="button" class="composer-pill" onclick="openModelManagerModal(); closeModelPicker(); closeModePicker(); closePermissionPicker();"
                   title="Model Manager: endpoint, provider, API key, status">
                   <i class="fa-solid fa-sliders"></i>
                   <span>Models</span>
@@ -964,7 +975,86 @@
   }
 
   const permissionSelector = document.getElementById('permission-selector');
-  if (permissionSelector) permissionSelector.addEventListener('change', event => saveAgentPermission(event.target.value));
+  if (permissionSelector) {
+    permissionSelector.addEventListener('change', event => saveAgentPermission(event.target.value));
+    permissionSelector.addEventListener('change', updatePermissionPickerLabel);
+  }
+
+  // Authorization modes for the composer popover. Full Access still keeps every
+  // hard security boundary; it only removes the per-action human gate.
+  const PERMISSION_MODES = [
+    { value: 'need_approval', label: 'Need Approval', icon: 'fa-shield-halved', hint: 'Aksi berisiko/wubah data minta izin dulu' },
+    { value: 'full_access', label: 'Full Access', icon: 'fa-unlock-keyhole', hint: 'Auto-approve, hard block tetap berlaku' }
+  ];
+
+  function closePermissionPicker() {
+    const panel = document.getElementById('permission-picker-panel');
+    if (panel) panel.classList.remove('open');
+  }
+
+  function togglePermissionPicker(ev) {
+    if (ev) ev.stopPropagation();
+    const panel = document.getElementById('permission-picker-panel');
+    if (!panel) return;
+    const willOpen = !panel.classList.contains('open');
+    if (willOpen) {
+      closeModelPicker();
+      closeModePicker();
+      renderPermissionPickerPanel();
+      panel.classList.add('open');
+    } else {
+      panel.classList.remove('open');
+    }
+  }
+
+  function renderPermissionPickerPanel() {
+    const panel = document.getElementById('permission-picker-panel');
+    const hidden = document.getElementById('permission-selector');
+    if (!panel) return;
+    const current = hidden ? hidden.value : 'need_approval';
+    panel.innerHTML = PERMISSION_MODES.map(p => `
+      <button type="button" class="model-picker-item ${p.value === current ? 'selected' : ''}"
+        onclick="selectPermissionFromPicker('${p.value}')">
+        <i class="fa-solid ${p.icon}" style="font-size: 12px; width: 16px; color: var(--accent);"></i>
+        <span style="flex: 1; min-width: 0;">
+          <span class="mp-name">${p.label}</span>
+          <span class="mp-sub" style="font-family: inherit;">${p.hint}</span>
+        </span>
+        ${p.value === current ? '<i class="fa-solid fa-check" style="color: var(--success-text); font-size: 11px;"></i>' : ''}
+      </button>`).join('');
+  }
+
+  function selectPermissionFromPicker(value) {
+    const hidden = document.getElementById('permission-selector');
+    if (!hidden) return;
+    if (hidden.disabled) {
+      alert('Izin agent belum bisa diubah: preferensi server belum terbaca. Coba muat ulang halaman.');
+      return;
+    }
+    if (hidden.value !== value) {
+      hidden.value = value;
+      hidden.dispatchEvent(new Event('change'));
+    } else {
+      closePermissionPicker();
+    }
+  }
+
+  function updatePermissionPickerLabel() {
+    const hidden = document.getElementById('permission-selector');
+    const label = document.getElementById('permission-picker-label');
+    const icon = document.getElementById('permission-picker-icon');
+    const btn = document.getElementById('permission-picker-btn');
+    if (!hidden) return;
+    const mode = PERMISSION_MODES.find(p => p.value === hidden.value) || PERMISSION_MODES[0];
+    if (label) label.textContent = mode.label;
+    if (icon) icon.className = 'fa-solid ' + mode.icon;
+    if (btn) {
+      btn.style.color = mode.value === 'full_access' ? 'var(--warning)' : 'var(--text-secondary)';
+      btn.style.opacity = hidden.disabled ? '0.5' : '1';
+    }
+  }
+
+  updatePermissionPickerLabel();
   loadAgentPermission();
 
   async function deleteSingleHistory(id) {
@@ -4676,6 +4766,7 @@
     if (!panel) return;
     const willOpen = !panel.classList.contains('open');
     if (willOpen) {
+      closePermissionPicker();
       renderModelPickerPanel();
       panel.classList.add('open');
     } else {
@@ -4768,6 +4859,7 @@
     const willOpen = !panel.classList.contains('open');
     if (willOpen) {
       closeModelPicker();
+      closePermissionPicker();
       renderModePickerPanel();
       panel.classList.add('open');
     } else {
@@ -4838,12 +4930,20 @@
         modePanel.classList.remove('open');
       }
     }
+    const permPanel = document.getElementById('permission-picker-panel');
+    if (permPanel && permPanel.classList.contains('open')) {
+      const permBtn = document.getElementById('permission-picker-btn');
+      if (!permPanel.contains(ev.target) && !(permBtn && permBtn.contains(ev.target))) {
+        permPanel.classList.remove('open');
+      }
+    }
   });
 
   document.addEventListener('keydown', function (ev) {
     if (ev.key === 'Escape') {
       closeModelPicker();
       closeModePicker();
+      closePermissionPicker();
     }
   });
 
