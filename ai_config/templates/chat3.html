@@ -398,6 +398,7 @@
      current agent phase (observing / exploring / planning / ...) reads as
      live instead of a static "running" pill. */
   .sre-run-phase {
+    background-color: rgba(88, 166, 255, 0.15);
     background-image: linear-gradient(100deg,
       var(--text-secondary) 0%,
       var(--text-strong) 22%,
@@ -415,6 +416,15 @@
   }
 
   .sre-run-phase::-webkit-scrollbar { display: none; }
+
+  /* If the browser cannot clip the gradient to the glyphs, keep the word
+     readable instead of invisible. */
+  @supports not ((-webkit-background-clip: text) or (background-clip: text)) {
+    .sre-run-phase {
+      -webkit-text-fill-color: var(--text-strong);
+      color: var(--text-strong);
+    }
+  }
 
   @keyframes neuro-phase-shimmer {
     from { background-position: 180% 0; }
@@ -2220,7 +2230,7 @@
           <span id="${wrapId}-orb" data-orb-size="42" data-orb-only="1" style="width:46px; height:46px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">${window.neuroOrbAvatar('exploring', 42)}</span>
           <span id="${wrapId}-spin" style="color: var(--accent); display: flex; align-items: center; width: 14px;"></span>
           <strong style="font-size: 13px;">Agent Run</strong>
-          <span id="${wrapId}-pill" class="sre-run-phase" style="font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; background: rgba(88,166,255,0.15); text-transform: uppercase; letter-spacing: 0.4px;">observing</span>
+          <span id="${wrapId}-pill" class="sre-run-phase" style="font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.4px;">observing</span>
           <span id="${wrapId}-dur" style="font-size: 11px; color: var(--text-secondary);"></span>
           <i class="fa-solid fa-chevron-down" id="${wrapId}-chev" style="margin-left: auto; font-size: 10px; color: var(--text-secondary); transition: transform 0.2s; transform: rotate(180deg);"></i>
         </div>
@@ -2262,7 +2272,7 @@
       const terminal = ['completed', 'failed', 'cancelled', 'blocked', 'denied', 'denied_timeout', 'security_blocked', 'error', 'finalized'].includes(String(status || '').toLowerCase());
       if (pill && (terminal || status)) {
         pill.textContent = status || (ok ? 'completed' : 'failed');
-        pill.style.background = ok ? 'rgba(63,185,80,0.15)' : (terminal ? 'rgba(248,81,73,0.15)' : 'rgba(88,166,255,0.15)');
+        pill.style.backgroundColor = ok ? 'rgba(63,185,80,0.15)' : (terminal ? 'rgba(248,81,73,0.15)' : 'rgba(88,166,255,0.15)');
         pill.style.color = ok ? 'var(--success-text)' : (terminal ? 'var(--error)' : 'var(--text-strong)');
       }
       if (dur && duration != null) dur.textContent = `✓ ${Number(duration).toFixed(1)}s`;
@@ -2300,6 +2310,15 @@
       if (wrapId) {
         window.historyRunWraps[runId] = wrapId;
         toggleRunWrap(wrapId, false);
+        // Replayed runs are finished: no live orb, no shimmering phase label.
+        const histOrb = document.getElementById(wrapId + '-orb');
+        if (histOrb) histOrb.style.display = 'none';
+        const histPill = document.getElementById(wrapId + '-pill');
+        if (histPill) {
+          histPill.classList.remove('sre-run-phase');
+          histPill.textContent = 'run';
+        }
+        window.activeRunOrb = null;
       }
       return window.activeRunWrap;
     }
@@ -2308,6 +2327,22 @@
       const safeRunId = String(runId || window.activeAgentRunId || 'current').replace(/[^a-zA-Z0-9_-]/g, '-');
       const stepId = `run-state-${safeRunId}`;
       const terminal = ['completed', 'failed', 'cancelled', 'blocked', 'denied', 'denied_timeout', 'security_blocked', 'error', 'finalized'].includes(String(status).toLowerCase());
+      // The Run State row is part of the run too, so it feeds the header orb.
+      if (!window.isLoadingHistory) {
+        const phase = {
+          starting: ['exploring', 'starting'],
+          resuming: ['exploring', 'resuming'],
+          exploring: ['exploring', 'observing'],
+          discovering_tools: ['search', 'discovering tools'],
+          planning: ['planning', 'planning'],
+          thinking: ['thinking', 'thinking'],
+          verifying: ['thinking', 'verifying'],
+          executing: ['working', 'executing'],
+          running: ['working', 'executing'],
+          awaiting_approval: ['listening', 'awaiting approval'],
+        }[String(status).toLowerCase()];
+        if (phase && !terminal) window.setProgressOrb(phase[0], phase[1]);
+      }
       const successful = String(status).toLowerCase() === 'completed';
       const color = terminal && !successful ? 'var(--error)' : '#79c0ff';
       const existing = document.getElementById(`step-${stepId}`);
