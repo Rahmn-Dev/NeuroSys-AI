@@ -38,6 +38,15 @@ def _write_file_via_sudo(abs_path: str, content: str) -> bool:
         import tempfile
 
         ctx = current_session_context.get()
+        if ctx is not None and not getattr(ctx, "encrypted_sudo_pwd", ""):
+            # No secret yet: surface the lock modal and wait for the operator.
+            from ..context import wait_for_sudo_secret
+            entered = wait_for_sudo_secret(getattr(ctx, "session_id", ""), timeout=90)
+            if entered:
+                try:
+                    ctx.encrypted_sudo_pwd = entered
+                except Exception:
+                    pass
         if not (ctx and getattr(ctx, "encrypted_sudo_pwd", "") and getattr(ctx, "rsa_private_key", None)):
             return False
         pwd = decrypt_rsa_oaep(ctx.rsa_private_key, ctx.encrypted_sudo_pwd)

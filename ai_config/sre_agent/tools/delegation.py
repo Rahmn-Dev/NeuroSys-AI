@@ -203,9 +203,23 @@ def _run_basher(args: dict) -> str:
                 pwd_to_inject = decrypt_rsa_oaep(ctx.rsa_private_key, ctx.encrypted_sudo_pwd)
             except Exception as e:
                 reason = f"sudo secret cannot be decrypted: {e}"
+        if pwd_to_inject is None and ctx is not None and getattr(ctx, "session_id", ""):
+            from ..context import wait_for_sudo_secret
+            entered = wait_for_sudo_secret(ctx.session_id, timeout=90)
+            if entered:
+                try:
+                    from ..crypto import decrypt_rsa_oaep
+                    pwd_to_inject = decrypt_rsa_oaep(ctx.rsa_private_key, entered)
+                    try:
+                        ctx.encrypted_sudo_pwd = entered
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
         if pwd_to_inject is None:
             return ("ERROR: sudo command blocked - " + reason +
-                    ". Set the sudo password from the lock button first. Raw output:")
+                    ". Set the sudo password from the lock button (the agent waits up to 90s) "
+                    "and retry. Raw output:")
         if not command.lstrip().startswith("sudo -S"):
             command = command.replace("sudo", "sudo -S", 1)
 

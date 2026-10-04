@@ -43,11 +43,29 @@ def terminal_execute(command: str, timeout: int = 30) -> str:
             except Exception as e:
                 reason = f"sudo secret could not be decrypted ({e})"
 
+        if pwd_to_inject is None and ctx is not None and getattr(ctx, "session_id", ""):
+            # Give the operator a bounded chance to type the secret in the lock
+            # modal; the UI is notified by the session-scoped prompter, and the
+            # same wait is what the event loop waits on.
+            from ..context import wait_for_sudo_secret
+            entered = wait_for_sudo_secret(ctx.session_id, timeout=90)
+            if entered:
+                try:
+                    from ..crypto import decrypt_rsa_oaep
+                    pwd_to_inject = decrypt_rsa_oaep(ctx.rsa_private_key, entered)
+                    try:
+                        ctx.encrypted_sudo_pwd = entered
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+
         if pwd_to_inject is None:
             return json.dumps({
                 "error": (
                     "Sudo command blocked: " + (reason or "sudo secret unavailable") + ". "
-                    "Ask the operator to set the sudo password from the lock button, then retry with `sudo ...`."
+                    "Either set the sudo secret via the lock button (the agent waits up to 90s when running) "
+                    "or retry the command once it is available."
                 ),
                 "command": command,
             })

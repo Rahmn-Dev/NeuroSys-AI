@@ -1431,6 +1431,16 @@
           addSystemMsg(data.content, 'check');
           break;
 
+        case 'sudo_password_required':
+          addSystemMsg(data.content, 'lock');
+          {
+            const modal = document.getElementById('sudo-modal');
+            if (modal) modal.style.display = 'flex';
+            const pwd = document.getElementById('sudo-password-input');
+            if (pwd) { pwd.value = ''; setTimeout(() => pwd.focus(), 80); }
+          }
+          break;
+
         case 'sudo_pwd_saved':
           addSystemMsg(data.content, 'shield-check');
           {

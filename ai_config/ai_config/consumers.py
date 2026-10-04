@@ -1295,9 +1295,25 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
         
         # Generate RSA Key Pair for E2E Sudo Auth
         from sre_agent.crypto import generate_rsa_key_pair
+        from sre_agent.context import register_sudo_prompter
         self.rsa_private_key, public_pem = generate_rsa_key_pair()
         self.encrypted_sudo_pwd = ""
-        
+
+        # Let tools that need a sudo secret pause and ask the lock modal.
+        loop = asyncio.get_running_loop()
+        async def _send_sudo_prompt(session_id):
+            try:
+                await self.send(text_data=json.dumps({
+                    "type": "sudo_password_required",
+                    "content": (
+                        "This action needs a sudo password. Enter it via the lock "
+                        "button; the agent will resume automatically once it validates."
+                    ),
+                }))
+            except Exception:
+                pass
+        register_sudo_prompter(loop, _send_sudo_prompt)
+
         await self.send(text_data=json.dumps({
             "type": "sudo_key_exchange",
             "public_key": public_pem
@@ -1421,6 +1437,8 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
                 "type": "sudo_pwd_error",
                 "content": "No encrypted sudo password received."
             }))
+            from sre_agent.context import fail_sudo_secret
+            fail_sudo_secret()
             return
         try:
             from sre_agent.crypto import decrypt_rsa_oaep
@@ -1430,6 +1448,8 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
                 "type": "sudo_pwd_error",
                 "content": "Could not decrypt the password. Please try again."
             }))
+            from sre_agent.context import fail_sudo_secret
+            fail_sudo_secret()
             return
 
         import asyncio as _asyncio
@@ -1449,6 +1469,8 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
                 "type": "sudo_pwd_error",
                 "content": "Sudo validation timed out. The password was NOT saved."
             }))
+            from sre_agent.context import fail_sudo_secret
+            fail_sudo_secret()
             return
 
         if proc.returncode != 0:
@@ -1458,9 +1480,13 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
                 "content": "Incorrect sudo password (validation failed). It was NOT saved."
                            + (f" — {detail[-1]}" if detail else "")
             }))
+            from sre_agent.context import fail_sudo_secret
+            fail_sudo_secret()
             return
 
         self.encrypted_sudo_pwd = encrypted
+        from sre_agent.context import notify_sudo_secret_ready
+        notify_sudo_secret_ready(encrypted)
         await self.send(text_data=json.dumps({
             "type": "sudo_pwd_saved",
             "content": "Sudo password validated and saved for this session (RSA-OAEP)."
