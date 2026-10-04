@@ -2260,7 +2260,7 @@
           <strong style="font-size: 13px;">Agent Run</strong>
           <span id="${wrapId}-pill" class="sre-run-phase" style="font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.4px;">observing</span>
           <span id="${wrapId}-dur" style="font-size: 11px; color: var(--text-secondary);"></span>
-          <i class="fa-solid fa-chevron-down" id="${wrapId}-chev" style="margin-left: auto; font-size: 10px; color: var(--text-secondary); transition: transform 0.2s; transform: rotate(180deg);"></i>
+          <i class="fa-solid fa-chevron-down" id="${wrapId}-chev" style="margin-left: auto; font-size: 10px; color: var(--text-secondary); transition: transform 0.2s; transform: rotate(0deg);"></i>
         </div>
         <div id="${wrapId}-body" class="sre-run-body" style="padding: 10px 10px 10px 18px; border-left: 2px solid var(--accent); margin: 4px 0 4px 20px; display: flex; flex-direction: column; gap: 8px; max-height: 420px; overflow-y: auto;"></div>
       `;
@@ -2269,7 +2269,9 @@
       setBeamRunning(true);
       const body = document.getElementById(wrapId + '-body');
       body.dataset.wrapId = wrapId;
-      body.dataset.open = '1';
+      // Always folded: the run card is a summary until the operator opens it.
+      body.dataset.open = '0';
+      body.style.display = 'none';
       window.activeRunWrap = body;
       window.activeRunOrb = document.getElementById(wrapId + '-orb');
       window.orbInRun = true;
