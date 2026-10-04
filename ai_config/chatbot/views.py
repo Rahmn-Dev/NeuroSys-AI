@@ -698,14 +698,30 @@ def artifact_list_api(request):
         
     artifacts = AgentArtifact.objects.filter(
         Q(session_id=session_id) | Q(file_path__icontains=session_id)
-    ).exclude(action_type="active_state").order_by('-created_at')[:50]
+    ).exclude(action_type="active_state").order_by('-created_at')[:200]
+
+    # Titles let the UI label each group with the case that produced it.
+    from chatbot.models import Investigation
+    case_ids = {a.case_id for a in artifacts if a.case_id}
+    titles = dict(
+        Investigation.objects.filter(id__in=case_ids).values_list('id', 'title')
+    ) if case_ids else {}
+
     data = []
     for a in artifacts:
+        diff_text = a.diff or ""
+        added = sum(1 for line in diff_text.splitlines() if line.startswith('+') and not line.startswith('+++'))
+        removed = sum(1 for line in diff_text.splitlines() if line.startswith('-') and not line.startswith('---'))
         data.append({
             "id": a.id,
             "file_path": a.file_path,
             "action_type": a.action_type,
-            "diff": a.diff,
+            "case_id": a.case_id or "",
+            "case_title": titles.get(a.case_id, "") if a.case_id else "",
+            "diff": diff_text,
+            "has_diff": bool(diff_text.strip()),
+            "added": added,
+            "removed": removed,
             "old_content": a.old_content,
             "new_content": a.new_content,
             "created_at": a.created_at.isoformat()

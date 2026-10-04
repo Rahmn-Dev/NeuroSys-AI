@@ -6,9 +6,10 @@ from asgiref.sync import sync_to_async
 class ArtifactManager:
     """Manages file changes, creates artifacts, and supports rollback."""
     
-    def __init__(self, workspace_path: str, session_id: str = None):
+    def __init__(self, workspace_path: str, session_id: str = None, case_id: str = ""):
         self.workspace_path = workspace_path
         self.session_id = session_id
+        self.case_id = case_id or ""
         
     async def _get_workspace(self):
         from chatbot.models import WorkspaceInfo
@@ -49,6 +50,7 @@ class ArtifactManager:
         artifact = await sync_to_async(AgentArtifact.objects.create)(
             workspace=ws,
             session_id=self.session_id,
+            case_id=self.case_id,
             file_path=file_path,
             action_type=action_type,
             old_content=old_content,

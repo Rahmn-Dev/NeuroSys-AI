@@ -4010,7 +4010,54 @@
     }
 
     // --- Artifacts ---
-    // Replace the existing renderServicesList function in loadArtifacts
+    window.artifactTimeLabel = function (iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return '';
+      return d.toLocaleString('en-GB', {
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+      });
+    };
+
+    // GitHub-style diff: coloured +/- lines, hunk headers kept readable.
+    window.renderArtifactDiff = function (diffText) {
+      const lines = String(diffText || '').split('\n');
+      const html = lines.map((line) => {
+        if (!line) return '';
+        let bg = 'transparent', fg = 'var(--text-secondary)', prefix = ' ';
+        if (line.startsWith('+++') || line.startsWith('---')) {
+          bg = 'rgba(127,140,160,0.14)'; fg = 'var(--text-primary)'; prefix = '';
+        } else if (line.startsWith('@@')) {
+          bg = 'rgba(88,166,255,0.10)'; fg = '#79c0ff'; prefix = '';
+        } else if (line.startsWith('+')) {
+          bg = 'rgba(63,185,80,0.14)'; fg = '#7ee787'; prefix = '';
+        } else if (line.startsWith('-')) {
+          bg = 'rgba(248,81,73,0.14)'; fg = '#ffa198'; prefix = '';
+        }
+        const pad = prefix === '' ? '' : 'padding-left:2px;';
+        return `<div style="background:${bg}; color:${fg}; ${pad} padding:1px 10px; white-space:pre-wrap; word-break:break-word;">${escapeHtml(line)}</div>`;
+      }).join('');
+      return `<div style="border:1px solid var(--border-color); border-radius:8px; overflow:hidden; background:var(--bg-panel); font-family:'JetBrains Mono','Fira Code',monospace; font-size:11px; line-height:1.55;">${html}</div>`;
+    };
+
+    window.isMarkdownArtifact = function (art) {
+      const name = String(art.file_path || '').toLowerCase();
+      if (name.endsWith('.md') || name.endsWith('.markdown')) return true;
+      return ['report', 'plan', 'finding', 'subagent_execution', 'agent_execution'].includes(String(art.action_type || ''));
+    };
+
+    window.renderArtifactBody = function (art, cardId) {
+      if (art.has_diff) return window.renderArtifactDiff(art.diff);
+      const text = art.new_content || '';
+      if (!window.isMarkdownArtifact(art)) return null;
+      try {
+        return `<div class="sre-md" style="font-size:12px; line-height:1.6;">${marked.parse(text)}</div>`;
+      } catch (e) {
+        return `<pre style="white-space:pre-wrap; word-break:break-word; font-size:11px;">${escapeHtml(text)}</pre>`;
+      }
+    };
+
     async function loadArtifacts() {
       try {
         if (!sessionId) {
@@ -4028,99 +4075,116 @@
           return;
         }
 
-        data.forEach(art => {
-          let badgeColor = '#58a6ff';
-          let badgeBg = 'rgba(88, 166, 255, 0.15)';
-          let icon = 'fa-file';
-          let typeLabel = art.action_type ? art.action_type.toUpperCase() : 'ARTIFACT';
+        const BADGE = {
+          create: ['#3fb950', 'rgba(63,185,80,0.15)', 'fa-file-circle-plus', 'FILE CREATED'],
+          edit: ['#d29922', 'rgba(210,153,34,0.15)', 'fa-file-pen', 'FILE MODIFIED'],
+          backup: ['#a371f7', 'rgba(163,113,247,0.15)', 'fa-file-shield', 'FILE BACKUP'],
+          report: ['#58a6ff', 'rgba(88,166,255,0.15)', 'fa-file-lines', 'REPORT'],
+          plan: ['#39c5cf', 'rgba(57,197,207,0.15)', 'fa-list-check', 'TASK PLAN'],
+          finding: ['#f0883e', 'rgba(240,136,62,0.15)', 'fa-magnifying-glass', 'FINDINGS'],
+          history: ['#8b949e', 'rgba(139,148,158,0.15)', 'fa-clock-rotate-left', 'HISTORY'],
+          delete: ['#f85149', 'rgba(248,81,73,0.15)', 'fa-file-circle-minus', 'FILE DELETED'],
+        };
 
-          if (art.action_type === 'create') {
-            badgeColor = '#3fb950'; badgeBg = 'rgba(63, 185, 80, 0.15)'; icon = 'fa-file-circle-plus'; typeLabel = 'FILE CREATED';
-          } else if (art.action_type === 'edit') {
-            badgeColor = '#d29922'; badgeBg = 'rgba(210, 153, 34, 0.15)'; icon = 'fa-file-pen'; typeLabel = 'FILE MODIFIED';
-          } else if (art.action_type === 'backup') {
-            badgeColor = '#a371f7'; badgeBg = 'rgba(163, 113, 247, 0.15)'; icon = 'fa-file-shield'; typeLabel = 'FILE BACKUP';
-          } else if (art.action_type === 'report') {
-            badgeColor = '#58a6ff'; badgeBg = 'rgba(88, 166, 255, 0.15)'; icon = 'fa-file-lines'; typeLabel = 'REPORT';
-          } else if (art.action_type === 'plan') {
-            badgeColor = '#39c5cf'; badgeBg = 'rgba(57, 197, 207, 0.15)'; icon = 'fa-list-check'; typeLabel = 'TASK PLAN';
-          } else if (art.action_type === 'finding') {
-            badgeColor = '#f0883e'; badgeBg = 'rgba(240, 136, 62, 0.15)'; icon = 'fa-magnifying-glass'; typeLabel = 'FINDINGS';
-          } else if (art.action_type === 'history') {
-            badgeColor = '#8b949e'; badgeBg = 'rgba(139, 148, 158, 0.15)'; icon = 'fa-clock-rotate-left'; typeLabel = 'HISTORY';
+        // Group by case so a long session stays readable: newest group first.
+        const groups = [];
+        const byKey = new Map();
+        data.forEach((art) => {
+          const key = art.case_id || 'session';
+          if (!byKey.has(key)) {
+            const group = {
+              key: key,
+              title: art.case_title || (art.case_id ? 'Case ' + art.case_id : 'Session level'),
+              caseId: art.case_id || '',
+              items: [],
+            };
+            byKey.set(key, group);
+            groups.push(group);
           }
+          const group = byKey.get(key);
+          group.items.push(art);
+          if (!group.latest || new Date(art.created_at) > new Date(group.latest)) group.latest = art.created_at;
+          if (!group.earliest || new Date(art.created_at) < new Date(group.earliest)) group.earliest = art.created_at;
+        });
 
-          let timeStr = art.created_at ? new Date(art.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
-          let contentToShow = art.diff || art.new_content || 'No content preview available';
+        groups.forEach((group) => {
+          const section = document.createElement('section');
+          section.style.cssText = 'margin-bottom: 18px; border:1px solid var(--border-color); border-radius:12px; overflow:hidden;';
 
-          // Get filename without path
-          const fileName = art.file_path ? art.file_path.split('/').pop() : 'unknown';
+          const header = document.createElement('div');
+          header.style.cssText = 'display:flex; align-items:center; gap:10px; padding:10px 12px;' +
+            ' background:var(--bg-panel); border-bottom:1px solid var(--border-color); position:sticky; top:0; z-index:2;';
+          header.innerHTML =
+            '<i class="fa-solid fa-diagram-project" style="color:var(--accent); font-size:12px;"></i>' +
+            '<div style="flex:1; min-width:0;">' +
+            '<div style="font-size:12px; font-weight:700; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' +
+            escapeHtml(group.title) + '</div>' +
+            '<div style="font-size:10px; color:var(--text-secondary);">' +
+            group.items.length + ' change' + (group.items.length === 1 ? '' : 's') +
+            (group.earliest ? ' · ' + window.artifactTimeLabel(group.earliest) : '') +
+            '</div></div>' +
+            '<span style="font-size:10px; font-family:monospace; color:var(--text-secondary);">' +
+            escapeHtml(group.caseId || 'session') + '</span>';
+          section.appendChild(header);
 
-          // Truncate content preview
-          const previewLines = contentToShow.split('\n').slice(0, 8).join('\n');
-          const hasMore = contentToShow.split('\n').length > 8;
+          group.items.forEach((art) => {
+            const [badgeColor, badgeBg, icon, typeLabel] = BADGE[art.action_type] ||
+              ['#58a6ff', 'rgba(88,166,255,0.15)', 'fa-file', String(art.action_type || 'ARTIFACT').toUpperCase()];
+            const fileName = art.file_path ? art.file_path.split('/').pop() : 'unknown';
+            const cardId = 'artifact-' + art.id;
+            const when = window.artifactTimeLabel(art.created_at);
+            const timeStr = art.created_at
+              ? new Date(art.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+              : '';
+            const stat = art.has_diff
+              ? '<span style="font-family:monospace; font-size:10px;">' +
+                '<span style="color:#7ee787;">+' + (art.added || 0) + '</span>' +
+                '<span style="color:var(--text-secondary);">/</span>' +
+                '<span style="color:#ffa198;">-' + (art.removed || 0) + '</span></span>'
+              : '';
+            const renderable = window.renderArtifactBody(art, cardId);
+            const rawContent = art.diff || art.new_content || '';
 
-          let rollbackBtn = '';
-          if (['edit', 'create', 'backup'].includes(art.action_type)) {
-            rollbackBtn = `<button onclick="window.rollbackArtifact(${art.id})" style="background: rgba(218, 54, 51, 0.15); color: #f85149; border: 1px solid rgba(218, 54, 51, 0.3); border-radius: 6px; padding: 4px 10px; font-size: 11px; cursor: pointer; transition: all 0.2s; font-weight: 500;" onmouseover="this.style.background='rgba(218, 54, 51, 0.25)'" onmouseout="this.style.background='rgba(218, 54, 51, 0.15)'">↩ Rollback</button>`;
-          }
+            window.artifactContents[cardId] = {
+              full: rawContent,
+              preview: String(rawContent).split('\n').slice(0, 8).join('\n'),
+              fileName: fileName
+            };
 
-          const cardId = 'artifact-' + art.id;
-          window.artifactContents[cardId] = {
-            full: contentToShow,
-            preview: previewLines + (hasMore ? '\n... (truncated — click Show full)' : ''),
-            fileName: fileName
-          };
+            const canRestore = ['edit', 'create', 'backup', 'delete'].includes(art.action_type);
+            const wrap = document.createElement('div');
+            wrap.style.cssText = 'padding:8px 12px; border-bottom:1px solid var(--border-color);';
+            wrap.innerHTML =
+              '<div style="background:var(--bg-main); border:1px solid var(--border-color); border-radius:10px; overflow:hidden;">' +
+                '<div onclick="toggleArtifactCard(\'' + cardId + '\')" style="cursor:pointer; padding:10px 12px; display:flex; align-items:center; gap:10px; user-select:none;">' +
+                  '<span style="font-size:10px; font-weight:700; padding:3px 8px; border-radius:12px; color:' + badgeColor + '; background:' + badgeBg + '; letter-spacing:0.5px; white-space:nowrap; flex-shrink:0;">' +
+                    '<i class="fa-solid ' + icon + '" style="margin-right:4px; font-size:9px;"></i>' + typeLabel + '</span>' +
+                  '<span style="font-weight:600; font-size:12.5px; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;">' +
+                    '<i class="fa-solid fa-file-lines" style="font-size:11px; color:var(--text-secondary); margin-right:6px;"></i>' + escapeHtml(fileName) + '</span>' +
+                  stat +
+                  '<span title="' + escapeHtml(when) + '" style="font-size:10px; color:var(--text-secondary);">' + timeStr + '</span>' +
+                  '<i class="fa-solid fa-chevron-down" id="' + cardId + '-chevron" style="font-size:10px; color:var(--text-secondary); transition:transform 0.2s;"></i>' +
+                '</div>' +
+                '<div id="' + cardId + '-content" style="display:none; border-top:1px solid var(--border-color);">' +
+                  '<div style="padding:7px 12px; background:rgba(0,0,0,0.12); font-size:10px; color:var(--text-secondary); font-family:monospace; border-bottom:1px solid var(--border-color); word-break:break-all;">' +
+                    '<i class="fa-solid fa-folder" style="margin-right:4px;"></i>' + escapeHtml(art.file_path || '') + '</div>' +
+                  '<div style="padding:10px 12px;">' +
+                    (renderable || ('<pre style="background:var(--bg-panel); color:var(--text-primary); padding:10px; border-radius:6px; overflow:auto; font-size:11px; max-height:220px; border:1px solid var(--border-color); font-family:\'JetBrains Mono\',\'Fira Code\',monospace; line-height:1.5; margin:0; white-space:pre-wrap; word-break:break-word;">' +
+                      escapeHtml(String(rawContent).split('\n').slice(0, 12).join('\n')) + (String(rawContent).split('\n').length > 12 ? '\n... (truncated — use Download or Copy)' : '') + '</pre>')) +
+                  '</div>' +
+                  '<div style="padding:8px 12px; border-top:1px solid var(--border-color); display:flex; justify-content:flex-end; gap:6px; flex-wrap:wrap;">' +
+                    '<button onclick="window.toggleArtifactFull(\'' + cardId + '\')" style="background:rgba(88,166,255,0.12); color:var(--text-strong); border:1px solid var(--border-color); border-radius:6px; padding:4px 10px; font-size:11px; cursor:pointer;">Copy full</button>' +
+                    '<button onclick="window.downloadArtifact(\'' + cardId + '\')" style="background:rgba(88,166,255,0.12); color:var(--text-strong); border:1px solid var(--border-color); border-radius:6px; padding:4px 10px; font-size:11px; cursor:pointer;">Download</button>' +
+                    (canRestore
+                      ? '<button data-rollback-id="' + art.id + '" onclick="window.rollbackArtifact(' + art.id + ')" title="Restore the file as it was before this change" style="background:rgba(210,153,34,0.14); color:#e3b341; border:1px solid rgba(210,153,34,0.35); border-radius:6px; padding:4px 10px; font-size:11px; cursor:pointer; font-weight:600;">↩ Restore</button>'
+                      : '') +
+                  '</div>' +
+                '</div>' +
+              '</div>';
+            section.appendChild(wrap);
+          });
 
-          const el = document.createElement('div');
-          el.style.cssText = 'margin-bottom: 12px;';
-          el.innerHTML = `
-            <div style="background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 10px; overflow: hidden; transition: all 0.2s ease;">
-              <!-- Header - Clickable -->
-              <div onclick="toggleArtifactCard('${cardId}')" 
-                  style="cursor: pointer; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; user-select: none; transition: background 0.2s;"
-                  onmouseover="this.style.background='rgba(255,255,255,0.03)'" 
-                  onmouseout="this.style.background='transparent'">
-                <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;">
-                  <!-- Type Badge -->
-                  <span style="font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 12px; color: ${badgeColor}; background: ${badgeBg}; letter-spacing: 0.5px; flex-shrink: 0; white-space: nowrap;">
-                    <i class="fa-solid ${icon}" style="margin-right: 4px; font-size: 9px;"></i>${typeLabel}
-                  </span>
-                  <!-- Filename -->
-                  <span style="font-weight: 600; font-size: 13px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                    📄 ${escapeHtml(fileName)}
-                  </span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
-                  <span style="font-size: 10px; color: var(--text-secondary); opacity: 0.7;">${timeStr}</span>
-                  <i class="fa-solid fa-chevron-down" id="${cardId}-chevron" style="font-size: 10px; color: var(--text-secondary); transition: transform 0.2s;"></i>
-                </div>
-              </div>
-              
-              <!-- Collapsible Content -->
-              <div id="${cardId}-content" style="display: none; border-top: 1px solid var(--border-color);">
-                <!-- File Path (subtle) -->
-                <div style="padding: 8px 14px; background: rgba(0,0,0,0.1); font-size: 10px; color: var(--text-secondary); font-family: monospace; opacity: 0.7; border-bottom: 1px solid var(--border-color);">
-                  <i class="fa-solid fa-folder" style="margin-right: 4px;"></i>${escapeHtml(art.file_path || '')}
-                </div>
-                
-                <!-- Content Preview -->
-                <div style="padding: 12px 14px;">
-                  <pre id="${cardId}-pre" style="background: var(--bg-panel); color: var(--text-primary); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 11px; max-height: 200px; overflow-y: auto; border: 1px solid var(--border-color); font-family: 'JetBrains Mono', 'Fira Code', monospace; line-height: 1.5; margin: 0; white-space: pre-wrap; word-break: break-word;">${escapeHtml(previewLines)}${hasMore ? '\n... (truncated — click Show full)' : ''}</pre>
-                </div>
-
-                <!-- Actions -->
-                <div style="padding: 8px 14px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 6px; flex-wrap: wrap;">
-                  ${hasMore ? `<button onclick="window.toggleArtifactFull('${cardId}')" id="${cardId}-expandbtn" style="background: rgba(88,166,255,0.12); color: var(--text-strong); border: 1px solid var(--border-color); border-radius: 6px; padding: 4px 10px; font-size: 11px; cursor: pointer; font-weight: 500;">⤢ Show full</button>` : ''}
-                  <button onclick="window.copyArtifact('${cardId}')" style="background: rgba(88,166,255,0.12); color: var(--text-strong); border: 1px solid var(--border-color); border-radius: 6px; padding: 4px 10px; font-size: 11px; cursor: pointer; font-weight: 500;">⧉ Copy</button>
-                  <button onclick="window.downloadArtifact('${cardId}')" style="background: rgba(88,166,255,0.12); color: var(--text-strong); border: 1px solid var(--border-color); border-radius: 6px; padding: 4px 10px; font-size: 11px; cursor: pointer; font-weight: 500;">⤓ Download</button>
-                  ${rollbackBtn}
-                </div>
-              </div>
-            </div>
-          `;
-
-          container.appendChild(el);
+          container.appendChild(section);
         });
       } catch (e) {
         document.getElementById('artifacts-list').innerHTML = '<div class="sre-text-secondary" style="font-style: italic; padding: 16px;">Error loading artifacts.</div>';
@@ -4144,19 +4208,26 @@
     };
 
     window.rollbackArtifact = async function (id) {
+      if (!confirm('Restore the file to the content it had before this change?')) return;
+      const btn = document.querySelector(`[data-rollback-id="${id}"]`);
+      if (btn) { btn.disabled = true; btn.textContent = 'Restoring...'; }
       try {
         const res = await fetch(`/api/v1/workspace/artifacts/${id}/rollback/`, {
           method: 'POST',
           headers: { 'X-CSRFToken': getCSRFToken() || '' }
         });
         if (res.ok) {
-          alert('Rollback sukses!');
+          addSystemMsg('File restored to its previous content.', 'rotate-left');
           loadArtifacts();
         } else {
-          alert('Rollback failed.');
+          let detail = 'Restore failed.';
+          try { const body = await res.json(); if (body && body.error) detail = body.error; } catch (e) {}
+          addSystemMsg(detail, 'alert-triangle');
+          if (btn) { btn.disabled = false; btn.textContent = '↩ Restore'; }
         }
       } catch (e) {
-        alert('Error rollback');
+        addSystemMsg('Restore request failed.', 'alert-triangle');
+        if (btn) { btn.disabled = false; btn.textContent = '↩ Restore'; }
       }
     };
 

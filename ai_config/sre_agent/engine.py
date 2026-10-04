@@ -1004,7 +1004,8 @@ Output strictly the category name."""
             last_emitted_plan_signature = ""
             findings_data = {}
             ws_path = workspace_ctx.path if workspace_ctx else os.getcwd()
-            artifact_mgr = ArtifactManager(ws_path, session_id=self.session_id)
+            artifact_mgr = ArtifactManager(ws_path, session_id=self.session_id,
+                                            case_id=getattr(self, '_active_case_id', '') or '')
 
             task_plan_path = None
             findings_path = None

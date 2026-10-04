@@ -274,6 +274,9 @@ class AgentArtifact(models.Model):
     session_id = models.CharField(max_length=255, blank=True, null=True)
     file_path = models.CharField(max_length=1024)
     action_type = models.CharField(max_length=50) # create, edit, delete, rename
+    # Which investigation produced this change, so artifacts can be grouped
+    # per case instead of one undated pile.
+    case_id = models.CharField(max_length=50, blank=True, default='', db_index=True)
     old_content = models.TextField(blank=True, null=True)
     new_content = models.TextField(blank=True, null=True)
     diff = models.TextField(blank=True, null=True)
