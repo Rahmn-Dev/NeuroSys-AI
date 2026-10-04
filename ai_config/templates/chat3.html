@@ -2248,18 +2248,29 @@
             const evs = m && m.metadata && Array.isArray(m.metadata.events) ? m.metadata.events : [];
             evs.forEach(ev => {
               if (!ev || typeof ev !== 'object') return;
-              // case_id is stamped onto events going forward; fall back to the
-              // run's own step when nothing is recorded yet.
               if (String(ev.case_id || '') === String(rawId) || String(ev.inv_id || '') === String(rawId)) evts.push(ev);
             });
+            // Older sessions were not stamped with case_id. Do not leave the
+            // panel blank: show the session's other agent events as a
+            // best-effort replay, clearly labelled as unfiltered.
+            if (evts.length === 0) {
+              (Array.isArray(messages) ? messages : []).forEach(m => {
+                const evs = m && m.metadata && Array.isArray(m.metadata.events) ? m.metadata.events : [];
+                evs.forEach(ev => { if (ev && typeof ev === 'object' && !ev.case_id) evts.push(ev); });
+              });
+              if (evts.length > 0) evts.unshift({ type: '_note', content: 'Sesi lama' });
+            }
           });
-          const meaningful = evts.filter(ev => ['exploring','discovering_tools','planning','thinking','tool_start','tool_end','resolution_plan','worker_activity','completed','error','failed','cancelled','blocked','denied','security_blocked'].includes(String(ev.type)));
-          const shown = meaningful.length ? meaningful : evts;
-          if (shown.length > 0) {
-            timelineHtml = shown.map(ev => {
-              const [icon, text] = _sgEventLabel(ev);
-              return `<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border-color);font-size:12px;"><i class="fa-solid fa-${icon}" style="color:var(--accent);width:16px;text-align:center;"></i><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(text)}</span></div>`;
-            }).join('');
+          const known = evts.filter(ev => ['exploring','discovering_tools','planning','thinking','tool_start','tool_end','resolution_plan','worker_activity','completed','error','failed','cancelled','blocked','denied','security_blocked'].includes(String(ev.type)));
+          const shown = known.length ? known : evts.filter(ev => ev && ev.type !== '_note');
+          const hasOldSessionNote = evts.some(ev => ev && ev.type === '_note');
+          if (shown.length > 0 || hasOldSessionNote) {
+            timelineHtml = (hasOldSessionNote
+              ? `<div style="padding:6px 10px;margin:4px 0;border-radius:10px;background:rgba(210,153,34,.12);color:var(--warning);font-size:11px;">Sesi lama tanpa cap case — menampilkan event sesi (tidak difilter per case).</div>`
+              : '') + shown.map(ev => {
+                const [icon, text] = _sgEventLabel(ev);
+                return `<div style="display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--border-color);font-size:13px;"><i class="fa-solid fa-${icon}" style="color:var(--accent);width:18px;text-align:center;"></i><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(text)}</span></div>`;
+              }).join('');
           }
         }
       } catch (e) { /* keep fallback */ }
@@ -2288,19 +2299,21 @@
       } catch (e) { /* keep fallback */ }
 
       panel.innerHTML = `
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-          <div style="font-weight:700;color:var(--text-strong);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(label || 'Case')}</div>
-          <button id="sg-detail-close" title="Close" style="border:0;background:transparent;color:var(--text-secondary);cursor:pointer;font-size:18px;line-height:1;">&times;</button>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+          <div style="font-weight:800;color:var(--text-strong);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;">${escapeHtml(label || 'Case')}</div>
+          <button id="sg-detail-close" title="Close" style="border:0;background:transparent;color:var(--text-secondary);cursor:pointer;font-size:20px;line-height:1;">&times;</button>
         </div>
-        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:10px;">Case id: <code>${escapeHtml(rawId || '')}</code></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-          <div>
-            <div style="font-weight:700;font-size:12px;color:var(--text-strong);margin-bottom:6px;">Alur agent</div>
-            ${timelineHtml}
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <span style="font-size:11px;color:var(--text-secondary);background:rgba(127,140,160,.12);border:1px solid var(--border-color);border-radius:16px;padding:2px 10px;">Case id: <code>${escapeHtml(rawId || '')}</code></span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:12px;">
+          <div style="flex:1;min-width:300px;">
+            <div style="font-weight:700;font-size:13px;color:var(--text-strong);margin-bottom:8px;">Alur agent</div>
+            <div style="padding:12px 14px;border:1px solid var(--border-color);border-radius:14px;background:rgba(127,140,160,.04);max-height:420px;overflow-y:auto;">${timelineHtml}</div>
           </div>
-          <div>
-            <div style="font-weight:700;font-size:12px;color:var(--text-strong);margin-bottom:6px;">Artifacts (bukti tertulis)</div>
-            ${artifactsHtml}
+          <div style="flex:1;min-width:300px;">
+            <div style="font-weight:700;font-size:13px;color:var(--text-strong);margin-bottom:8px;">Artifacts (bukti tertulis)</div>
+            <div style="padding:12px 14px;border:1px solid var(--border-color);border-radius:14px;background:rgba(127,140,160,.04);max-height:420px;overflow-y:auto;">${artifactsHtml}</div>
           </div>
         </div>`;
       document.getElementById('sg-detail-close').addEventListener('click', () => { panel.style.display = 'none'; });
@@ -3978,7 +3991,7 @@
     </div>
     <div id="session-graph-canvas" style="min-height:360px; overflow:auto; padding:18px; background:var(--bg-main);"></div>
     <!-- Sliding case detail: alur (A) + artifacts (B) -->
-    <div id="session-graph-detail" style="display:none; position:absolute; top:0; right:0; bottom:0; width:min(460px, 92%); background:var(--bg-panel); border-left:1px solid var(--border-color); padding:14px 16px; overflow-y:auto; box-shadow:-14px 0 36px rgba(0,0,0,.4); z-index:5;"></div>
+    <div id="session-graph-detail" style="display:none; position:absolute; top:16px; right:16px; bottom:16px; width:min(920px, max(480px, 92%)); max-width:calc(100vw - 40px); background:var(--bg-panel); border:1px solid var(--border-color); border-radius:18px; padding:18px 20px; overflow-y:auto; box-shadow:0 28px 80px rgba(0,0,0,.55); z-index:5;"></div>
   </div>
 </div>
 
