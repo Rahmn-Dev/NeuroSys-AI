@@ -2255,10 +2255,9 @@
       wrap.style.cssText = 'border: 1px solid var(--border-color); border-radius: 12px; margin-bottom: 10px;';
       wrap.innerHTML = `
         <div onclick="toggleRunWrap('${wrapId}')" style="cursor: pointer; padding: 10px 14px; display: flex; align-items: center; gap: 8px; background: var(--bg-panel); user-select: none; border-radius: 11px 11px 0 0;">
-          <span id="${wrapId}-orb" data-orb-size="42" data-orb-only="1" style="width:46px; height:46px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">${window.neuroOrbAvatar('exploring', 42)}</span>
+          <span id="${wrapId}-orb" data-orb-size="42" data-orb-only="1" aria-label="Agent progress" style="width:46px; height:46px; border-radius:50%; background: rgba(127, 140, 160, 0.16); border: 1px solid var(--border-color); display:flex; align-items:center; justify-content:center; flex-shrink:0;">${window.neuroOrbAvatar('exploring', 42)}</span>
           <span id="${wrapId}-spin" style="color: var(--accent); display: flex; align-items: center; width: 14px;"></span>
-          <strong style="font-size: 13px;">Agent Run</strong>
-          <span id="${wrapId}-pill" class="sre-run-phase" style="font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.4px;">observing</span>
+          <span id="${wrapId}-pill" class="sre-run-phase" style="font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.6px;">observing</span>
           <span id="${wrapId}-dur" style="font-size: 11px; color: var(--text-secondary);"></span>
           <i class="fa-solid fa-chevron-down" id="${wrapId}-chev" style="margin-left: auto; font-size: 10px; color: var(--text-secondary); transition: transform 0.2s; transform: rotate(0deg);"></i>
         </div>
@@ -2347,7 +2346,7 @@
         toggleRunWrap(wrapId, false);
         // Replayed runs are finished: no live orb, no shimmering phase label.
         const histOrb = document.getElementById(wrapId + '-orb');
-        if (histOrb) histOrb.style.display = 'none';
+        if (histOrb) histOrb.remove();
         const histPill = document.getElementById(wrapId + '-pill');
         if (histPill) {
           histPill.classList.remove('sre-run-phase');
