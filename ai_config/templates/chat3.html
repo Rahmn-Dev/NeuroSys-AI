@@ -1955,10 +1955,28 @@
         <g>${bob}
           <rect x="11" y="15" width="42" height="34" rx="17" fill="url(#nb-g)" stroke="rgba(255,255,255,.55)" stroke-width="1.4"/>
           <rect x="14" y="17" width="20" height="8" rx="4" fill="rgba(255,255,255,.55)"/>
-          <circle cx="27" cy="31" r="2.8"/><circle cx="39" cy="31" r="2.8"/>
-          <g fill="#0f172a">
-            <circle cx="27" cy="31" r="2.8"/><circle cx="39" cy="31" r="2.8"/>
-            <animate attributeName="opacity" values="1;1;0.15;1;1" keyTimes="0;0.44;0.5;0.56;1" dur="3.8s" repeatCount="indefinite"/>
+          <g>
+            <animateTransform attributeName="transform" type="translate" values="0 0; 1.1 0; 0 0; -1 0; 0 0" dur="9.4s" repeatCount="indefinite"/>
+            <g fill="#0f172a">
+              <g transform="translate(27,31)">
+                <g>
+                  <animateTransform attributeName="transform" type="scale" values="1 1;1 1;1 0.07;1 1;1 1;1 1;1 0.07;1 0.07;1 1;1 1;1 1;1 0.07;1 1;1 1"
+                    keyTimes="0;0.18;0.196;0.215;0.42;0.445;0.461;0.479;0.5;0.7;0.722;0.74;0.766;1"
+                    dur="13.2s" repeatCount="indefinite"/>
+                  <circle r="2.8"/>
+                  <circle cx="-0.9" cy="-0.9" r="0.9" fill="rgba(255,255,255,.85)"/>
+                </g>
+              </g>
+              <g transform="translate(39,31)">
+                <g>
+                  <animateTransform attributeName="transform" type="scale" values="1 1;1 1;1 0.07;1 1;1 1;1 1;1 0.07;1 0.07;1 1;1 1;1 1;1 0.07;1 1;1 1"
+                    keyTimes="0;0.18;0.196;0.215;0.42;0.445;0.461;0.479;0.5;0.7;0.722;0.74;0.766;1"
+                    dur="13.2s" begin="-0.12s" repeatCount="indefinite"/>
+                  <circle r="2.8"/>
+                  <circle cx="-0.9" cy="-0.9" r="0.9" fill="rgba(255,255,255,.85)"/>
+                </g>
+              </g>
+            </g>
           </g>
           <path d="M25 40 q7 5 14 0" fill="none" stroke="#0f172a" stroke-width="2" stroke-linecap="round"/>
           <line x1="33" y1="15" x2="38" y2="8" stroke="#7c8cf8" stroke-width="2.4" stroke-linecap="round"/>
