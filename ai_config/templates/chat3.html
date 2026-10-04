@@ -1582,7 +1582,7 @@
           if (data.status === 'awaiting_approval') isProcessing = true;
           if (['completed', 'failed', 'cancelled', 'blocked', 'denied', 'denied_timeout', 'security_blocked', 'error', 'finalized'].includes(data.status)) {
             isProcessing = false;
-            sendBtn.disabled = false;
+            window.setSendButtonState('idle');
             window.markRunFinished(window.liveRunSessionId || sessionId, data.status === 'completed');
             // Any terminal state brings the bot avatar back.
             window.setProgressOrb('done');
@@ -1763,9 +1763,7 @@
             renderInvestigationTimeline();
           }
           isProcessing = false;
-          sendBtn.disabled = false;
-          sendBtn.style.opacity = '1';
-          sendBtn.innerHTML = 'Send';
+          window.setSendButtonState('idle');
           break;
 
         case 'safety_blocked':
@@ -1960,9 +1958,7 @@
           currentAIMsg = null;
           window.sessionStartTime = null;
           isProcessing = false;
-          sendBtn.disabled = false;
-          sendBtn.style.opacity = '1';
-          sendBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left: -2px;"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`;
+          window.setSendButtonState('idle');
           break;
 
         case 'error':
@@ -1979,9 +1975,7 @@
           }
           window.sessionStartTime = null;
           isProcessing = false;
-          sendBtn.disabled = false;
-          sendBtn.style.opacity = '1';
-          sendBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left: -2px;"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`;
+          window.setSendButtonState('idle');
           currentAIMsg = null;
           break;
       }
@@ -2037,6 +2031,18 @@
 
       if (html) {
         div.innerHTML = html;
+        // Hover actions: the newest prompt can be revised before it is sent on.
+        const actions = document.createElement('div');
+        actions.style.cssText = 'display:flex; justify-content:flex-end; gap:6px; margin-top:6px; opacity:0;' +
+          ' transition:opacity 0.15s ease;';
+        actions.innerHTML =
+          `<button title="Edit this message" onclick="window.editUserMessage(this)" style="background:transparent;` +
+          ` border:1px solid var(--border-color); color:var(--text-secondary); border-radius:6px; padding:2px 7px;` +
+          ` font-size:10px; cursor:pointer;"><i class="fa-solid fa-pen" style="font-size:9px;"></i> Edit</button>`;
+        div.appendChild(actions);
+        div.addEventListener('mouseenter', () => { actions.style.opacity = '1'; });
+        div.addEventListener('mouseleave', () => { actions.style.opacity = '0'; });
+        div.dataset.rawText = text;
         messagesDiv.appendChild(div);
       }
       const timeDiv = document.createElement('div');
@@ -2045,6 +2051,79 @@
       messagesDiv.appendChild(timeDiv);
       scrollToBottom();
     }
+
+    // --- Revise a prompt before it is sent on -------------------------------
+    window.editUserMessage = function (btn) {
+      const bubble = btn && btn.closest('.sre-msg-user');
+      if (!bubble) return;
+      if (isProcessing) {
+        addSystemMsg('Stop the current run first, then edit the message.', 'circle-info');
+        return;
+      }
+      // Only the newest prompt can be revised; older turns are history.
+      const bubbles = Array.from(messagesDiv.querySelectorAll('.sre-msg-user'));
+      if (bubble !== bubbles[bubbles.length - 1]) {
+        addSystemMsg('Only the latest message can be edited. Start a new chat to ask something else.', 'circle-info');
+        return;
+      }
+      const original = (bubble.dataset.rawText || bubble.textContent || '').trim();
+      bubble.innerHTML = '';
+      bubble.style.maxWidth = '85%';
+      const ta = document.createElement('textarea');
+      ta.value = original.replace(/\n\n\[Context Attached:[\s\S]*\]$/, '').trim();
+      ta.rows = 3;
+      ta.style.cssText = 'width:100%; background:transparent; color:var(--text-primary); border:none; outline:none;' +
+        ' resize:vertical; font-size:14px; line-height:1.5; font-family:inherit;';
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex; gap:6px; justify-content:flex-end; margin-top:8px;';
+      const save = document.createElement('button');
+      save.textContent = 'Save & send';
+      save.style.cssText = 'background:var(--accent); color:#fff; border:none; border-radius:8px; padding:5px 12px; font-size:12px; font-weight:600; cursor:pointer;';
+      const drop = document.createElement('button');
+      drop.textContent = 'Cancel';
+      drop.style.cssText = 'background:transparent; color:var(--text-secondary); border:1px solid var(--border-color); border-radius:8px; padding:5px 12px; font-size:12px; cursor:pointer;';
+      const err = document.createElement('div');
+      err.style.cssText = 'font-size:11px; color:var(--error); margin-top:6px; display:none;';
+      row.appendChild(drop); row.appendChild(save);
+      bubble.appendChild(ta); bubble.appendChild(row); bubble.appendChild(err);
+      ta.focus();
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+
+      drop.onclick = () => {
+        addUserMessage(bubble.dataset.rawText || original);
+        // remove the editor instance so the duplicate is not kept
+        const dup = messagesDiv.querySelectorAll('.sre-msg-user');
+        if (dup.length) {
+          const idx = Array.from(messagesDiv.children).indexOf(bubble);
+          if (idx > -1) messagesDiv.removeChild(bubble);
+        }
+      };
+      save.onclick = () => {
+        const text = ta.value.trim();
+        if (!text) { err.textContent = 'Message cannot be empty.'; err.style.display = 'block'; return; }
+        drop.onclick = null;
+        const idx = Array.from(messagesDiv.children).indexOf(bubble);
+        if (idx > -1) messagesDiv.removeChild(bubble);
+        // Drop everything this prompt produced so the revision is unambiguous:
+        // the old answer, its run card and its steps all go with it.
+        const after = Array.from(messagesDiv.children).slice(idx);
+        after.forEach(el => messagesDiv.removeChild(el));
+        addUserMessage(text);
+        const inputEl = document.getElementById('chat-input');
+        if (inputEl) { inputEl.value = text; inputEl.dispatchEvent(new Event('input')); }
+        const formEl = document.getElementById('chat-form') || (inputEl && inputEl.form);
+        if (formEl) {
+          if (formEl.requestSubmit) formEl.requestSubmit();
+          else formEl.dispatchEvent(new Event('submit', { cancelable: true }));
+        } else {
+          addSystemMsg('Could not resend the message. Copy it to the composer and send again.', 'alert-triangle');
+        }
+      };
+      ta.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); save.click(); }
+        if (e.key === 'Escape') { e.preventDefault(); drop.click(); }
+      });
+    };
 
     // --- Bot avatar: no external deps, pure inline SVG + SMIL animation.
     window.neuroBotAvatar = window.neuroBotAvatar || function (size, working) {
@@ -2619,6 +2698,62 @@
     // reverted the operator's choice back to Need Approval.
     window.addSystemMsg = addSystemMsg;
 
+    // --- Send / Stop button -------------------------------------------------
+    // While a run is live the same button becomes Stop, so the operator always
+    // has an obvious way to interrupt instead of watching a spinner.
+    const SEND_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:-2px;"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>';
+    const STOP_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="pointer-events:none;"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>';
+
+    window.setSendButtonState = function (state) {
+      const btn = document.getElementById('send-btn');
+      if (!btn) return;
+      if (state === 'running') {
+        btn.dataset.state = 'running';
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.style.background = 'var(--error)';
+        btn.title = 'Stop the running agent';
+        btn.innerHTML = STOP_ICON;
+      } else {
+        btn.dataset.state = 'idle';
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.style.background = 'var(--accent)';
+        btn.title = 'Send';
+        btn.innerHTML = SEND_ICON;
+      }
+    };
+
+    window.stopCurrentRun = function () {
+      if (!isProcessing) return;
+      const sid = String(sessionId || '');
+      addSystemMsg('Stopping the run...', 'circle-notch');
+      try {
+        if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'cancel', session_id: sid }));
+      } catch (err) { /* socket closing */ }
+      if (window.activeRunOrb) window.applyOrbTo(window.activeRunOrb, 'done');
+      window.activeRunOrb = null;
+      setBeamRunning(false);
+      stopAllAgentStepTimers();
+      window.markRunFinished(sid, false);
+      addAgentStep('Cancelled', 'Stopped by the operator before it finished.', 'var(--warning)', 'circle-xmark', null, true);
+      isProcessing = false;
+      window.setSendButtonState('idle');
+      window.renderActiveRuns();
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const btn = document.getElementById('send-btn');
+      if (!btn) return;
+      btn.addEventListener('click', (e) => {
+        if (btn.dataset.state === 'running') {
+          e.preventDefault();
+          e.stopPropagation();
+          window.stopCurrentRun();
+        }
+      }, true);
+    });
+
     // Placeholder content while a panel loads. Defined with the other globals
     // so it exists before any loader can call it.
     window.showPanelSkeleton = function (host, rows) {
@@ -2666,7 +2801,7 @@
       }
       if (String(sid) === String(sessionId)) {
         isProcessing = false;
-        if (sendBtn) { sendBtn.disabled = false; sendBtn.style.opacity = ''; }
+        window.setSendButtonState && window.setSendButtonState('idle');
         if (window.activeRunOrb) window.applyOrbTo(window.activeRunOrb, 'done');
         window.activeRunOrb = null;
         setBeamRunning(false);
@@ -3210,7 +3345,14 @@
     form.addEventListener('submit', (e) => {
       e.preventDefault();
       let msg = input.value.trim();
-      if (!msg || isProcessing) return;
+      if (!msg) return;
+      if (isProcessing) {
+        // The send button is Stop while a run is live; submitting text then is
+        // a mistake, so say so instead of silently dropping the message.
+        addSystemMsg('A run is still going. Press Stop to cancel it before sending a new message.', 'circle-info');
+        window.setSendButtonState('running');
+        return;
+      }
 
       // The attached file is context for this one message only: capture it,
       // then drop the chip so it does not sit above the composer forever.
@@ -3228,9 +3370,7 @@
       window.sessionStartTime = new Date();
       isProcessing = true;
       currentAIMsg = null;
-      sendBtn.disabled = true;
-      sendBtn.style.opacity = '0.5';
-      sendBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spin-anim"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>`;
+      window.setSendButtonState('running');
 
       window.lastSubmittedMessage = msg;
       ws.send(JSON.stringify({
@@ -3458,11 +3598,11 @@
           hideApprovalCard();
           window.sessionStartTime = null;
           isProcessing = false;
-          sendBtn.disabled = false;
+          window.setSendButtonState('idle');
           stopSnapshotPolling();
         } else {
           isProcessing = true;
-          sendBtn.disabled = true;
+          window.setSendButtonState('running');
         }
         (run.events || []).slice().reverse().forEach(evt => {
           if (evt.event_type === 'provider_fallback') handleEvent({ type: 'provider_fallback', content: 'Provider fallback recorded', ...evt.payload });
@@ -3502,7 +3642,7 @@
       Object.keys(stepTimers).forEach(stopStep);
       pendingApproval = {id: approvalId};
       isProcessing = true;
-      sendBtn.disabled = true;
+      window.setSendButtonState('running');
       document.getElementById('approval-deny').disabled = false;
       document.getElementById('approval-allow').disabled = false;
       const sendDecision = (approved, timedOut = false) => {
@@ -3552,7 +3692,7 @@
       stopAllAgentStepTimers();
       window.sessionStartTime = null;
       isProcessing = false;
-      sendBtn.disabled = false;
+      window.setSendButtonState('idle');
       window.activeAgentRunId = null;
       sessionId = null;
       lastSnapshotCheckpoint = 0;
@@ -3584,7 +3724,7 @@
           }
         } catch (err) { /* the socket may already be closing */ }
         isProcessing = false;
-        if (sendBtn) { sendBtn.disabled = false; sendBtn.style.opacity = ''; }
+        window.setSendButtonState && window.setSendButtonState('idle');
         if (window.activeRunOrb) window.applyOrbTo(window.activeRunOrb, 'done');
         window.activeRunOrb = null;
         window.activeRunWrap = null;
@@ -3596,7 +3736,8 @@
       stopAllAgentStepTimers();
       window.sessionStartTime = null;
       isProcessing = false;
-      sendBtn.disabled = false;
+      window.setSendButtonState('idle');
+      window.setSendButtonState('idle');
       if (previousSessionId !== id) window.activeAgentRunId = null;
       sessionId = id;
       rehydratedSessionId = id;
