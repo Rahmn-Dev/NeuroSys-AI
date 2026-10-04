@@ -93,3 +93,30 @@ def test_questions_about_the_previous_case_stay_direct(message):
 ])
 def test_case_question_rules_do_not_swallow_real_work(message):
     assert is_direct_conversation(message) is False
+
+
+@pytest.mark.parametrize("message", [
+    "kiwww",
+    "aaaa.....",
+    "bisakah kamu menghibur saya",
+    "tau gak neu di jerman sekarang musim apa",
+    "is it free?",
+    "give me a joke",
+])
+def test_operationally_empty_turns_are_small_talk(message):
+    """No service, file, command or symptom is named, so no tool is needed."""
+    assert is_direct_conversation(message) is True
+
+
+@pytest.mark.parametrize("message", [
+    "apt update",
+    "docker ps",
+    "tail -f app.log",
+    "jam berapa sekarang",
+    "brankas mana ya",
+    "password apa ya",
+    "user siapa yang login",
+    "cek memory server sekarang",
+])
+def test_commands_lookups_and_secrets_still_reach_the_agent(message):
+    assert is_direct_conversation(message) is False

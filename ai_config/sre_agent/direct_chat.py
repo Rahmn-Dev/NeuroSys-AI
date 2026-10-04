@@ -32,7 +32,11 @@ _OPS_WORDS = re.compile(
     r"code|kode|script|program|aplikasi|app|endpoint|request|response|payload|"
     r"test|tests|pytest|unittest|coverage|trace|metric|metrics|logline|"
     r"cert|certificate|tls|ssl|key|token|auth|authentication|authorization|sso|"
-    r"disk usage|storage|ceph|nfs|raid|mount|volume|kernel|module|driver|hardware"
+    r"disk usage|storage|ceph|nfs|raid|mount|volume|kernel|module|driver|hardware|"
+    r"web|website|frontend|backend|lambat|respons|respond|hang|macet|nyala|down|up|"
+    r"nyawa|hidup|start|startup|boot|init|systemctl|unit|scheduler|cron|job|queue|"
+    r"load|avg|spike|leak|memory|oom|killed|timeout|timed out|refused|denied|forbidden|"
+    r"verify|validasi|cek|periksa|test|scan|audit|health|status|ringan|berat|penuh|penUH"
     r")\b",
     re.I,
 )
@@ -99,6 +103,33 @@ _META_VERB = re.compile(
     re.I,
 )
 
+# One-off lookups that need a real tool even though they mention nothing
+# operational: "jam berapa sekarang", "where am i", "hostname".
+# Shell / package commands are work by definition.
+_COMMANDS = re.compile(
+    r"\b(apt|apt-get|aptitude|yum|dnf|apk|pacman|zypper|pip|pip3|npm|pnpm|yarn|bun|"
+    r"docker|docker-compose|podman|kubectl|helm|terraform|ansible|systemctl|service|journalctl|"
+    r"tail|head|grep|rg|sed|awk|cut|sort|uniq|curl|wget|chmod|chown|chgrp|mkdir|rmdir|rm|kill|"
+    r"pkill|killall|htop|iotop|netstat|lsof|uname|ls|nano|vim|emacs|tar|zip|unzip|gzip|"
+    r"crontab|systemd-run|nohup|screen|tmux|export|source)\b",
+    re.I,
+)
+
+_NEEDS_TOOL = re.compile(
+    r"\b(jam\s+(berapa|sekarang|apa)|tanggal|hari\s+ini|waktu\s+(sekarang|apa)|"
+    r"tanggal\s+(sekarang|apa)|uptime|berjalan\s+berapa|aktif\s+berapa|"
+    r"pwd|current\s+directory|where\s+am\s+i|where\s+is\s+my|hostname|nama\s+host|"
+    r"whoami|user\s+(apa|saya|sekarang)|siapa\s+(user|pengguna|saya)|"
+    r"direktori(\s+(apa|saya|sekarang|aktif))?|folder(\s+(mana|aktif))?|"
+    r"file\s+(mana|di\s+mana|berada)|lokasi\s+file|di\s+mana\s+file|"
+    r"ukuran|size\s+(file|folder)|how\s+(many|much)|what\s+time|what\'s\s+the\s+time|"
+    r"tanggal\s+hari|day\s+is\s+it|list\s+(files|directory)|ls\b|stat\b|df\b|"
+    r"brankas|lemari|vault|keystore|password|passwd|api[-_ ]?key|secret|rahasia|"
+    r"(where|di\s+mana|mana)\b[^?]{0,24}\b(file|folder|directory|path|lokasi|user|"
+    r"password|brankas|lemari|token|key|service|port)\b)\b",
+    re.I,
+)
+
 _MAX_LEN = 200
 _MAX_HISTORY_LEN = 400
 
@@ -135,12 +166,19 @@ def is_direct_conversation(message: str) -> bool:
         return True
     if len(text) > _MAX_LEN:
         return False
-    if _OPS_WORDS.search(text):
-        # "test the service" or "install docker" are work, not small talk.
+    # "test the service" or "install docker" are work, not small talk.
+    if _OPS_WORDS.search(text) or _NEEDS_TOOL.search(text):
+        return False
+    if _COMMANDS.search(text):
         return False
     if _IDENTITY.match(text):
         return True
-    return bool(_GREETING.match(text))
+    if _GREETING.match(text):
+        return True
+    # Nothing operational in it: everyday talk. Operational work in this
+    # domain always names a service, a file, a command or a symptom, so the
+    # absence of that vocabulary is a safe signal.
+    return True
 
 
 DIRECT_CHAT_SYSTEM_PROMPT = (
