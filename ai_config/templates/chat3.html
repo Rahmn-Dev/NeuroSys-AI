@@ -2264,14 +2264,16 @@
     // tint; 'thinking' swaps the dots for a striped globe lattice.
     window.activeProgressState = null;
 
+    // White dots on every state: the phase reads from motion and structure,
+    // not hue, which is what keeps the orb visible on a dark surface.
     window.orbStates = {
-      exploring: { count: 78, r: 19, spin: 7.0, tint: '#a6b8ff', dot: 1.05 },
-      search:    { count: 62, r: 18, spin: 5.4, tint: '#c3dbff', dot: 1.0, ring: 20 },
-      planning:  { count: 44, r: 16, spin: 9.5, tint: '#dcc4ff', dot: 1.1, ring: 14 },
-      thinking:  { count: 90, r: 20, spin: 12.0, tint: '#d6c6ff', dot: 0.85, globe: true },
-      working:   { count: 72, r: 19, spin: 3.8, tint: '#ffdf9e', dot: 1.05 },
-      listening: { count: 54, r: 13, spin: 8.0, tint: '#ffeab5', dot: 1.0 },
-      composing: { count: 64, r: 21, spin: 6.0, tint: '#a6ecd0', dot: 1.0, ring: 26 },
+      exploring: { count: 78, r: 19, spin: 7.0, tint: '#ffffff', dot: 1.35 },
+      search:    { count: 62, r: 18, spin: 5.4, tint: '#ffffff', dot: 1.3, ring: 20 },
+      planning:  { count: 44, r: 16, spin: 9.5, tint: '#ffffff', dot: 1.4, ring: 14 },
+      thinking:  { count: 90, r: 20, spin: 12.0, tint: '#ffffff', dot: 1.1, globe: true },
+      working:   { count: 72, r: 19, spin: 3.8, tint: '#ffffff', dot: 1.35 },
+      listening: { count: 54, r: 13, spin: 8.0, tint: '#ffffff', dot: 1.3 },
+      composing: { count: 64, r: 21, spin: 6.0, tint: '#ffffff', dot: 1.3, ring: 26 },
     };
 
     window.orbSpherePoints = function (count, radius) {
@@ -2355,7 +2357,8 @@
         }
       }
 
-      return '<svg width="' + s + '" height="' + s + '" viewBox="-32 -32 64 64" aria-hidden="true" style="display:block">' + body + '</svg>';
+      return '<svg width="' + s + '" height="' + s + '" viewBox="-32 -32 64 64" aria-hidden="true" ' +
+        'style="display:block; filter:drop-shadow(0 0 3px rgba(255,255,255,0.45));">' + body + '</svg>';
     };
 
     // While the run is in flight the orb belongs to the Agent Run header. Only
@@ -2434,7 +2437,7 @@
       div.className = 'agent-msg sre-msg-ai';
       div.style.cssText = 'display:flex; align-items:flex-start; gap:12px; max-width: 85%; margin-bottom: 2px;';
       div.innerHTML = `
-            <div data-avatar="agent" data-orb-size="42" style="flex-shrink:0; width:56px; height:56px; border-radius:50%; background:rgba(31, 111, 235, 0.12); border:1px solid var(--border-color); display:flex; align-items:center; justify-content:center; box-shadow: 0 4px 12px rgba(0,0,0,0.08); flex-wrap: nowrap; overflow: hidden;">
+            <div data-avatar="agent" data-orb-size="42" style="flex-shrink:0; width:56px; height:56px; border-radius:50%; background:rgba(148, 163, 184, 0.30); border:1px solid rgba(203, 213, 225, 0.40); display:flex; align-items:center; justify-content:center; box-shadow: inset 0 0 14px rgba(15, 23, 42, 0.5), 0 4px 12px rgba(0,0,0,0.10); flex-wrap: nowrap; overflow: hidden;">
                 ${window.neuroBotAvatar(42)}
             </div>
             <div class="sre-panel p-3 my-2" style="background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 14px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); flex:1; min-width: 0;">
@@ -2521,7 +2524,7 @@
       wrap.style.cssText = 'border: 1px solid var(--border-color); border-radius: 12px; margin-bottom: 10px;';
       wrap.innerHTML = `
         <div onclick="toggleRunWrap('${wrapId}')" style="cursor: pointer; padding: 10px 14px; display: flex; align-items: center; gap: 8px; background: var(--bg-panel); user-select: none; border-radius: 11px 11px 0 0;">
-          <span id="${wrapId}-orb" data-orb-size="42" data-orb-only="1" aria-label="Agent progress" style="width:46px; height:46px; border-radius:50%; background: rgba(127, 140, 160, 0.16); border: 1px solid var(--border-color); display:flex; align-items:center; justify-content:center; flex-shrink:0;">${window.neuroOrbAvatar('exploring', 42)}</span>
+          <span id="${wrapId}-orb" data-orb-size="46" data-orb-only="1" aria-label="Agent progress" style="width:50px; height:50px; border-radius:50%; background: rgba(148, 163, 184, 0.34); border: 1px solid rgba(203, 213, 225, 0.45); box-shadow: inset 0 0 12px rgba(15, 23, 42, 0.55), 0 0 0 1px rgba(15, 23, 42, 0.35); display:flex; align-items:center; justify-content:center; flex-shrink:0;">${window.neuroOrbAvatar('exploring', 46)}</span>
           <span id="${wrapId}-spin" style="color: var(--accent); display: flex; align-items: center; width: 14px;"></span>
           <span id="${wrapId}-pill" class="sre-run-phase" style="font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.6px;">observing</span>
           <span id="${wrapId}-dur" style="font-size: 11px; color: var(--text-secondary);"></span>
