@@ -794,6 +794,9 @@ def ai_models_api(request):
                 'endpoint_type': getattr(m, 'endpoint_type', 'openai') or 'openai',
                 'base_url': m.base_url or '',
                 'api_key': m.api_key or '',
+                # Never the secret itself, just enough for the composer to warn
+                # before a run fails with an opaque provider error.
+                'has_key': bool(m.api_key),
                 'is_active': m.is_active,
                 'order': m.order,
                 'rotation_group': rotation_group(m),

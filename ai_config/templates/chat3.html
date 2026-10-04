@@ -6137,17 +6137,23 @@
     }
 
     panel.innerHTML = models.map(m => {
-      const selected = selector.value === m.model_id ? 'selected' : '';
+      // The tick means "this is the model in use". is_active only decides
+      // whether the row is offered at all, otherwise every enabled model
+      // looked selected at once.
+      const isSelected = selector.value === m.model_id;
+      const selected = isSelected ? 'selected' : '';
       const isAnthropic = (m.endpoint_type || 'openai') === 'anthropic';
+      const missingKey = m.has_key === false;
       return `
         <button type="button" class="model-picker-item ${selected}" onclick="selectModelFromPicker('${escapeHtml(m.model_id)}')">
-          <i class="fa-solid ${m.is_active ? 'fa-circle-check' : 'fa-circle'}" style="color: ${m.is_active ? 'var(--success-text)' : 'var(--text-secondary)'}; font-size: 12px;"></i>
+          <i class="fa-solid ${isSelected ? 'fa-circle-check' : 'fa-circle'}" style="color: ${isSelected ? 'var(--success-text)' : 'var(--text-secondary)'}; font-size: 12px;"></i>
           <span style="flex: 1; min-width: 0;">
             <span class="mp-name">${escapeHtml(m.name)}</span>
             <span class="mp-sub">${escapeHtml(m.model_id)}</span>
           </span>
           <span class="mp-badge ${isAnthropic ? 'anthropic' : 'openai'}">${isAnthropic ? 'anthropic' : 'openai'}</span>
           <span class="mp-badge">${escapeHtml(m.provider || '?')}</span>
+          ${missingKey ? '<span class="mp-badge" title="No API key saved for this model" style="color:#f85149; border-color:rgba(248,81,73,0.4);">no key</span>' : ''}
         </button>`;
     }).join('');
   }
@@ -6183,6 +6189,11 @@
       return;
     }
     const isAnthropic = (match.endpoint_type || 'openai') === 'anthropic';
+    if (match.has_key === false) {
+      hint.textContent = (match.provider || match.name) + ' · no API key saved';
+      hint.style.color = 'var(--error)';
+      return;
+    }
     const bits = [match.provider || '?', isAnthropic ? 'native' : 'openai'];
     if (!match.is_active) bits.push('inactive');
     hint.textContent = bits.join(' \u00b7 ');

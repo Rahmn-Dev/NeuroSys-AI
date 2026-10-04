@@ -309,6 +309,21 @@ class SREAgentEngine:
             else:
                 raise RuntimeError(f"Unknown or inactive model/provider selection: {self.model_name}")
             print(f"[SRE ENGINE DEBUG] model_name='{self.model_name}' -> resolved: model_id='{target_model}', provider='{provider}', base_url='{custom_base_url}', api_key_set={bool(custom_api_key)}", flush=True)
+            # Actionable hint for the UI: a keyless or badly wired selection is
+            # the usual cause behind an opaque provider_error.
+            if not custom_api_key and provider not in ("ollama", "local"):
+                self._selected_model_hint = (
+                    f"'{db_model.name}' has no API key saved. Add one in Models, or pick another model."
+                )
+            elif getattr(db_model, "endpoint_type", "") == "anthropic" and custom_base_url:
+                self._selected_model_hint = (
+                    f"'{db_model.name}' is set to the Anthropic API but also has a custom base URL, "
+                    "so the request goes to the wrong endpoint. Clear the base URL or switch the wire protocol."
+                )
+            else:
+                self._selected_model_hint = (
+                    f"Check the credentials for '{db_model.name}' (provider '{db_model.provider}')."
+                )
         except Exception as e:
             raise RuntimeError("Selected provider/model could not be resolved") from e
 
@@ -1098,6 +1113,7 @@ Output strictly the category name."""
                 from .react_engine import ReactEngine
                 current_model_name.set(self.model_name)
                 react_engine = ReactEngine(llm, discovery_result.tools, system_prompt, self.session_id, mode=mode)
+                react_engine._selected_model_hint = getattr(self, "_selected_model_hint", "")
                 async for event in react_engine.astream(initial_state):
                     if event.type == AgentEventType.SECURITY_BLOCKED:
                         terminal_failure = True
