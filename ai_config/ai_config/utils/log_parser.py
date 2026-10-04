@@ -1,7 +1,7 @@
 import json
 import re
 from datetime import datetime
-from your_app.models import SuricataLog
+from .eve import parse_eve
 
 class LogParser:
     """Parser untuk berbagai format log Suricata"""
@@ -36,22 +36,4 @@ class LogParser:
     @staticmethod
     def parse_eve_json(line):
         """Parse Suricata eve.json format"""
-        try:
-            data = json.loads(line.strip())
-            if data.get('event_type') == 'alert':
-                alert = data.get('alert', {})
-                return {
-                    'timestamp': datetime.fromisoformat(data.get('timestamp').replace('Z', '+00:00')),
-                    'message': alert.get('signature', 'Unknown alert'),
-                    'classification': alert.get('category', ''),
-                    'priority': alert.get('severity', 3),
-                    'protocol': data.get('proto', ''),
-                    'source_ip': data.get('src_ip', ''),
-                    'source_port': data.get('src_port', 0),
-                    'destination_ip': data.get('dest_ip', ''),
-                    'destination_port': data.get('dest_port', 0),
-                    'severity': alert.get('severity_name', 'Unknown')
-                }
-        except (json.JSONDecodeError, ValueError, KeyError):
-            pass
-        return None
+        return parse_eve(line)

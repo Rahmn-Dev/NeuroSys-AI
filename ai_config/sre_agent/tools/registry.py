@@ -100,6 +100,8 @@ class ToolRegistry:
             except Exception as e:
                 logging.warning(f"Failed to set description on BaseTool '{meta.name}': {e}")
                 
+        from ..security_boundary import protect_tool
+        protect_tool(tool, meta)
         self._entries[meta.name] = _RegistryEntry(tool=tool, meta=meta)
 
     def bulk_register(self, pairs: Sequence[tuple[BaseTool, ToolMetadata]]) -> None:

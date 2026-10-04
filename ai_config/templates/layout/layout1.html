@@ -29,7 +29,8 @@
             </div>
             {% block content %}
 
-            {% endblock %} 
+            {% endblock %}
+            <span id="suricata-status" aria-live="polite" style="position:fixed;right:16px;bottom:16px;z-index:1000;font-size:11px;opacity:.8">Suricata: Connecting</span>
 
             <!--New Chat Section Modal HTML -->
             {% include '../partials/newChatModal.html' %}
@@ -45,9 +46,9 @@
 
             <!--back to top -->
             {% include '../partials/backToTop.html' %}
-            
+
         </main>
-        
+
     <!-- start script -->
     {% include '../partials/script.html' %}
     <!-- End  script -->
@@ -61,16 +62,50 @@
     data: {
         notifications: [], // Menyimpan daftar notifikasi
         unreadCount: 0, // Jumlah notifikasi yang belum dibaca
+        suricataStatus: 'connecting',
+        suricataRetryAttempt: 0,
+        suricataReconnectTimer: null,
+        suricataHeartbeatTimer: null,
+        suricataLastActivity: 0,
     },
     methods: {
+        setSuricataStatus(status) {
+            this.suricataStatus = status;
+            const labels = { connected: 'Live', reconnecting: 'Reconnecting', error: 'Error', 'auth-required': 'Offline', connecting: 'Connecting' };
+            const el = document.getElementById('suricata-status');
+            if (el) el.textContent = `Suricata: ${labels[status] || 'Offline'}`;
+        },
         initWebSocket() {
-            const isLocal = window.location.hostname === "localhost" || window.location.hostname.startsWith("192.168.");
-            const wsProtocol = isLocal ? "ws" : "wss";
-            const wsHost = isLocal ? "192.168.101.20:8000" : "experimental.rahmn.tech";
+            const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
+            const wsHost = window.location.host;
             const socket = new WebSocket(`${wsProtocol}://${wsHost}/ws/suricata_monitor/`);
+            this.suricataSocket = socket;
+            this.setSuricataStatus('connecting');
+
+            socket.onopen = () => {
+                this.setSuricataStatus('connected');
+                this.suricataRetryAttempt = 0;
+                this.suricataLastActivity = Date.now();
+                clearInterval(this.suricataHeartbeatTimer);
+                this.suricataHeartbeatTimer = setInterval(() => {
+                    if (socket.readyState !== WebSocket.OPEN) return;
+                    if (Date.now() - this.suricataLastActivity > 45000) {
+                        this.setSuricataStatus('reconnecting');
+                        socket.close(4000, 'heartbeat timeout');
+                        return;
+                    }
+                    socket.send(JSON.stringify({type: 'ping'}));
+                }, 15000);
+            };
 
             socket.onmessage = (event) => {
-                const data = JSON.parse(event.data);
+                this.suricataLastActivity = Date.now();
+                let data;
+                try { data = JSON.parse(event.data); } catch (error) {
+                    this.setSuricataStatus('error');
+                    return;
+                }
+                if (data.type === 'pong' || data.type === 'ping') return;
 
                 // Parse log untuk mendapatkan prioritas
                 const priority = parseSuricataLog(data.message);
@@ -98,9 +133,16 @@
                 // }
             };
 
-            socket.onclose = () => {
-                console.error("WebSocket Closed. Trying to reconnect...");
-                setTimeout(() => location.reload(), 5000);
+            socket.onerror = () => { this.setSuricataStatus('error'); };
+            socket.onclose = (event) => {
+                clearInterval(this.suricataHeartbeatTimer);
+                const permanent = [1000, 1002, 1003, 1008, 4401, 4403].includes(event.code);
+                if (permanent) { this.setSuricataStatus('auth-required'); return; }
+                this.setSuricataStatus('reconnecting');
+                const base = Math.min(30000, 1000 * (2 ** this.suricataRetryAttempt++));
+                const delay = Math.min(30000, Math.round(base * (0.75 + Math.random() * 0.5)));
+                clearTimeout(this.suricataReconnectTimer);
+                this.suricataReconnectTimer = setTimeout(() => this.initWebSocket(), delay);
             };
         },
         showNotifications() {
@@ -143,7 +185,7 @@ function parseSuricataLog(message) {
 </script>
 {% block script %}
 
-{% endblock %} 
+{% endblock %}
 </body>
 
-</html>          
+</html>

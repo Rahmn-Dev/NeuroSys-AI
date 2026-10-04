@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+</head>
+<body>
+  <div id="cy"></div>
+  <script>
+    let elements = {"nodes":[{"data":{"id":"layer_network","label":"Network Layer"}},{"data":{"id":"layer_infra","label":"Infrastructure"}},{"data":{"id":"layer_services","label":"Services"}},{"data":{"id":"layer_storage","label":"Storage"}},{"data":{"id":"layer_security","label":"Security"}},{"data":{"id":"layer_monitoring","label":"Monitoring"}},{"data":{"id":"user","label":"User"}},{"data":{"id":"avahi-daemon","label":"avahi-daemon","parent":"layer_network","type":"service","port":43879,"status":"active"}},{"data":{"id":"cloudflared","label":"cloudflared","parent":"layer_network","type":"service","port":60313,"status":"active"}},{"data":{"id":"ollama","label":"ollama","parent":"layer_services","type":"service","port":38209,"status":"active"}},{"data":{"id":"neurosys-ai","label":"neurosys-ai","parent":"layer_services","type":"service","port":0,"status":"active"}},{"data":{"id":"nginx","label":"nginx","parent":"layer_services","type":"service","port":0,"status":"active"}},{"data":{"id":"suricata","label":"suricata","parent":"layer_security","type":"ids_ips","port":0,"status":"active"}}],"edges":[{"data":{"source":"user","target":"nginx","label":"Access","id":"493fd1b4-8887-47a8-b5e7-9581af2b09f4"}},{"data":{"source":"avahi-daemon","target":"NetworkManager","label":"Dependency","id":"c3f11878-c2a3-4d06-a9f1-d1a4ff4adae9"}},{"data":{"source":"cloudflared","target":"nginx","label":"Dependency","id":"f5dae08f-21fa-4426-b645-e1390886bf40"}},{"data":{"source":"ollama","target":"neurosys-ai","label":"Dependency","id":"6ad81ad7-86dc-44cc-8c93-d8441acf8d72"}}]};
+
+    if (elements.nodes && elements.edges) {
+      const nodeIds = new Set();
+      elements.nodes.forEach(n => { if (n.data && n.data.id) nodeIds.add(n.data.id); });
+      
+      elements.edges = elements.edges.filter(e => {
+        if (!e.data || !e.data.source || !e.data.target) return false;
+        
+        if (!nodeIds.has(e.data.source)) {
+          elements.nodes.push({ data: { id: e.data.source, label: e.data.source } });
+          nodeIds.add(e.data.source);
+        }
+        if (!nodeIds.has(e.data.target)) {
+          elements.nodes.push({ data: { id: e.data.target, label: e.data.target } });
+          nodeIds.add(e.data.target);
+        }
+        return true;
+      });
+    }
+
+    try {
+      cytoscape({
+        container: document.getElementById('cy'),
+        elements: elements
+      });
+      console.log("SUCCESS");
+    } catch(err) {
+      console.log("ERROR: " + err.message);
+    }
+  </script>
+</body>
+</html>

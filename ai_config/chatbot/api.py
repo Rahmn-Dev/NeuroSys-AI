@@ -4,6 +4,10 @@ from rest_framework.decorators import action
 from . import models
 from .serializers import ChatSessionSerializer, ChatMessageSerializer
 from . import serializers
+from rest_framework.decorators import api_view, permission_classes
+from sre_agent.approvals import request_approval, approve, deny
+from sre_agent.security_boundary import audit
+from django.db import transaction
 class ChatSessionViewSet(viewsets.ModelViewSet):
     queryset = models.ChatSession.objects.all().order_by('-updated_at')
     serializer_class = ChatSessionSerializer
@@ -56,6 +60,38 @@ class ChatSessionViewSet(viewsets.ModelViewSet):
         serializer = serializers.InvestigationSerializer(investigations, many=True)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['get'], url_path='case-graph', permission_classes=[permissions.IsAuthenticated])
+    def case_graph(self, request, pk=None):
+        """Return authenticated semantic graph data for a session owned by the active user."""
+        session = self.get_object()
+        if not session.agent_runs.filter(user_id=str(request.user.id)).exists():
+            return Response({'error': 'Session graph not found'}, status=status.HTTP_404_NOT_FOUND)
+        cases = list(models.Investigation.objects.filter(session=session).prefetch_related('relations_from').order_by('created_at'))
+        nodes, edges, entity_ids = [], [], {}
+        for case in cases:
+            case_id = f"case:{case.id}"
+            nodes.append({
+                "id": case_id, "raw_id": case.id, "node_type": "case", "label": case.title,
+                "kind": case.case_kind, "status": case.status, "summary": case.context_summary,
+            })
+            if case.parent_id:
+                edges.append({"source": f"case:{case.parent_id}", "target": case_id,
+                              "relation": case.relation_type or "context_switch", "confidence": 1.0})
+            for relation in case.relations_from.all()[:5]:
+                edges.append({"source": case_id, "target": f"case:{relation.target_id}",
+                              "relation": relation.relation_type, "confidence": round(relation.confidence, 3),
+                              "reason": relation.reason})
+            for entity in (case.entities or [])[:12]:
+                entity_id = entity_ids.setdefault(entity, f"entity:{len(entity_ids) + 1}")
+                if not any(node["id"] == entity_id for node in nodes):
+                    nodes.append({"id": entity_id, "node_type": "entity", "label": entity})
+                edges.append({"source": case_id, "target": entity_id, "relation": "mentions", "confidence": 1.0})
+            for index, evidence in enumerate((case.evidence_digest or [])[:2]):
+                evidence_id = f"evidence:{case.id}:{index}"
+                nodes.append({"id": evidence_id, "node_type": "evidence", "label": str(evidence)[:180]})
+                edges.append({"source": case_id, "target": evidence_id, "relation": "evidence", "confidence": 1.0})
+        return Response({"nodes": nodes, "edges": edges})
+
 
 class ChatMessageViewSet(viewsets.ModelViewSet):
     queryset = models.ChatMessage.objects.all()
@@ -74,3 +110,72 @@ class SuricataLogsViewSet(viewsets.ModelViewSet):
     queryset = models.SuricataLog.objects.all()
     serializer_class = serializers.SuricataSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+
+@api_view(["GET", "PUT"])
+@permission_classes([permissions.IsAuthenticated])
+def agent_permission(request):
+    """Read or update the server-authoritative agent authorization preference."""
+    profile, _ = models.Profile.objects.get_or_create(user=request.user)
+    if request.method == "GET":
+        return Response({"mode": profile.agent_permission_mode})
+
+    requested = request.data.get("mode")
+    allowed = {value for value, _ in models.Profile.AGENT_PERMISSION_CHOICES}
+    if requested not in allowed:
+        return Response({"error": "mode must be need_approval or full_access"}, status=400)
+    previous = profile.agent_permission_mode
+    if requested != previous:
+        with transaction.atomic():
+            profile = models.Profile.objects.select_for_update().get(pk=profile.pk)
+            previous = profile.agent_permission_mode
+            profile.agent_permission_mode = requested
+            profile.save(update_fields=["agent_permission_mode"])
+            record = models.AgentPermissionAudit.objects.create(
+                user=request.user, previous_mode=previous, new_mode=requested, source="ui"
+            )
+        audit("permission_mode_changed", verdict=requested, request_id=record.request_id,
+              user_id=request.user.pk)
+    return Response({"mode": profile.agent_permission_mode})
+
+
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def approval_request(request):
+    data = request.data
+    session_id = data.get("session_id")
+    tool = data.get("tool")
+    args = data.get("args", {})
+    if not session_id or not isinstance(tool, str) or not isinstance(args, dict):
+        return Response({"error": "session_id, tool, and object args are required"}, status=400)
+    try:
+        obj = request_approval(session_id=session_id, user_id=request.user.pk,
+                               tool_name=tool, args=args, risk=str(data.get("risk", "high")),
+                               reason=str(data.get("reason", ""))[:255])
+    except PermissionError as exc:
+        return Response({"error": str(exc)}, status=403)
+    return Response({"id": obj.pk, "tool": obj.tool_name, "target": obj.arguments_preview,
+                     "risk": obj.risk, "reason": obj.reason, "status": obj.status,
+                     "expires_at": obj.expires_at.isoformat()}, status=201)
+
+
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def approval_allow_once(request, approval_id):
+    try:
+        obj = approve(approval_id, session_id=request.data.get("session_id"),
+                      user_id=request.user.pk)
+    except Exception as exc:
+        return Response({"error": str(exc)}, status=403)
+    return Response({"id": obj.pk, "status": obj.status, "expires_at": obj.expires_at.isoformat()})
+
+
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def approval_deny(request, approval_id):
+    try:
+        obj = deny(approval_id, session_id=request.data.get("session_id"),
+                   user_id=request.user.pk)
+    except Exception as exc:
+        return Response({"error": str(exc)}, status=403)
+    return Response({"id": obj.pk, "status": obj.status})

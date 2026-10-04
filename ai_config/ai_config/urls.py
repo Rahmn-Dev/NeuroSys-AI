@@ -17,7 +17,9 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from . import views
-from chatbot.api import ChatSessionViewSet, ChatMessageViewSet, SuricataLogsViewSet
+from chatbot.api import (ChatSessionViewSet, ChatMessageViewSet, SuricataLogsViewSet,
+                         approval_request, approval_allow_once, approval_deny)
+from chatbot.api import agent_permission
 from rest_framework.routers import DefaultRouter
 from chatbot import views as chatbot_views
 router = DefaultRouter()
@@ -30,8 +32,8 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     # path('api/', include('chatbot.urls')),
     path('', views.dashboard, name='index'),
-    path('chat/', views.chatAI, name='chat'),
-    path('chat2/', views.chatAI2, name='chat'),
+    # path('chat/', views.chatAI, name='chat'),
+    # path('chat2/', views.chatAI2, name='chat'),
     path('chat3/', views.chat3, name='chat3'),
     path('get_suggestions/', views.get_ai_suggestions, name='get_suggestions'), # URL Baru
     # experimental testing
@@ -48,6 +50,10 @@ urlpatterns = [
     path('system_monitor/', views.system_monitor, name='system_monitor'),
     path('api/v1/', include((router.urls, 'api_v1'), namespace='v1')),
     path('api/v1/chat/', chatbot_views.chat_with_ai, name='chat_with_ai'),
+    path('api/v1/approvals/', approval_request, name='approval_request'),
+    path('api/v1/approvals/<int:approval_id>/allow-once/', approval_allow_once, name='approval_allow_once'),
+    path('api/v1/approvals/<int:approval_id>/deny/', approval_deny, name='approval_deny'),
+    path('api/v1/agent-permission/', agent_permission, name='agent_permission'),
     path('api/v1/workspace/tree/', chatbot_views.workspace_tree_api, name='workspace_tree_api'),
     path('api/v1/workspace/file/', chatbot_views.workspace_file_api, name='workspace_file_api'),
     path('api/v1/workspace/artifacts/', chatbot_views.artifact_list_api, name='artifact_list_api'),
@@ -59,6 +65,7 @@ urlpatterns = [
     path('api/get-service-config/<str:service_name>/', views.get_service_config, name='get_service_config'),
     path('api/save-service-config/<str:service_name>/', views.save_service_config, name='save_service_config'),
     path('api/v1/system_status/', chatbot_views.system_status, name='system_status'),
+    path('api/v1/agent-runs/snapshot/', chatbot_views.agent_run_snapshot, name='agent_run_snapshot'),
     # path('fetch_geolocation/', chatbot_views.fetch_geolocation, name='fetch_geolocation'),
      path('run-analysis/', views.run_analysis, name='run_analysis'),
      path('logs-report/', views.logs_report, name='logs_report'),
@@ -79,4 +86,3 @@ urlpatterns = [
     path("detect", views.detect_view, name="detect"),
     path('api/set-sudo/', views.set_sudo_credentials, name='set_sudo'),
 ]
-

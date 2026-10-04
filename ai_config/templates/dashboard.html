@@ -399,12 +399,16 @@
             }
     }
 
-    const isLocal = window.location.hostname === "localhost" || window.location.hostname.startsWith("192.168.");
-    const wsProtocol = isLocal ? "ws" : "wss";
-    const wsHost = isLocal ? "192.168.101.20:8000" : "experimental.rahmn.tech";
+    const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
+    const wsHost = window.location.host;
 
-    const socket = new WebSocket(`${wsProtocol}://${wsHost}/ws/system_monitor/`);
-    socket.onmessage = async function(event) {
+    let systemMonitorSocket;
+    let systemMonitorRetry = 0;
+    let systemMonitorTimer;
+    function connectSystemMonitor() {
+    systemMonitorSocket = new WebSocket(`${wsProtocol}://${wsHost}/ws/system_monitor/`);
+    systemMonitorSocket.onopen = () => { systemMonitorRetry = 0; };
+    systemMonitorSocket.onmessage = async function(event) {
         const data = JSON.parse(event.data);
 
              // Update CPU usage and specs
@@ -475,10 +479,17 @@
 
     };
 
-    socket.onclose = function() {
+    systemMonitorSocket.onclose = function(event) {
         console.error("WebSocket Closed. Trying to reconnect...");
-        setTimeout(() => location.reload(), 5000);
+        if ([4401, 4403].includes(event.code)) return;
+        const base = Math.min(30000, 1000 * (2 ** systemMonitorRetry++));
+        const delay = Math.round(base * (0.75 + Math.random() * 0.5));
+        clearTimeout(systemMonitorTimer);
+        systemMonitorTimer = setTimeout(connectSystemMonitor, delay);
     };
+    systemMonitorSocket.onerror = () => console.warn('System monitor socket error');
+    }
+    connectSystemMonitor();
 
     
     function formatOutputTable(text) {
@@ -931,9 +942,6 @@ $("#analyzeBtn").click(function () {
         // Kembalikan tombol ke keadaan awal
         button.text(originalText).prop("disabled", false);
         $("#status").text("Analysis completed successfully.").css("color", "green");
-
-        // (Opsional) reload halaman setelah selesai
-        // location.reload();
 
     }).fail(function(error) {
         console.error("❌ Error saat menjalankan analisis:", error.responseText);

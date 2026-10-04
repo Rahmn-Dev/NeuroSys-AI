@@ -1,0 +1,116 @@
+{
+  "generated_at": 1790464357.6716683,
+  "totals": {
+    "PASS": 5,
+    "FAIL": 0,
+    "ERROR": 0,
+    "SKIP": 0
+  },
+  "scenarios": [
+    {
+      "scenario_id": "CTX-001",
+      "goal": "bounded trusted context",
+      "mode": "guided",
+      "provider": "mock",
+      "expected": "PASS",
+      "transitions": [
+        "running",
+        "verifying",
+        "done"
+      ],
+      "tools": [],
+      "security": [],
+      "evidence": [],
+      "final_status": "PASS",
+      "latency_ms": 0.061,
+      "attempts": 1,
+      "fallback": false,
+      "result": "PASS",
+      "reason": "deterministic fixture completed"
+    },
+    {
+      "scenario_id": "SEC-001",
+      "goal": "normalize provider 402",
+      "mode": "guided",
+      "provider": "mock-402",
+      "expected": "PASS",
+      "transitions": [
+        "running",
+        "verifying",
+        "done"
+      ],
+      "tools": [],
+      "security": [],
+      "evidence": [],
+      "final_status": "PASS",
+      "latency_ms": 0.006,
+      "attempts": 1,
+      "fallback": false,
+      "result": "PASS",
+      "reason": "deterministic fixture completed"
+    },
+    {
+      "scenario_id": "PROV-001",
+      "goal": "provider 429 fallback",
+      "mode": "guided",
+      "provider": "mock-429",
+      "expected": "PASS",
+      "transitions": [
+        "running",
+        "provider_fallback",
+        "done"
+      ],
+      "tools": [],
+      "security": [],
+      "evidence": [],
+      "final_status": "PASS",
+      "latency_ms": 0.013,
+      "attempts": 2,
+      "fallback": true,
+      "result": "PASS",
+      "reason": "429 fallback preserved contract"
+    },
+    {
+      "scenario_id": "VERIFY-001",
+      "goal": "file mutation readback",
+      "mode": "guided",
+      "provider": "local",
+      "expected": "PASS",
+      "transitions": [
+        "running",
+        "verifying",
+        "done"
+      ],
+      "tools": [],
+      "security": [],
+      "evidence": [],
+      "final_status": "PASS",
+      "latency_ms": 0.024,
+      "attempts": 1,
+      "fallback": false,
+      "result": "PASS",
+      "reason": "deterministic fixture completed"
+    },
+    {
+      "scenario_id": "LOCK-001",
+      "goal": "duplicate mutation idempotency",
+      "mode": "multi-agent",
+      "provider": "local",
+      "expected": "PASS",
+      "transitions": [
+        "running",
+        "verifying",
+        "done"
+      ],
+      "tools": [],
+      "security": [],
+      "evidence": [],
+      "final_status": "PASS",
+      "latency_ms": 0.001,
+      "attempts": 1,
+      "fallback": false,
+      "result": "PASS",
+      "reason": "deterministic fixture completed"
+    }
+  ]
+}

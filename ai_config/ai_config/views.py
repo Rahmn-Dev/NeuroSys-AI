@@ -115,15 +115,15 @@ llm = KantorOllamaLLM(
     model_name=OLLAMA_MODEL
 )
 
-@login_required
-def chatAI(request):
-    return render(request,"generator/textGenerator.html",{'headTitle' : 'Chat AI','toggle' : "true"})
-    # testing
-@login_required
-def chatAI2(request):
-    # return render(request,"generator/textGenerator.html",{'headTitle' : 'Chat AI','toggle' : "true"})
-    # testing
-    return render(request,"chat.html",{'headTitle' : 'Chat AI','toggle' : "true"})
+# @login_required
+# def chatAI(request):
+#     return render(request,"generator/textGenerator.html",{'headTitle' : 'Chat AI','toggle' : "true"})
+#     # testing
+# @login_required
+# def chatAI2(request):
+#     # return render(request,"generator/textGenerator.html",{'headTitle' : 'Chat AI','toggle' : "true"})
+#     # testing
+#     return render(request,"chat.html",{'headTitle' : 'Chat AI','toggle' : "true"})
 @login_required
 def chat3(request):
     return render(request, "chat3.html", {'headTitle': 'NeuroSysAI SRE Agent', 'toggle': "true"})
@@ -2233,7 +2233,7 @@ class AITools:
         """Read file contents using sudo cat."""
         # Cek existensi via shell (untuk permission check)
         if self._run_shell(f"test -f {file_path}").returncode != 0:
-            return {"success": False, "error": f"File not found or inaccessible: {file_path}"}
+            return {"success": False, "error": f"No such file or permission denied: {file_path}"}
 
         cmd = f"cat {file_path}"
         if lines:
@@ -2308,8 +2308,16 @@ class AITools:
         cmd = f"tee {file_path}" if mode == 'w' else f"tee -a {file_path}"
         # Escape content is tricky in shell, better verify usage
         # Simple implementation using temp file
-        temp_path = f"/tmp/write_{int(time.time())}"
-        with open(temp_path, 'w') as f: f.write(content)
+        temp_path = f"/tmp/write_{os.getpid()}_{time.time_ns()}"
+        if mode == "a" and os.path.exists(file_path):
+            with open(file_path, 'rb') as existing:
+                previous = existing.read()
+            with open(temp_path, 'wb') as f:
+                f.write(previous)
+                f.write(content.encode())
+        else:
+            with open(temp_path, 'w') as f:
+                f.write(content)
         
         # Ensure dir exists
         dir_name = os.path.dirname(file_path)
@@ -3535,7 +3543,19 @@ def process_smart_chat(request):
         print(agent)
         # Process with smart workflow
         workflow_result = agent.process_smart_workflow(user_message)
-        
+        # The legacy SmartAgent emits progress with ``yield`` and therefore
+        # returns a generator. Normalize its final complete payload for this
+        # synchronous endpoint; this does not change the streaming callers.
+        if not isinstance(workflow_result, dict):
+            final_step = None
+            for step in workflow_result:
+                if isinstance(step, dict) and step.get('type') == 'complete':
+                    final_step = step.get('content')
+            workflow_result = final_step or {
+                'goal': user_message, 'final_status': 'failed', 'steps': [],
+                'summary': 'Workflow produced no completion result.'
+            }
+
         # Format response
         response = f"🤖 **Smart Agent Result**\n\n"
         response += f"**Goal:** {workflow_result['goal']}\n"

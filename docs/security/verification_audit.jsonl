@@ -1,0 +1,60 @@
+{"timestamp": "2026-09-26T16:54:05.133224+00:00", "event": "direct_injection", "tool": "", "verdict": "blocked", "call_id": "784823f30a894239a6824919b76dd7be", "session_id": "200f1e54f6402b83", "user_id": "efe77b201dc216c0"}
+{"timestamp": "2026-09-26T16:54:05.133316+00:00", "event": "security_blocked", "tool": "", "verdict": "direct_injection", "call_id": "91f8f2a0317a4895a1ec01273fa91d37", "session_id": "200f1e54f6402b83", "user_id": "efe77b201dc216c0"}
+{"timestamp": "2026-09-26T16:54:05.135657+00:00", "event": "direct_injection", "tool": "", "verdict": "blocked", "call_id": "aeb4ebc158f34c5d8e48a0a7a60b483c", "session_id": "f5b792e95d4f527c", "user_id": "efe77b201dc216c0"}
+{"timestamp": "2026-09-26T16:54:05.135701+00:00", "event": "security_blocked", "tool": "", "verdict": "direct_injection", "call_id": "ebbf0e82fbd24e9ebd67f4c3fc8f9183", "session_id": "f5b792e95d4f527c", "user_id": "efe77b201dc216c0"}
+{"timestamp": "2026-09-26T16:54:05.136981+00:00", "event": "direct_injection", "tool": "", "verdict": "blocked", "call_id": "1448401872824d079d1f4b4d6dfccf1f", "session_id": "b3110fffd7787b88", "user_id": "efe77b201dc216c0"}
+{"timestamp": "2026-09-26T16:54:05.137042+00:00", "event": "security_blocked", "tool": "", "verdict": "direct_injection", "call_id": "734dcb01e2e848f7b72d3badb2e29345", "session_id": "b3110fffd7787b88", "user_id": "efe77b201dc216c0"}
+{"timestamp": "2026-09-26T16:54:05.138560+00:00", "event": "direct_injection", "tool": "", "verdict": "blocked", "call_id": "ac110e8fb77945d68060fdafeb8ff8d5", "session_id": "44d5adb16274935a", "user_id": "efe77b201dc216c0"}
+{"timestamp": "2026-09-26T16:54:05.138626+00:00", "event": "security_blocked", "tool": "", "verdict": "direct_injection", "call_id": "d420280fe57a48679798fa6255be063c", "session_id": "44d5adb16274935a", "user_id": "efe77b201dc216c0"}
+{"timestamp": "2026-09-26T16:54:05.140249+00:00", "event": "direct_injection", "tool": "", "verdict": "blocked", "call_id": "400925ac265e44c2bdb64d1994b346d4", "session_id": "1423c6dc6092df6d", "user_id": "efe77b201dc216c0"}
+{"timestamp": "2026-09-26T16:54:05.140316+00:00", "event": "security_blocked", "tool": "", "verdict": "direct_injection", "call_id": "cca14e0f8a2e413cbe098389aec3f5ac", "session_id": "1423c6dc6092df6d", "user_id": "efe77b201dc216c0"}
+{"timestamp": "2026-09-26T16:54:05.142131+00:00", "event": "direct_injection", "tool": "", "verdict": "blocked", "call_id": "a369027921f041979837dc1eac098357", "session_id": "2508f4ee1fe2c0dc", "user_id": "efe77b201dc216c0"}
+{"timestamp": "2026-09-26T16:54:05.142201+00:00", "event": "security_blocked", "tool": "", "verdict": "direct_injection", "call_id": "f182f4ba8f0c450ea72a37c6fec5091e", "session_id": "2508f4ee1fe2c0dc", "user_id": "efe77b201dc216c0"}
+{"timestamp": "2026-09-26T16:54:05.143887+00:00", "event": "direct_injection", "tool": "", "verdict": "blocked", "call_id": "1c84ccbd56674a93a991e45954f5cad2", "session_id": "003177a863c2a4b5", "user_id": "efe77b201dc216c0"}
+{"timestamp": "2026-09-26T16:54:05.143967+00:00", "event": "security_blocked", "tool": "", "verdict": "direct_injection", "call_id": "e18ce0aeaae148bab4710490827b4833", "session_id": "003177a863c2a4b5", "user_id": "efe77b201dc216c0"}
+{"timestamp": "2026-09-26T16:54:05.145811+00:00", "event": "direct_injection", "tool": "", "verdict": "blocked", "call_id": "98ee21d5193548db831d860af50908e2", "session_id": "3f373f3885869119", "user_id": "efe77b201dc216c0"}
+{"timestamp": "2026-09-26T16:54:05.145900+00:00", "event": "security_blocked", "tool": "", "verdict": "direct_injection", "call_id": "7f216d8d334b49018466accb85c61ad3", "session_id": "3f373f3885869119", "user_id": "efe77b201dc216c0"}
+{"timestamp": "2026-09-26T16:54:05.147817+00:00", "event": "direct_injection", "tool": "", "verdict": "blocked", "call_id": "869cdfb29449485d86c395bc23db202f", "session_id": "00bf152904ccd9e9", "user_id": "efe77b201dc216c0"}
+{"timestamp": "2026-09-26T16:54:05.147902+00:00", "event": "security_blocked", "tool": "", "verdict": "direct_injection", "call_id": "78ac5fc6904348ad9214cd98510a7135", "session_id": "00bf152904ccd9e9", "user_id": "efe77b201dc216c0"}
+{"timestamp": "2026-09-26T16:54:05.149864+00:00", "event": "direct_injection", "tool": "", "verdict": "blocked", "call_id": "08f401a114144991ba7689e6e21c26c1", "session_id": "09ee0dce8c618ab0", "user_id": "efe77b201dc216c0"}
+{"timestamp": "2026-09-26T16:54:05.149947+00:00", "event": "security_blocked", "tool": "", "verdict": "direct_injection", "call_id": "673ae3843eed498ebadca2d509e5af19", "session_id": "09ee0dce8c618ab0", "user_id": "efe77b201dc216c0"}
+{"timestamp": "2026-09-26T16:54:05.909221+00:00", "event": "tool_decision", "tool": "read_file", "verdict": "approved", "call_id": "5127b59811b0465da5770ba757db8256"}
+{"timestamp": "2026-09-26T16:54:05.909304+00:00", "event": "tool_result", "tool": "read_file", "verdict": "returned", "call_id": "5127b59811b0465da5770ba757db8256"}
+{"timestamp": "2026-09-26T16:54:05.909354+00:00", "event": "indirect_injection", "tool": "", "verdict": "quarantined", "call_id": "f8ebcd6a8a064172b9697b4d67b9aec1"}
+{"timestamp": "2026-09-26T16:54:05.909535+00:00", "event": "security_blocked", "tool": "read_file", "verdict": "indirect_injection", "call_id": "5707525e4a864f369ddda5cdbc498248"}
+{"timestamp": "2026-09-26T16:54:06.646219+00:00", "event": "tool_decision", "tool": "read_file", "verdict": "approved", "call_id": "c0e84e4938084ee7bb9f7086d3483997"}
+{"timestamp": "2026-09-26T16:54:06.646539+00:00", "event": "tool_result", "tool": "read_file", "verdict": "returned", "call_id": "c0e84e4938084ee7bb9f7086d3483997"}
+{"timestamp": "2026-09-26T16:54:06.646695+00:00", "event": "indirect_injection", "tool": "", "verdict": "quarantined", "call_id": "480a76e96c39424ab671a25d8e9f62b8"}
+{"timestamp": "2026-09-26T16:54:06.647107+00:00", "event": "security_blocked", "tool": "read_file", "verdict": "indirect_injection", "call_id": "9e5741dea4b44bd491ee00f2a918957e"}
+{"timestamp": "2026-09-26T16:54:07.308747+00:00", "event": "tool_decision", "tool": "read_file", "verdict": "approved", "call_id": "eae91aa7e6a642e98592868cade8db2a"}
+{"timestamp": "2026-09-26T16:54:07.309036+00:00", "event": "tool_result", "tool": "read_file", "verdict": "returned", "call_id": "eae91aa7e6a642e98592868cade8db2a"}
+{"timestamp": "2026-09-26T16:54:07.309201+00:00", "event": "indirect_injection", "tool": "", "verdict": "quarantined", "call_id": "b2c67a6b56004bec821780f5e81a7a04"}
+{"timestamp": "2026-09-26T16:54:07.309710+00:00", "event": "security_blocked", "tool": "read_file", "verdict": "indirect_injection", "call_id": "84a6994daeab42b9b2b45420b3d4a8e4"}
+{"timestamp": "2026-09-26T16:54:08.075948+00:00", "event": "tool_decision", "tool": "read_file", "verdict": "approved", "call_id": "918ff73228bf48e29c75c986c31c7f9f"}
+{"timestamp": "2026-09-26T16:54:08.076246+00:00", "event": "tool_result", "tool": "read_file", "verdict": "returned", "call_id": "918ff73228bf48e29c75c986c31c7f9f"}
+{"timestamp": "2026-09-26T16:54:08.076418+00:00", "event": "indirect_injection", "tool": "", "verdict": "quarantined", "call_id": "f14e3dfe89594b6ca4e3524ef8083941"}
+{"timestamp": "2026-09-26T16:54:08.076766+00:00", "event": "security_blocked", "tool": "read_file", "verdict": "indirect_injection", "call_id": "d3fce46c2a594b4ea5478349155efa62"}
+{"timestamp": "2026-09-26T16:54:08.811416+00:00", "event": "tool_decision", "tool": "read_file", "verdict": "approved", "call_id": "bbbf60d93ac0491a95099d3dae83ef6a"}
+{"timestamp": "2026-09-26T16:54:08.811702+00:00", "event": "tool_result", "tool": "read_file", "verdict": "returned", "call_id": "bbbf60d93ac0491a95099d3dae83ef6a"}
+{"timestamp": "2026-09-26T16:54:08.811848+00:00", "event": "indirect_injection", "tool": "", "verdict": "quarantined", "call_id": "f1fe9c4e2def45f8b8543980550efab3"}
+{"timestamp": "2026-09-26T16:54:08.812228+00:00", "event": "security_blocked", "tool": "read_file", "verdict": "indirect_injection", "call_id": "6f813f4b631048b2b4eb37d64ae195fe"}
+{"timestamp": "2026-09-26T16:54:09.509245+00:00", "event": "tool_decision", "tool": "read_file", "verdict": "approved", "call_id": "3d7a1c1882db42b09f2233b31140e80b"}
+{"timestamp": "2026-09-26T16:54:09.509585+00:00", "event": "tool_result", "tool": "read_file", "verdict": "returned", "call_id": "3d7a1c1882db42b09f2233b31140e80b"}
+{"timestamp": "2026-09-26T16:54:09.509758+00:00", "event": "indirect_injection", "tool": "", "verdict": "quarantined", "call_id": "451a2fb85f41470ab90e256513be54dd"}
+{"timestamp": "2026-09-26T16:54:09.510188+00:00", "event": "security_blocked", "tool": "read_file", "verdict": "indirect_injection", "call_id": "8b455db5332b456cbc2e4c8922f8a887"}
+{"timestamp": "2026-09-26T16:54:10.304172+00:00", "event": "tool_decision", "tool": "read_file", "verdict": "approved", "call_id": "19f96a228c9044749000256237c73cdb"}
+{"timestamp": "2026-09-26T16:54:10.304484+00:00", "event": "tool_result", "tool": "read_file", "verdict": "returned", "call_id": "19f96a228c9044749000256237c73cdb"}
+{"timestamp": "2026-09-26T16:54:10.304643+00:00", "event": "indirect_injection", "tool": "", "verdict": "quarantined", "call_id": "2ee7bac1199b4cdc867b7c5b3dbc48d9"}
+{"timestamp": "2026-09-26T16:54:10.305057+00:00", "event": "security_blocked", "tool": "read_file", "verdict": "indirect_injection", "call_id": "7aa036ccab604761977e3b9773849ffd"}
+{"timestamp": "2026-09-26T16:54:11.236467+00:00", "event": "tool_decision", "tool": "read_file", "verdict": "approved", "call_id": "a6d7c9f9762a4fa585b74f803019db24"}
+{"timestamp": "2026-09-26T16:54:11.236748+00:00", "event": "tool_result", "tool": "read_file", "verdict": "returned", "call_id": "a6d7c9f9762a4fa585b74f803019db24"}
+{"timestamp": "2026-09-26T16:54:11.236909+00:00", "event": "indirect_injection", "tool": "", "verdict": "quarantined", "call_id": "2c4e1efe08ac4dfc9f181e33b64942ad"}
+{"timestamp": "2026-09-26T16:54:11.237352+00:00", "event": "security_blocked", "tool": "read_file", "verdict": "indirect_injection", "call_id": "15353b2fefb54c19be0fee2e5f7ee24c"}
+{"timestamp": "2026-09-26T16:54:11.951118+00:00", "event": "tool_decision", "tool": "read_file", "verdict": "approved", "call_id": "566b2a88bb1e45c1b2e11e4c7fc323ed"}
+{"timestamp": "2026-09-26T16:54:11.951433+00:00", "event": "tool_result", "tool": "read_file", "verdict": "returned", "call_id": "566b2a88bb1e45c1b2e11e4c7fc323ed"}
+{"timestamp": "2026-09-26T16:54:11.951601+00:00", "event": "indirect_injection", "tool": "", "verdict": "quarantined", "call_id": "235fe2eb86dd4278a2b829c442664a22"}
+{"timestamp": "2026-09-26T16:54:11.952016+00:00", "event": "security_blocked", "tool": "read_file", "verdict": "indirect_injection", "call_id": "fe0de4ea51404903ab5e3ef56d01a867"}
+{"timestamp": "2026-09-26T16:54:14.245159+00:00", "event": "tool_decision", "tool": "read_file", "verdict": "approved", "call_id": "e14d8c581bdf420b9339a17e81817dde"}
+{"timestamp": "2026-09-26T16:54:14.245516+00:00", "event": "tool_result", "tool": "read_file", "verdict": "returned", "call_id": "e14d8c581bdf420b9339a17e81817dde"}
+{"timestamp": "2026-09-26T16:54:14.245698+00:00", "event": "indirect_injection", "tool": "", "verdict": "quarantined", "call_id": "d036d2b5b8f846b2a39ef13579abcefb"}
+{"timestamp": "2026-09-26T16:54:14.246152+00:00", "event": "security_blocked", "tool": "read_file", "verdict": "indirect_injection", "call_id": "3634e0b2716944f092a21090adc31f32"}

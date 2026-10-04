@@ -1,0 +1,41 @@
+# NeuroSys-AI — default product sudoers for the locked service user.
+#
+# Install: copy to /etc/sudoers.d/neurosys (mode 0440) and run `visudo -c`.
+# Design: sysai is LOCKED (no password). NOPASSWD covers ONLY explicit
+# routine verbs + network isolation below. Everything else requiring root
+# goes through the once-per-session sudo-password flow in the chat UI.
+# Never grant full NOPASSWD: one prompt injection would equal root.
+#
+# What is deliberately NOT here: systemctl stop/disable, package install/
+# upgrade/remove, file writes under /etc, user management, firewall
+# mutation, default-policy/flush. Those stay password/approval-gated.
+
+# --- Network isolation (incident response) ---
+Cmnd_Alias NEUROSYS_ISOLATE = \
+    /usr/sbin/iptables-save, \
+    /usr/sbin/iptables-restore, \
+    /usr/sbin/iptables -I INPUT *, \
+    /usr/sbin/iptables -D INPUT *, \
+    /usr/sbin/iptables -C INPUT *, \
+    /usr/sbin/iptables -L *, \
+    /usr/sbin/iptables -S *, \
+    /usr/sbin/ip link set *, \
+    /usr/sbin/ip addr show *, \
+    /usr/sbin/ip route show *
+
+# --- Routine administration, verb-based (stack-agnostic) ---
+# restart/reload/status/show work for ANY service name (nginx today,
+# caddy/gunicorn/pm2 tomorrow) without listing stacks per customer.
+Cmnd_Alias NEUROSYS_ROUTINE = \
+    /usr/bin/systemctl restart *, \
+    /usr/bin/systemctl reload *, \
+    /usr/bin/systemctl status *, \
+    /usr/bin/systemctl show *, \
+    /usr/bin/systemctl is-active *, \
+    /usr/bin/systemctl is-failed *, \
+    /usr/bin/systemctl list-units *, \
+    /usr/bin/systemctl list-unit-files *, \
+    /usr/sbin/nginx -t, \
+    /usr/sbin/apachectl configtest
+
+sysai ALL=(root) NOPASSWD: NEUROSYS_ISOLATE, NEUROSYS_ROUTINE

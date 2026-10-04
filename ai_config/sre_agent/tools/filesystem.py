@@ -33,12 +33,12 @@ def get_current_directory() -> str:
 
 @tool
 def read_file(path: str) -> str:
-    """Read the full content of a file and return it as text.
-    Use this when you need to inspect configuration files, source code,
-    or log snippets.  For very large files (>500 lines) consider using
-    search_files instead."""
+    """Read a bounded regular text file anywhere on the system.
+    Credential/device paths remain blocked by the execution boundary."""
     try:
         abs_path = os.path.abspath(path)
+        if not os.path.isabs(path):
+            abs_path = os.path.abspath(path)
         if not os.path.isfile(abs_path):
             return f"Error: '{abs_path}' is not a file or does not exist."
         size = os.path.getsize(abs_path)
@@ -61,7 +61,9 @@ def write_file(path: str, content: str) -> str:
         os.makedirs(os.path.dirname(abs_path), exist_ok=True)
         with open(abs_path, "w", encoding="utf-8") as f:
             f.write(content)
-        return f"Successfully wrote {len(content)} bytes to {abs_path}"
+        from ..verification import verify_file_readback, require_verification
+        require_verification(verify_file_readback(abs_path, expected_content=content))
+        return f"Successfully wrote and verified {len(content.encode('utf-8'))} bytes to {abs_path}"
     except Exception as e:
         return f"Error writing file: {e}"
 
@@ -79,7 +81,9 @@ def edit_file(path: str, old_text: str, new_text: str) -> str:
         new_content = content.replace(old_text, new_text, 1)
         with open(abs_path, "w", encoding="utf-8") as f:
             f.write(new_content)
-        return f"Successfully edited {abs_path}"
+        from ..verification import verify_file_readback, require_verification
+        require_verification(verify_file_readback(abs_path, expected_content=new_content))
+        return f"Successfully edited and verified {abs_path}"
     except Exception as e:
         return f"Error editing file: {e}"
 
@@ -92,6 +96,8 @@ def search_files(pattern: str, path: str = ".", file_glob: str = "") -> str:
     Returns matching lines with filenames and line numbers."""
     try:
         cmd = ["grep", "-rnI", "--color=never"]
+        cmd += ["--exclude=.env", "--exclude=*.pem", "--exclude=*.key",
+                "--exclude-dir=.ssh", "--exclude-dir=.aws", "--exclude-dir=.gnupg"]
         if file_glob:
             cmd += ["--include", file_glob]
         cmd += [pattern, os.path.abspath(path)]
@@ -180,12 +186,12 @@ def register_filesystem_tools() -> None:
         )),
         (read_file, ToolMetadata(
             name="read_file",
-            description="Read the full content of a file",
+            description="Read a bounded regular text file from the project or operating system; secret/device paths are denied",
             category="filesystem",
             risk_level=RiskLevel.LOW,
             input_schema={"path": "string — absolute or relative file path"},
-            examples=["read_file('/etc/nginx/nginx.conf')", "read_file('docker-compose.yml')"],
-            capabilities=["workspace_operation", "filesystem_operation"],
+            examples=["read_file('/etc/nginx/nginx.conf')", "read_file('/var/log/nginx/error.log')", "read_file('src/settings.py')"],
+            capabilities=["workspace_operation", "filesystem_operation", "system_inspection"],
         )),
         (write_file, ToolMetadata(
             name="write_file",

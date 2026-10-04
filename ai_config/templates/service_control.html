@@ -200,9 +200,8 @@
         }
     }
 
-    const isLocal = window.location.hostname === "localhost" || window.location.hostname.startsWith("192.168.");
-    const wsProtocol = isLocal ? "ws" : "wss";
-    const wsHost = isLocal ? "192.168.101.20:8000" : "experimental.rahmn.tech";
+    const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
+    const wsHost = window.location.host;
     const socket = new WebSocket(`${wsProtocol}://${wsHost}/ws/services/`);
     updateConnectionStatus(false);
     socket.onopen = function(event) {

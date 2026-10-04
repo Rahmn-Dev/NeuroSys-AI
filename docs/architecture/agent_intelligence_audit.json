@@ -1,0 +1,50 @@
+{
+  "audit_date": "2026-09-27",
+  "branch": "security/agent-hardening",
+  "scope": "read-only architecture audit; no runtime changes",
+  "verdict": "security controls exist, but the system is not yet a single provider-independent resumable agent",
+  "implemented": {
+    "direct_prompt_injection": "regex ingress block in guided and ReAct paths",
+    "indirect_prompt_injection": "regex quarantine for string tool observations",
+    "action_privilege_guard": "callable-level registry guard with exact approval hash and identity checks",
+    "approval_lifecycle": "database approval with server timeout and single-use consumption",
+    "audit_logging": "structured redacted security logger",
+    "planning": "LangGraph planner, worker scheduler, DAG executor, evidence gates",
+    "suricata": "EVE parser/monitor components present; live sensor behavior unverified",
+    "groq": "server-side ChatGroq adapter present; live Groq run not performed"
+  },
+  "gaps_ranked": [
+    "multiple execution authorities",
+    "no durable resumable AgentState",
+    "provider fallback and missing quota/error normalization",
+    "flattened prompt provenance and regex-only injection coverage",
+    "parallel mutation conflict control and audit retention/integrity"
+  ],
+  "state_recommendation": {
+    "canonical": "provider-independent AgentState with persisted node transitions, budgets, approval refs, idempotency keys, audit refs",
+    "storage": "existing relational database or SQLite is sufficient for thesis-scale deployment; JSON is export only",
+    "graph_database": "not justified by current evidence"
+  },
+  "validation": {
+    "security_suite": "current environment: 69 passed, 1 failed, 16 errors due pytest-django database access restriction; prior correctly configured run: 75 passed, 0 failed",
+    "migration_check": "previously passed with no changes detected",
+    "javascript_syntax": "previously passed with node --check",
+    "full_regression": "not clean; pre-existing test_file_read_not_found failure",
+    "live_provider_or_network": "not run; no claim made"
+  },
+  "owasp_llm_mapping": {
+    "LLM01": ["direct and indirect prompt injection controls; provenance gap remains"],
+    "LLM02": ["approval and identity checks reduce sensitive disclosure/action risk; secret-path policy requires end-to-end tests"],
+    "LLM06": ["excessive agency addressed by tool risk and approval guard; multiple paths remain"],
+    "LLM07": ["prompt/history/tool output and memory budgets require explicit quota controls"],
+    "LLM08": ["unbounded autonomous intent is limited by iterations but not complete resource budgets"],
+    "LLM09": ["untrusted output quarantine exists; parser/schema coverage needs adversarial fixtures"]
+  },
+  "mitre_attack_mapping": {
+    "T1059": "command and shell execution surfaces; authorization and audit are required",
+    "T1078": "valid account/session identity is bound to approval decisions",
+    "T1021": "remote-service-capable tools require approval where registered; live coverage unverified",
+    "T1548": "privilege escalation is treated as a privileged mutation and should be tested end-to-end",
+    "T1562": "security-control bypass language is blocked and audited; this is a defensive mapping, not an attack claim"
+  }
+}

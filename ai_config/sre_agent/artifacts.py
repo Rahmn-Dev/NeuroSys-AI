@@ -107,3 +107,38 @@ class ArtifactManager:
         if artifact:
             return artifact.new_content
         return ""
+
+
+def render_task_plan_markdown(plan: dict) -> str:
+    """Render a plan dict as a Markdown checklist.
+
+    The .md is DERIVED from plan state on every sync — the model never edits
+    it directly, so checkboxes always reflect the real execution state.
+    Accepts both guided plans ({"investigation_id","title","tasks":[...]})
+    and single-agent phase plans (same shape).
+    """
+    title = str((plan or {}).get("title", "Task Plan") or "Task Plan")[:120]
+    inv_id = str((plan or {}).get("investigation_id", "") or "")
+    tasks = (plan or {}).get("tasks", []) or []
+    lines = [f"# Task Plan — {title}", ""]
+    if inv_id:
+        lines.append(f"_Investigation: `{inv_id}`_")
+        lines.append("")
+    done, total = 0, 0
+    for idx, task in enumerate(tasks, start=1):
+        total += 1
+        status = str(task.get("status", "pending") or "pending").lower()
+        desc = str(task.get("description", task.get("title", task.get("task", ""))) or "").strip()
+        if status == "completed":
+            box, done = "[x]", done + 1
+        elif status in {"failed", "error"}:
+            box = "[!]"
+        elif status == "blocked":
+            box = "[b]"
+        elif status in {"running", "in_progress"}:
+            box = "[>]"
+        else:
+            box = "[ ]"
+        lines.append(f"- {box} {idx}. {desc} ({status})")
+    lines += ["", f"_Progress: {done}/{total} completed_"]
+    return "\n".join(lines) + "\n"

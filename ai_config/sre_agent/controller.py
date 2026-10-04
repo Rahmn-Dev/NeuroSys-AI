@@ -71,7 +71,8 @@ class TaskState(TypedDict):
 # ---------------------------------------------------------------------------
 
 class AutonomousController:
-    def __init__(self, llm, tools, system_prompt: str = "", mode: str = "guided"):
+    def __init__(self, llm, tools, system_prompt: str = "", mode: str = "guided",
+                 approval_context: dict | None = None):
         self.llm = llm
         self.tools = tools
         self.tool_node = ToolNode(tools)
@@ -80,7 +81,8 @@ class AutonomousController:
         self.safety = SafetyLayer()
         self.registry = ToolRegistry()
         self.parallel_executor = ParallelExecutor(safety=self.safety)
-        self.worker_scheduler = WorkerScheduler(llm=llm, tool_map=self.tool_map, safety=self.safety, mode=mode)
+        self.worker_scheduler = WorkerScheduler(llm=llm, tool_map=self.tool_map, safety=self.safety, mode=mode,
+                                                approval_context=approval_context)
 
     def build_graph(self):
         workflow = StateGraph(TaskState)
@@ -131,9 +133,11 @@ class AutonomousController:
     def _robust_json_parse(self, sys_msg, tags, max_retries=4, fallback_response=None):
         from langchain_core.messages import HumanMessage
         messages = [sys_msg]
-        for attempt in range(max_retries):
+        from .provider_runtime import invoke_sync_with_retry
+        for attempt in range(min(max_retries, 3)):
+            # Provider failures must not become an empty successful plan.
+            response = invoke_sync_with_retry(lambda: self.llm.with_config({"tags": tags}).invoke(messages))
             try:
-                response = self.llm.with_config({"tags": tags}).invoke(messages)
                 raw = response.content
                 if "```" in raw:
                     raw = re.sub(r"```(?:json)?\s*", "", raw).strip("` \n")
@@ -147,7 +151,7 @@ class AutonomousController:
                 json_str = re.search(r'(\{.*\}|\[.*\])', raw, re.DOTALL).group(0)
                 return json.loads(json_str)
             except Exception as e:
-                if attempt == max_retries - 1:
+                if attempt == min(max_retries, 3) - 1:
                     if fallback_response is not None:
                         return fallback_response
                     return {}
@@ -336,11 +340,14 @@ Output EXACTLY valid JSON matching this format:
         except Exception as e:
             output_str = f"Error: {str(e)}"
 
-        task["status"] = "completed"
-        task["completed"] = True
+        successful = bool(output_str.strip()) and not output_str.lower().startswith(("error", "blocked", "failed"))
+        task["status"] = "completed" if successful else "failed"
+        task["completed"] = successful
         task["result"] = output_str[:2000]
         task["evidence"] = [output_str[:2000]]
-        plan["completed"] = True
+        plan["completed"] = successful
+        plan["completion_verified"] = successful
+        plan["global_confidence"] = 1.0 if successful else 0.0
 
         findings = state.get("findings", {"findings": []})
         findings["findings"].append(f"[{tool_name}] {output_str[:500]}")
@@ -427,7 +434,7 @@ Do NOT create workers for satisfied domains listed above.
             f"— do not assume the issue is located here unless explicitly stated)"
         ) if state.get('terminal_cwd') else ""
         
-        prompt = f"""You are a strategic SRE planner. You assign investigation objectives to autonomous workers.
+        prompt = f"""You are a senior SRE incident commander with 30 years of Linux operations experience. You lead a small team of specialist workers the way a veteran mentor briefs trusted engineers: each gets ONE clear mission, full ownership of their diagnostic domain, and a handoff contract for what to report back.
 
 === RECENT CONVERSATION HISTORY ===
 {chat_history_str or "No previous conversation history."}
@@ -448,6 +455,10 @@ CRITICAL RULES:
 - Give each worker an ACTIONABLE objective (e.g. "Validate and fix configuration files" instead of just "Validate").
 - Workers will autonomously decide which tools and commands to run.
 - Independent workers (depends_on: []) run in parallel. Use this for non-interfering checks.
+- EXPLICIT ASKS FIRST: every check the user names explicitly (status, config, logs, resources, ports) MUST become a Phase-1 worker immediately. Never defer an explicitly requested check to a later phase.
+- DOMAIN OWNERSHIP (no friendly fire): each `expected_diagnostic_domains` value may be owned by exactly ONE worker. Two workers must never check the same service, file, or metric — e.g. only one worker touches nginx status, only one reads a given log. If two candidate missions overlap, merge them into one worker.
+- TEAM ROLES: give every worker a short unique `role` (2-4 words, e.g. "Service Guardian", "Log Hound", "Resource Scout", "Config Auditor"). Roles must be unique within one plan — they are how the team addresses each other in the UI.
+- HANDOFF CONTRACT: each goal must state what evidence the worker owes back (e.g. "...and report service state + last 5 error lines"), so the next worker or the final report can build on it instead of re-checking.
 - ADAPTIVE WORKER SCALING:
   - If Current Iteration is 0 (Phase 1): Start with ONLY minimal high-probability diagnostic workers (e.g. service status, config validation, application logs). Do NOT generate workers for broad resource checks (CPU/memory/disk) yet.
   - If Current Iteration > 0 (Phase 2+): Analyze evidence gaps from prior results and dynamically expand the investigation (e.g. resource checks, network checks) ONLY if Phase 1 failed to identify the root cause.
@@ -458,6 +469,7 @@ CRITICAL RULES:
 - DO NOT create workers for unrelated services unless explicitly requested.
 - You MUST define `expected_diagnostic_domains` dynamically based on the exact issue type (e.g. database failure -> ["database_status", "connection_logs"]; memory issue -> ["memory_usage", "process_analysis"]).
 - If EXTRACTED FILE PATHS are provided above, you MUST include the exact absolute path in the worker goal.
+- Workers share evidence ONLY through their findings and results — NEVER via temporary files, shell redirect operators, or out-of-workspace writes. Each worker goal must be satisfiable with read-only tools; only the final reporting step may write the user-requested output file.
 
 Context rules:
 - Indonesian question words ("apa", "kenapa", "ini", "apaa") are NOT file names.
@@ -472,21 +484,24 @@ Output STRICTLY this JSON:
   "workers": [
     {{
       "id": "A",
-      "goal": "Check systemd service status for target application and restart/fix if failed",
+      "role": "Service Guardian",
+      "goal": "Check systemd service status for target application and restart/fix if failed; report service state",
       "expected_diagnostic_domains": ["service_status"],
       "depends_on": [],
       "priority": "high"
     }},
     {{
       "id": "B",
-      "goal": "Validate configuration files for target application and fix any syntax errors",
+      "role": "Config Auditor",
+      "goal": "Validate configuration files for target application and fix any syntax errors; report validation output",
       "expected_diagnostic_domains": ["configuration"],
       "depends_on": [],
       "priority": "high"
     }},
     {{
       "id": "C",
-      "goal": "Check system resources (CPU, memory, disk)",
+      "role": "Resource Scout",
+      "goal": "Check system resources (CPU, memory, disk); report top consumers",
       "expected_diagnostic_domains": ["resource_usage"],
       "depends_on": ["A", "B"],
       "priority": "low"
@@ -514,11 +529,18 @@ Output STRICTLY this JSON:
         hypothesis_out = data.get("hypothesis", "")
         raw_workers    = data.get("workers", [])
 
-        # Normalize worker specs
+        # Normalize worker specs (roles stay unique; fallback keeps readable names)
         worker_specs = []
+        used_roles = set()
         for i, w in enumerate(raw_workers):
+            wid = w.get("id", chr(65 + i))
+            role = str(w.get("role", "") or "").strip()[:40]
+            if not role or role in used_roles:
+                role = f"Worker {wid}"
+            used_roles.add(role)
             worker_specs.append({
-                "id": w.get("id", chr(65 + i)),
+                "id": wid,
+                "role": role,
                 "goal": w.get("goal", goal),
                 "expected_diagnostic_domains": w.get("expected_diagnostic_domains", []),
                 "depends_on": w.get("depends_on", []),
@@ -530,7 +552,7 @@ Output STRICTLY this JSON:
 
         if not worker_specs:
             worker_specs = [{
-                "id": "A", "goal": goal, "expected_diagnostic_domains": [], "depends_on": [], "priority": "high", "status": "pending",
+                "id": "A", "role": "Worker A", "goal": goal, "expected_diagnostic_domains": [], "depends_on": [], "priority": "high", "status": "pending",
                 "terminal_cwd": state.get("terminal_cwd", ""),
                 "active_workspace": state.get("active_workspace", "")
             }]
@@ -542,6 +564,7 @@ Output STRICTLY this JSON:
             # Keep backward-compat 'tasks' field (used by DB sync in engine.py)
             "tasks": [{
                 "id": w["id"],
+                "role": w.get("role", w["id"]),
                 "description": w["goal"],
                 "status": "pending",
                 "completed": False,
@@ -600,6 +623,7 @@ Output STRICTLY this JSON:
         def collect_workers(ws):
             worker_result = {
                 "id": ws.id,
+                "role": getattr(ws, "role", "") or f"Worker {ws.id}",
                 "goal": ws.goal,
                 "status": ws.status,
                 "confidence_score": ws.confidence.score,
@@ -648,7 +672,7 @@ Output STRICTLY this JSON:
                 collect_workers(child)
 
         for ws in worker_states:
-            total_duration += ws.total_duration
+            total_duration += getattr(ws, "total_duration", 0.0) or 0.0
             if ws.requires_approval:
                 requires_approval = True
             collect_workers(ws)
@@ -766,6 +790,7 @@ Output STRICTLY this JSON:
                     all_satisfied.extend(w.get("investigation_coverage", []))
             plan["satisfied_domains"] = list(set(all_satisfied))
             plan["completed"] = True
+            plan["completion_verified"] = True
             findings_data["findings"].append(f"[Aggregator] Verified root cause: {'; '.join(verified_root_causes[:3])}")
             return {
                 "plan": plan,
@@ -774,6 +799,41 @@ Output STRICTLY this JSON:
                 "resolution_plan": list(dict.fromkeys(all_recommendations))[:10],
             }
         
+        # Path C: verified healthy — no failure/denial evidence anywhere, with
+        # deterministic SUCCESS/service_status observations backing it. A
+        # confirmed healthy component (or a verified successful fix) is a
+        # conclusion, not missing evidence. Restricted to non-investigative
+        # intents so DEBUG/SECURITY cases keep the strict synthesis path.
+        if intent in {"SIMPLE_INFORMATION", "ACTION_TASK"} and worker_results:
+            all_signals = {
+                f.get("signal")
+                for w in worker_results for f in w.get("findings", [])
+            }
+            if not (all_signals & {"FAILURE", "CRITICAL", "BLOCKED"}):
+                success_findings = [
+                    f"{w['id']}:{f.get('finding', '')}"
+                    for w in worker_results for f in w.get("findings", [])
+                    if f.get("signal") == "SUCCESS"
+                    or f.get("evidence_type") == "service_status"
+                ]
+                if len(success_findings) >= 2 and not contradictions:
+                    plan["satisfied_domains"] = list({
+                        d for w in worker_results
+                        for d in w.get("investigation_coverage", [])}) or ["verified_healthy"]
+                    plan["completed"] = True
+                    plan["completion_verified"] = True
+                    plan["global_confidence"] = max(global_confidence, 0.85)
+                    findings_data["findings"].append(
+                        "[Aggregator] Verified healthy: "
+                        + "; ".join(success_findings[:4]))
+                    return {
+                        "plan": plan,
+                        "findings": findings_data,
+                        "thinking": "Aggregator: verified healthy accepted "
+                                    f"(signals={sorted(s for s in all_signals if s)}).",
+                        "resolution_plan": list(dict.fromkeys(all_recommendations))[:10],
+                    }
+
         # Workers claimed a root cause but without verified evidence, or no root cause found yet
         # Continue to LLM synthesis to give the aggregator LLM a chance to assess whether evidence is sufficient.
 
@@ -833,6 +893,8 @@ Respond ONLY with valid JSON:
         has_root_cause = bool(data.get("root_cause"))
         if (data.get("sufficient") or data.get("confidence", 0) >= WORKER_CONFIDENCE_THRESHOLD) and has_root_cause:
             plan["completed"] = True
+            plan["completion_verified"] = True
+            plan["global_confidence"] = max(global_confidence, float(data.get("confidence", 0) or 0))
 
         if data.get("root_cause"):
             findings_data["findings"].append(f"[Aggregator] {data['root_cause']}")
@@ -945,10 +1007,9 @@ Respond ONLY with valid JSON:
         iteration = state.get("iteration", 0)
         dynamic_count = plan.get("dynamic_count", 0)
 
-        # Force completion if too many follow-up rounds
-        if dynamic_count >= 3:
-            plan["completed"] = True
-            is_completed = True
+        # Exhausting the reasoning budget is a pause, not proof of completion.
+        # The graph still routes to final_response at its iteration bound so it
+        # can present partial findings, but the case remains resumable.
 
         return {
             "plan": plan,
@@ -965,11 +1026,11 @@ Respond ONLY with valid JSON:
         tasks = plan.get("tasks", [])
         findings_data = state.get("findings", {})
 
-        # Mark all tasks as completed
-        for t in tasks:
-            t["status"] = "completed"
-            t["completed"] = True
-        plan["completed"] = True
+        requested_completion = bool(plan.get("completed", False))
+        has_failed_task = any(
+            str(t.get("status", "")).lower() in {"failed", "blocked", "cancelled", "error"}
+            for t in tasks
+        )
 
         # Build evidence summary
         evidence_lines = []
@@ -1100,26 +1161,31 @@ Output ONLY valid JSON:
 
         fallback_json = {
             "artifact_name": "report.md",
-            "report_content": "Investigation concluded. Note: The final report generation failed to parse gracefully, but the raw evidence is available in the timeline."
+            "report_content": "Investigation paused. The report generator could not produce a verified conclusion; partial evidence remains available in the timeline."
         }
 
         try:
             data = self._robust_json_parse(HumanMessage(content=prompt), ["agent_llm"], fallback_response=fallback_json)
-            final_report = data.get("report_content", "Investigation completed.")
+            final_report = data.get("report_content", "Investigation status is not yet verified.")
             artifact_name = data.get("artifact_name", "report.md")
         except Exception:
-            final_report = "Investigation completed (fallback response)."
+            final_report = "Investigation paused because a verified final report could not be produced."
             artifact_name = "report.md"
 
-        global_confidence = plan.get("global_confidence", 1.0)
-        is_verified = global_confidence >= 0.5
+        global_confidence = plan.get("global_confidence", 0.0)
+        has_evidence = bool(evidence_lines or findings_data.get("findings"))
+        explicit_verification = bool(plan.get("completion_verified", False))
+        is_verified = (
+            requested_completion and has_evidence and not has_failed_task
+            and (explicit_verification or global_confidence >= 0.5)
+        )
         
         if not is_verified:
-            final_report = f"> [!WARNING]\n> **Best Effort Result** (Confidence {global_confidence:.2f} < 0.5)\n> The system could not definitively verify this conclusion.\n\n" + final_report
+            final_report = f"> [!WARNING]\n> **Best Effort Result** (Confidence {global_confidence:.2f})\n> Completion conditions were not verified; this case remains active.\n\n" + final_report
 
         return {
             "messages":    [AIMessage(content=final_report)],
-            "is_completed": True,
+            "is_completed": is_verified,
             "is_verified":  is_verified,
             "final_report": final_report,
             "artifact_name": artifact_name,

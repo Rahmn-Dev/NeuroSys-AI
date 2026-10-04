@@ -1,116 +1,66 @@
-
-from django.core.management.base import BaseCommand
-from django.core.management import call_command
-import subprocess
-import threading
+"""Single ingestion worker; run independently of WebSocket clients."""
 import time
+from django.core.management.base import BaseCommand
+from ai_config.utils.eve import EveFollower, parse_eve
+from sre_agent.security_boundary import audit
 
 class Command(BaseCommand):
-    help = 'Start security monitoring system'
-    
+    help = "Ingest validated Suricata EVE alerts without automatic blocking"
+
     def add_arguments(self, parser):
-        parser.add_argument(
-            '--suricata-log',
-            type=str,
-            default='/var/log/suricata/eve.json',
-            help='Path to Suricata log file'
-        )
-    
+        parser.add_argument("--suricata-log", default="/var/log/suricata/eve.json")
+        parser.add_argument("--replay", action="store_true", help="Read existing records too")
+
     def handle(self, *args, **options):
-        self.stdout.write(
-            self.style.SUCCESS('Starting Security Monitor...')
-        )
-        
-        # Start log monitoring in separate thread
-        log_thread = threading.Thread(
-            target=self.monitor_suricata_logs,
-            args=(options['suricata_log'],)
-        )
-        log_thread.daemon = True
-        log_thread.start()
-        
-        self.stdout.write(
-            self.style.SUCCESS('Security Monitor started successfully!')
-        )
-        
-        # Keep the command running
+        follower = EveFollower(options["suricata_log"], replay=options["replay"])
+        self.stdout.write("Starting EVE monitor")
         try:
             while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            self.stdout.write(
-                self.style.WARNING('Stopping Security Monitor...')
-            )
-    
-    def monitor_suricata_logs(self, log_file):
-        """Monitor Suricata logs and create database entries"""
-        import json
-        import os
-        from datetime import datetime
-        from your_app.models import SuricataLog
-        
-        if not os.path.exists(log_file):
-            self.stdout.write(
-                self.style.ERROR(f'Suricata log file not found: {log_file}')
-            )
-            return
-        
-        # Follow log file (like tail -f)
-        with open(log_file, 'r') as f:
-            # Go to end of file
-            f.seek(0, 2)
-            
-            while True:
-                line = f.readline()
-                if line:
-                    try:
-                        log_data = json.loads(line.strip())
-                        self.process_suricata_log(log_data)
-                    except json.JSONDecodeError:
-                        continue
-                else:
+                line = follower.poll()
+                if line is None:
                     time.sleep(0.1)
-    
-    def process_suricata_log(self, log_data):
-        """Process individual Suricata log entry"""
-        from your_app.models import SuricataLog
-        from dateutil import parser as date_parser
-        
-        # Only process alert events
-        if log_data.get('event_type') == 'alert':
-            try:
-                # Parse timestamp
-                timestamp = date_parser.parse(log_data.get('timestamp'))
-                
-                # Extract alert data
-                alert = log_data.get('alert', {})
-                src_ip = log_data.get('src_ip')
-                dest_ip = log_data.get('dest_ip')
-                src_port = log_data.get('src_port')
-                dest_port = log_data.get('dest_port')
-                proto = log_data.get('proto')
-                
-                # Create SuricataLog entry
-                suricata_log = SuricataLog.objects.create(
-                    timestamp=timestamp,
-                    message=alert.get('signature', 'Unknown alert'),
-                    severity=alert.get('severity_name', 'Unknown'),
-                    source_ip=src_ip,
-                    source_port=src_port,
-                    destination_ip=dest_ip,
-                    destination_port=dest_port,
-                    protocol=proto,
-                    classification=alert.get('category', ''),
-                    priority=alert.get('severity', 3)
-                )
-                
-                self.stdout.write(
-                    f"New alert: {src_ip} -> {dest_ip} | {alert.get('signature', 'Unknown')}"
-                )
-                
-            except Exception as e:
-                self.stdout.write(
-                    self.style.ERROR(f'Error processing log: {str(e)}')
-                )
+                else:
+                    self.process_suricata_log(line)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            follower.close()
 
-# management/commands/setup_suricata_rules.py - Setup Suricata rules for better detection
+    def process_suricata_log(self, line):
+        from chatbot.models import SuricataLog
+        from datetime import timedelta
+        from django.conf import settings
+        from django.utils import timezone
+        data = parse_eve(line)
+        if data is None:
+            return
+        message = str(data.get("message", ""))
+        # Defaults live here (not only in settings) so the filter behaves
+        # identically under test settings that don't define them.
+        default_suppressed = ["SURICATA STREAM Packet with invalid timestamp"]
+        suppressed = [s for s in (getattr(settings, "SURICATA_SUPPRESS_SIGNATURES", None)
+                                  or default_suppressed)
+                      if s.lower() in message.lower()]
+        if suppressed:
+            # Operator-classified benign noise (e.g. per-packet stream events
+            # on dev traffic). Not stored; the decision is audited.
+            audit("eve_suppressed", verdict="benign_signature")
+            return
+        window = getattr(settings, "SURICATA_DEDUP_SECONDS", None) or 600
+        try:
+            window = max(60, int(window))
+        except (TypeError, ValueError):
+            window = 600
+        cutoff = timezone.now() - timedelta(seconds=window)
+        duplicate = SuricataLog.objects.filter(
+            message=data.get("message", "")[:4096],
+            source_ip=data.get("source_ip"), destination_ip=data.get("destination_ip"),
+            source_port=data.get("source_port"), destination_port=data.get("destination_port"),
+            timestamp__gte=cutoff,
+        ).exists()
+        if duplicate:
+            audit("eve_duplicate_skipped", verdict="dedup_window")
+            return
+        # Fail visibly on storage errors instead of silently losing alerts.
+        SuricataLog.objects.create(**data)
+        audit("eve_ingested", verdict="stored")

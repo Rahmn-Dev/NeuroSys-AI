@@ -1,4 +1,6 @@
 import subprocess
+import ipaddress
+from sre_agent.security_boundary import audit
 import logging
 import json
 from django.conf import settings
@@ -47,8 +49,9 @@ class SecurityService:
         """Block IP using iptables"""
         try:
             # Add to iptables DROP rule
-            cmd = f"sudo iptables -I INPUT -s {ip_address} -j DROP"
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            ip_address = str(ipaddress.ip_address(ip_address))
+            cmd = ["sudo", "-n", "iptables", "-I", "INPUT", "-s", ip_address, "-j", "DROP"]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
             
             if result.returncode == 0:
                 logger.info(f"Successfully blocked IP {ip_address} with iptables")
@@ -64,8 +67,9 @@ class SecurityService:
     def unblock_ip_iptables(ip_address):
         """Unblock IP from iptables"""
         try:
-            cmd = f"sudo iptables -D INPUT -s {ip_address} -j DROP"
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            ip_address = str(ipaddress.ip_address(ip_address))
+            cmd = ["sudo", "-n", "iptables", "-D", "INPUT", "-s", ip_address, "-j", "DROP"]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
             
             if result.returncode == 0:
                 logger.info(f"Successfully unblocked IP {ip_address}")
@@ -111,6 +115,11 @@ class SecurityService:
     @classmethod
     def auto_block_suspicious_ip(cls, suricata_log, block_duration_hours=24):
         """Main method to auto-block suspicious IPs with real-time notification"""
+        if not getattr(settings, "SURICATA_AUTO_BLOCK_ENABLED", False):
+            audit("suricata_auto_block", verdict="disabled")
+            return False
+        if not cls.should_auto_block(suricata_log):
+            return False
         ip_address = suricata_log.source_ip
         
         if not ip_address:

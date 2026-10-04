@@ -26,6 +26,11 @@ from .tools.registry import ToolRegistry, ToolMetadata, RiskLevel
 
 # Static mapping — fast, no LLM call needed for common intents
 _INTENT_MAP: Dict[str, Dict] = {
+    "system_health": {
+        "categories": ["linux", "monitoring"],
+        "keywords": ["cpu", "memory", "disk", "uptime", "resource", "service", "failed", "systemctl"],
+        "description": "Broad read-only system resources and systemd service health",
+    },
     "troubleshooting_web": {
         "keywords": ["web", "http", "proxy", "server", "site", "url", "logs", "error"],
         "description": "Diagnosing web server / reverse proxy issues",
@@ -76,6 +81,7 @@ _INTENT_MAP: Dict[str, Dict] = {
 
 # Keyword → intent mapping for fast classification
 _KEYWORD_INTENT: List[Tuple[List[str], str]] = [
+    (["cek kondisi server", "resource utama", "service yang bermasalah"], "system_health"),
     (["web server", "reverse proxy", "upstream", "site", "http", "https"], "troubleshooting_web"),
     (["service", "systemctl", "daemon", "failed service", "unit"], "troubleshooting_service"),
     (["ping", "dns", "port", "firewall", "connection refused", "timeout", "unreachable"], "troubleshooting_network"),
@@ -124,10 +130,14 @@ class ToolDiscoveryAgent:
             from .tools.terminal import register_terminal_tools
             from .tools.shell import register_shell_tools
             from .tools.delegation import register_delegation_tools
+            from .tools.linux import register_linux_tools
+            from .tools.monitoring import register_monitoring_tools
             register_filesystem_tools()
             register_terminal_tools()
             register_shell_tools()
             register_delegation_tools()
+            register_linux_tools()
+            register_monitoring_tools()
         self.registry = registry
 
     def classify_intent(self, user_message: str) -> str:
@@ -236,8 +246,22 @@ class ToolDiscoveryAgent:
                 seen.add(meta.name)
                 unique_results.append((tool, meta))
 
-        # Always include fundamental tools as fallbacks
-        for fallback_tool in ["safe_execute", "read_file", "get_current_directory", "spawn_subagent", "terminal_execute", "edit_file", "write_file", "list_directory"]:
+        safe_system_intents = {"system_health", "system_monitoring", "troubleshooting_service", "log_analysis"}
+        if intent in safe_system_intents:
+            blocked_for_health = {"write_file", "edit_file", "multi_replace_file_content",
+                                  "replace_file_content", "spawn_subagent",
+                                  "safe_execute", "execute_command"}
+            unique_results = [(tool, meta) for tool, meta in unique_results if meta.name not in blocked_for_health]
+            seen = {meta.name for _, meta in unique_results}
+
+        # Health/service investigations must not expose mutation/edit/delegation
+        # tools that are irrelevant to the baseline goal. Other intents retain
+        # the historical fallback set for compatibility.
+        if intent in safe_system_intents:
+            fallback_tools = ["system_info", "service_manager", "service_config_check", "log_reader", "terminal_execute", "process_manager"]
+        else:
+            fallback_tools = ["safe_execute", "read_file", "get_current_directory", "spawn_subagent", "terminal_execute", "edit_file", "write_file", "list_directory"]
+        for fallback_tool in fallback_tools:
             tool = self.registry.get_tool(fallback_tool)
             if tool and fallback_tool not in seen:
                 meta = self.registry.get_metadata(fallback_tool)
@@ -253,6 +277,29 @@ class ToolDiscoveryAgent:
             tools=[t for t, _ in unique_results],
             tool_names=[m.name for _, m in unique_results],
             categories_used=categories,
+        )
+
+    def discover_single_agent_tools(self, user_message: str) -> DiscoveryResult:
+        """Return the intentional core-tool profile used by Single Agent."""
+        core_tool_names = (
+            "get_current_directory",
+            "read_file",
+            "write_file",
+            "edit_file",
+            "spawn_subagent",
+            "terminal_execute",
+        )
+        available = [
+            (name, self.registry.get_tool(name))
+            for name in core_tool_names
+            if self.registry.get_tool(name) is not None
+        ]
+        return DiscoveryResult(
+            intent="single_agent_core",
+            intent_description="Single Agent core toolkit",
+            tools=[tool for _, tool in available],
+            tool_names=[name for name, _ in available],
+            categories_used=["single_agent_core"],
         )
 
     def get_tools_summary(self) -> str:

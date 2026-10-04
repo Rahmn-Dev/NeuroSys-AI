@@ -1,0 +1,10 @@
+{
+  "timeout_seconds": 30,
+  "states": ["pending", "approved", "consumed", "denied", "denied_timeout", "expired"],
+  "binding": ["user_id", "session_id", "tool_name", "canonical_args_sha256", "request_id", "correlation_id", "expires_at"],
+  "events": ["approval_requested", "approval_approved", "approval_denied", "approval_consumed", "approval_auto_denied", "approval_expired"],
+  "tests": {"passed": 75, "failed": 0},
+  "replay": "rejected",
+  "wrong_binding": "rejected",
+  "full_access": "exact server-side tool/args-hash scope only; hard blocks remain active"
+}

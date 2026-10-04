@@ -22,6 +22,8 @@ GEMINI_KEY = config("GEMINI_API_KEY", default="gemini-key")
 MISTRAL_API_KEY = config("MISTRAL_API_KEY", default="mistral-key")
 ROUTER_API_KEY = config("ROUTER_API_KEY", default="")
 NVIDIA_API_KEY = config("NVIDIA_API_KEY", default="")
+GROQ_API_KEY = config("GROQ_API_KEY", default="")
+ANTHROPIC_API_KEY = config("ANTHROPIC_API_KEY", default="")
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
@@ -115,11 +117,11 @@ WSGI_APPLICATION = 'ai_config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'neurosys',  # Nama database
-        'USER': 'aul',      # Username PostgreSQL
-        'PASSWORD': 'paul2002',  # Password PostgreSQL
-        'HOST': 'localhost',  # Jika PostgreSQL berjalan di lokal
-        'PORT': '5432',       # Port default PostgreSQL
+        'NAME': config('DB_NAME', default='neurosys'),
+        'USER': config('DB_USER', default=''),
+        'PASSWORD': config('DB_PASSWORD', default=''),
+        'HOST': config('DB_HOST', default='localhost'),
+        'PORT': config('DB_PORT', default='5432'),
     }
 }
 
@@ -147,7 +149,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = config('TIME_ZONE', default='Asia/Jakarta')
 
 USE_I18N = True
 
@@ -196,3 +198,33 @@ CACHES = {
         }
     }
 }
+# Structured security records contain identifiers and verdicts, never raw tool data.
+# Collect stderr with the service manager / external log collector.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"security_json": {"format": "%(message)s"}},
+    "handlers": {"security_console": {"class": "logging.StreamHandler", "formatter": "security_json"}},
+    "loggers": {"neurosys.security": {"handlers": ["security_console"], "level": "INFO", "propagate": False}},
+}
+SURICATA_AUTO_BLOCK_ENABLED = False
+SURICATA_EVE_PATH = "/var/log/suricata/eve.json"
+# Known-benign noisy signatures never stored as dashboard alerts
+# (comma-separated; matched against the alert message, case-insensitive).
+# Example: Suricata stream-event 2210044 fires per packet on ordinary
+# dev-machine traffic and drowns real alerts.
+SURICATA_SUPPRESS_SIGNATURES = [
+    s.strip() for s in os.environ.get(
+        "SURICATA_SUPPRESS_SIGNATURES",
+        "SURICATA STREAM Packet with invalid timestamp",
+    ).split(",") if s.strip()
+]
+# Identical alerts (same signature + endpoints) are stored at most once per
+# window so one chatty flow cannot flood the dashboard. Seconds.
+SURICATA_DEDUP_SECONDS = max(60, int(os.environ.get("SURICATA_DEDUP_SECONDS", "600")))
+AGENT_APPROVAL_TIMEOUT_SECONDS = max(1, int(os.environ.get("AGENT_APPROVAL_TIMEOUT_SECONDS", "30")))
+# Full Access mode: approval-required (non-blocked) actions are auto-approved
+# and audited instead of waiting for a human click. Hard blocks (destructive
+# commands, credential/identity paths) ALWAYS stay enforced and cannot be
+# disabled by this switch. Flip to False to restore strict per-action scope.
+AGENT_FULL_ACCESS_AUTO_APPROVE = config("AGENT_FULL_ACCESS_AUTO_APPROVE", default=True, cast=bool)

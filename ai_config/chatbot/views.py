@@ -6,6 +6,8 @@ import psutil
 import os
 from datetime import datetime
 from rest_framework.decorators import api_view
+from rest_framework.decorators import permission_classes
+from rest_framework import permissions
 from rest_framework.response import Response
 from datasets import load_dataset
 import ansible_runner
@@ -22,6 +24,62 @@ def system_status(request):
         "uptime": psutil.boot_time()
     }
     return Response(status)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def agent_run_snapshot(request):
+    """Return only the authenticated user's durable run state for rehydration."""
+    from .models import AgentRun, AgentApproval, ChatMessage
+    from django.utils import timezone
+    session_id = request.GET.get('session_id')
+    if not session_id:
+        return Response({'run': None, 'messages': [], 'reason': 'session_id required'}, status=400)
+    from sre_agent.canonical_lifecycle import expire_abandoned_runs
+    expire_abandoned_runs(session_id, request.user.pk)
+    run = AgentRun.objects.filter(session_id=session_id).order_by('-updated_at').first()
+    if not run:
+        return Response({'run': None, 'messages': [], 'server_time': timezone.now().isoformat()})
+    if str(run.user_id) != str(request.user.pk):
+        return Response({'error': 'run ownership mismatch'}, status=403)
+    now = timezone.now()
+    messages = [{'id': str(m.id), 'role': m.role, 'sender': m.sender, 'content': m.message,
+                 'created_at': m.created_at.isoformat()}
+                for m in reversed(list(ChatMessage.objects.filter(session_id=session_id).order_by('-created_at')[:100]))]
+    pending = AgentApproval.objects.filter(session_id=str(session_id), user_id=str(request.user.pk), status='pending').order_by('-created_at').first()
+    approval = None
+    if pending and pending.expires_at <= now:
+        from sre_agent.approvals import expire
+        from sre_agent.canonical_lifecycle import DurableAgentLifecycle
+        try:
+            pending = expire(pending.pk, session_id=str(session_id), user_id=str(request.user.pk))
+        except PermissionError:
+            pending.refresh_from_db()
+        if pending.status == 'denied_timeout' and run.status == 'awaiting_approval':
+            lifecycle = DurableAgentLifecycle(session_id=str(session_id), user_id=str(request.user.pk))
+            lifecycle.run = run
+            run = lifecycle.transition('approval', 'blocked', 'denied_timeout', {'approval_status': 'denied_timeout'})
+        if pending.status != 'pending':
+            pending = None
+    if pending:
+        approval = {'id': pending.pk, 'request_id': pending.request_id, 'tool': pending.tool_name,
+                    'args': pending.arguments_preview, 'risk': pending.risk, 'reason': pending.reason,
+                    'status': pending.status, 'expires_at': pending.expires_at.isoformat(),
+                    'expires_in': max(0, int((pending.expires_at - now).total_seconds()))}
+    events = list(run.transitions.order_by('-sequence').values(
+        'sequence', 'node', 'from_status', 'to_status', 'event_type', 'payload', 'correlation_id', 'created_at')[:50])
+    for event in events:
+        event['created_at'] = event['created_at'].isoformat()
+    return Response({'run': {'id': run.pk, 'session_id': str(run.session_id), 'status': run.status,
+                             'goal': run.goal, 'summary': run.summary, 'provider': run.provider,
+                             'model': run.model, 'mode': run.mode, 'current_node': run.current_node,
+                             'checkpoint_version': run.checkpoint_version, 'state': run.state,
+                             'budget': run.budget, 'updated_at': run.updated_at.isoformat(),
+                             'tasks': list(run.tasks.order_by('created_at').values(
+                                 'task_key', 'title', 'description', 'status', 'dependencies',
+                                 'required_capability', 'selected_tool', 'attempts', 'evidence', 'findings')),
+                             'events': events, 'pending_approval': approval},
+                    'messages': messages, 'server_time': now.isoformat()})
 
 
 # Setup logging folder
@@ -695,16 +753,34 @@ def ai_models_api(request):
     if request.method == 'GET':
         seed_default_ai_models()
         models = AIModel.objects.all().order_by('order', 'id')
+        def rotation_group(model):
+            provider = (model.provider or '').lower().strip()
+            base_url = (model.base_url or '').strip().rstrip('/')
+            endpoint_type = (getattr(model, 'endpoint_type', None) or 'openai').lower().strip()
+            if endpoint_type == 'anthropic' and not base_url:
+                return 'anthropic:official'
+            if provider == 'ollama':
+                return f"ollama:{base_url or 'default'}"
+            if provider == 'mistral' and not base_url:
+                return 'mistral:official'
+            if provider == 'openai' and not base_url:
+                return 'openai:official'
+            if provider == 'groq' and model.api_key and not base_url:
+                return 'groq:official'
+            return f"openai_compatible:{base_url or 'http://localhost:20128/v1'}"
+
         data = [
             {
                 'id': m.id,
                 'name': m.name,
                 'model_id': m.model_id,
                 'provider': m.provider,
+                'endpoint_type': getattr(m, 'endpoint_type', 'openai') or 'openai',
                 'base_url': m.base_url or '',
                 'api_key': m.api_key or '',
                 'is_active': m.is_active,
                 'order': m.order,
+                'rotation_group': rotation_group(m),
             }
             for m in models
         ]
@@ -716,6 +792,9 @@ def ai_models_api(request):
             name = payload.get('name', '').strip()
             model_id = payload.get('model_id', '').strip()
             provider = payload.get('provider', '9router').strip()
+            endpoint_type = (payload.get('endpoint_type', 'openai') or 'openai').strip().lower()
+            if endpoint_type not in ('openai', 'anthropic'):
+                endpoint_type = 'openai'
             base_url = payload.get('base_url', '').strip() or None
             api_key = payload.get('api_key', '').strip() or None
             is_active = payload.get('is_active', True)
@@ -728,6 +807,7 @@ def ai_models_api(request):
                 name=name,
                 model_id=model_id,
                 provider=provider,
+                endpoint_type=endpoint_type,
                 base_url=base_url,
                 api_key=api_key,
                 is_active=is_active,
@@ -740,6 +820,8 @@ def ai_models_api(request):
                     'name': model_obj.name,
                     'model_id': model_obj.model_id,
                     'provider': model_obj.provider,
+                'endpoint_type': getattr(model_obj, 'endpoint_type', 'openai') or 'openai',
+                    'endpoint_type': getattr(model_obj, 'endpoint_type', 'openai') or 'openai',
                     'base_url': model_obj.base_url or '',
                     'api_key': model_obj.api_key or '',
                     'is_active': model_obj.is_active,
@@ -767,6 +849,7 @@ def ai_model_detail_api(request, pk):
                 'name': model_obj.name,
                 'model_id': model_obj.model_id,
                 'provider': model_obj.provider,
+                'endpoint_type': getattr(model_obj, 'endpoint_type', 'openai') or 'openai',
                 'base_url': model_obj.base_url or '',
                 'api_key': model_obj.api_key or '',
                 'is_active': model_obj.is_active,
@@ -779,6 +862,9 @@ def ai_model_detail_api(request, pk):
             model_obj.name = payload.get('name', model_obj.name).strip()
             model_obj.model_id = payload.get('model_id', model_obj.model_id).strip()
             model_obj.provider = payload.get('provider', model_obj.provider).strip()
+            if 'endpoint_type' in payload:
+                et = (payload.get('endpoint_type') or 'openai').strip().lower()
+                model_obj.endpoint_type = et if et in ('openai', 'anthropic') else 'openai'
             model_obj.base_url = payload.get('base_url', model_obj.base_url or '').strip() or None
             if 'api_key' in payload:
                 model_obj.api_key = payload['api_key'].strip() or None
@@ -795,6 +881,8 @@ def ai_model_detail_api(request, pk):
                     'name': model_obj.name,
                     'model_id': model_obj.model_id,
                     'provider': model_obj.provider,
+                'endpoint_type': getattr(model_obj, 'endpoint_type', 'openai') or 'openai',
+                    'endpoint_type': getattr(model_obj, 'endpoint_type', 'openai') or 'openai',
                     'base_url': model_obj.base_url or '',
                     'api_key': model_obj.api_key or '',
                     'is_active': model_obj.is_active,
@@ -854,6 +942,12 @@ def ai_model_test_api(request):
         elif provider == 'mistral' and not base_url:
             key = api_key or getattr(settings, "MISTRAL_API_KEY", os.environ.get("MISTRAL_API_KEY", ""))
             llm = ChatMistralAI(model=model_id, mistral_api_key=key, temperature=0.1)
+        elif (payload.get('endpoint_type', 'openai') or 'openai').strip().lower() == 'anthropic' and not base_url:
+            from langchain_anthropic import ChatAnthropic
+            key = api_key or getattr(settings, "ANTHROPIC_API_KEY", os.environ.get("ANTHROPIC_API_KEY", ""))
+            if not key:
+                return JsonResponse({'status': 'error', 'message': 'Anthropic API key is required.'}, status=400)
+            llm = ChatAnthropic(model=model_id, api_key=key, temperature=0.1, max_tokens=10)
         else:
             url = base_url if base_url else "http://localhost:20128/v1"
             key = api_key or os.environ.get("MIMO_API_KEY") or getattr(settings, "ROUTER_API_KEY", os.environ.get("ROUTER_API_KEY", os.environ.get("OPENAI_API_KEY", "9router")))
@@ -875,5 +969,3 @@ def ai_model_test_api(request):
             'message': err_msg,
             'available_models': fetched_models
         }, status=400)
-
-

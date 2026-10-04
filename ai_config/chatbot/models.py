@@ -40,9 +40,16 @@ from django.dispatch import receiver
 from django.db.models.signals import post_save
 
 class Profile(models.Model):
+    AGENT_PERMISSION_CHOICES = [
+        ('need_approval', 'Need Approval'),
+        ('full_access', 'Full Access'),
+    ]
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     is_active_session = models.BooleanField(default=False)  # Track active session
     image = models.ImageField(upload_to='profile_images/', blank=True, null=True)  # Profile image
+    agent_permission_mode = models.CharField(
+        max_length=20, choices=AGENT_PERMISSION_CHOICES, default='need_approval'
+    )
 
     def __str__(self):
         return f"{self.user.username}'s Profile"
@@ -59,6 +66,19 @@ def create_or_update_user_profile(sender, instance, created, **kwargs):
             instance.profile.save()
         except Profile.DoesNotExist:
             Profile.objects.create(user=instance)
+
+
+class AgentPermissionAudit(models.Model):
+    """Append-only record of server-authoritative agent permission changes."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='agent_permission_audits')
+    previous_mode = models.CharField(max_length=20, choices=Profile.AGENT_PERMISSION_CHOICES)
+    new_mode = models.CharField(max_length=20, choices=Profile.AGENT_PERMISSION_CHOICES)
+    source = models.CharField(max_length=30, default='ui')
+    request_id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
 
 class SuricataLog(models.Model):
     timestamp = models.DateTimeField()
@@ -312,11 +332,35 @@ class Investigation(models.Model):
     session = models.ForeignKey(ChatSession, on_delete=models.CASCADE, related_name='investigations')
     title = models.CharField(max_length=255)
     status = models.CharField(max_length=20, default='active') # active, completed, failed
+    parent = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='next_cases')
+    relation_type = models.CharField(max_length=24, default='new')
+    case_kind = models.CharField(max_length=40, default='general', db_index=True)
+    goal_signature = models.CharField(max_length=32, blank=True, default='', db_index=True)
+    entities = models.JSONField(default=list, blank=True)
+    keywords = models.JSONField(default=list, blank=True)
+    context_summary = models.TextField(blank=True, default='')
+    evidence_digest = models.JSONField(default=list, blank=True)
+    context_refs = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.title} - {self.status}"
+
+
+class InvestigationRelation(models.Model):
+    source = models.ForeignKey(Investigation, on_delete=models.CASCADE, related_name='relations_from')
+    target = models.ForeignKey(Investigation, on_delete=models.CASCADE, related_name='relations_to')
+    relation_type = models.CharField(max_length=32, default='related')
+    confidence = models.FloatField(default=0.0)
+    shared_entities = models.JSONField(default=list, blank=True)
+    reason = models.CharField(max_length=255, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['source', 'target'], name='unique_investigation_relation')]
+        ordering = ['-confidence', 'id']
 
 class InvestigationTask(models.Model):
     investigation = models.ForeignKey(Investigation, on_delete=models.CASCADE, related_name='tasks')
@@ -347,13 +391,20 @@ class AIModel(models.Model):
         ('nvidia', 'NVIDIA AI'),
         ('ollama', 'Ollama Local'),
         ('mistral', 'Mistral AI'),
+        ('groq', 'Groq'),
         ('openai', 'OpenAI'),
         ('other', 'Other'),
+    ]
+    ENDPOINT_CHOICES = [
+        ('openai', 'OpenAI-compatible'),
+        ('anthropic', 'Anthropic native'),
     ]
 
     name = models.CharField(max_length=100, help_text="Display name for the model option")
     model_id = models.CharField(max_length=100, help_text="Model identifier sent to engine (e.g. OPENCODE, GROQ, mistral-large-latest)")
     provider = models.CharField(max_length=50, choices=PROVIDER_CHOICES, default='9router')
+    endpoint_type = models.CharField(max_length=20, choices=ENDPOINT_CHOICES, default='openai',
+                                     help_text="Wire protocol: OpenAI-compatible (default) or Anthropic native Messages API")
     base_url = models.CharField(max_length=255, blank=True, null=True, help_text="Optional custom Base URL (e.g. http://localhost:20128/v1)")
     api_key = models.CharField(max_length=255, blank=True, null=True, help_text="Optional API Key for custom provider")
     is_active = models.BooleanField(default=True)
@@ -375,6 +426,122 @@ class SystemArchitectureCache(models.Model):
 
     def __str__(self):
         return f"System Architecture Cache ({self.updated_at})"
+
+
+class AgentApproval(models.Model):
+    """Server-side, single-use authorization for one exact tool invocation."""
+    STATUS_CHOICES = [("pending", "Pending"), ("approved", "Approved"),
+                      ("denied", "Denied"), ("denied_timeout", "Denied by timeout"),
+                      ("consumed", "Consumed"), ("expired", "Expired")]
+    session_id = models.CharField(max_length=255)
+    user_id = models.CharField(max_length=255)
+    request_id = models.CharField(max_length=64, unique=True, default="legacy")
+    correlation_id = models.CharField(max_length=64, default="legacy")
+    tool_name = models.CharField(max_length=100)
+    arguments_hash = models.CharField(max_length=64)
+    arguments_preview = models.JSONField(default=dict, blank=True)
+    risk = models.CharField(max_length=20, default="high")
+    reason = models.CharField(max_length=255, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    consumed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["session_id", "user_id", "status"])]
+
+
+class AgentRun(models.Model):
+    """Durable provider-neutral lifecycle state for every agent execution."""
+    STATUS_CHOICES = [(v, v.replace('_', ' ').title()) for v in (
+        'queued', 'running', 'awaiting_approval', 'blocked', 'failed',
+        'completed', 'cancelled', 'paused')]
+    session = models.ForeignKey(ChatSession, on_delete=models.CASCADE, related_name='agent_runs')
+    user_id = models.CharField(max_length=255, blank=True, default='anonymous')
+    workspace_path = models.CharField(max_length=1024, blank=True, default='')
+    goal = models.TextField()
+    summary = models.TextField(blank=True, default='')
+    recent_refs = models.JSONField(default=list, blank=True)
+    environment = models.JSONField(default=dict, blank=True)
+    provider = models.CharField(max_length=50, blank=True, default='')
+    model = models.CharField(max_length=150, blank=True, default='')
+    mode = models.CharField(max_length=40, default='guided')
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='queued')
+    current_node = models.CharField(max_length=100, default='context')
+    checkpoint_version = models.PositiveIntegerField(default=0)
+    plan_version = models.PositiveIntegerField(default=0)
+    budget = models.JSONField(default=dict, blank=True)
+    retries = models.PositiveIntegerField(default=0)
+    approval_refs = models.JSONField(default=list, blank=True)
+    security_refs = models.JSONField(default=list, blank=True)
+    memory_refs = models.JSONField(default=list, blank=True)
+    evidence_refs = models.JSONField(default=list, blank=True)
+    artifact_refs = models.JSONField(default=list, blank=True)
+    idempotency_key = models.CharField(max_length=128, unique=True)
+    state = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [models.Index(fields=['session', 'status']), models.Index(fields=['idempotency_key'])]
+
+
+class AgentTask(models.Model):
+    """Durable task graph node shared by guided and multi-agent execution."""
+    STATUS_CHOICES = [(v, v.replace('_', ' ').title()) for v in (
+        'pending', 'running', 'awaiting_approval', 'blocked', 'failed',
+        'done', 'cancelled')]
+    run = models.ForeignKey(AgentRun, on_delete=models.CASCADE, related_name='tasks')
+    task_key = models.CharField(max_length=120)
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default='')
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='pending')
+    dependencies = models.JSONField(default=list, blank=True)
+    required_capability = models.CharField(max_length=120, blank=True, default='')
+    selected_tool = models.CharField(max_length=120, blank=True, default='')
+    attempts = models.PositiveIntegerField(default=0)
+    max_attempts = models.PositiveIntegerField(default=3)
+    idempotency_key = models.CharField(max_length=128, blank=True, default='')
+    evidence = models.JSONField(default=list, blank=True)
+    findings = models.JSONField(default=list, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['run', 'task_key'], name='unique_agent_task_key')]
+        ordering = ['created_at', 'id']
+
+
+class AgentTransition(models.Model):
+    """Append-only checkpoint/event record used to resume and audit a run."""
+    run = models.ForeignKey(AgentRun, on_delete=models.CASCADE, related_name='transitions')
+    sequence = models.PositiveIntegerField()
+    node = models.CharField(max_length=100)
+    from_status = models.CharField(max_length=30, blank=True, default='')
+    to_status = models.CharField(max_length=30)
+    event_type = models.CharField(max_length=80)
+    payload = models.JSONField(default=dict, blank=True)
+    correlation_id = models.CharField(max_length=128, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['run', 'sequence'], name='unique_agent_transition_sequence')]
+        ordering = ['sequence']
+
+
+class AgentResourceLock(models.Model):
+    """Durable lease preventing concurrent mutation of the same resource."""
+    resource_key = models.CharField(max_length=512, unique=True)
+    run = models.ForeignKey(AgentRun, on_delete=models.CASCADE, related_name='resource_locks')
+    task_key = models.CharField(max_length=120)
+    lease_token = models.CharField(max_length=128, unique=True)
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [models.Index(fields=['resource_key', 'expires_at'])]
 
 import os
 import shutil

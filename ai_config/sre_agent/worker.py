@@ -333,6 +333,7 @@ class RuleObserver:
 class WorkerState:
     id: str
     goal: str
+    role: str                               = ""
     hypothesis: str                           = ""
     findings: List[dict]                      = field(default_factory=list)
     tool_history: List[str]                   = field(default_factory=list)
@@ -362,6 +363,7 @@ class WorkerState:
     evidence_chain_confidence: float          = 0.0
     expected_diagnostic_domains: List[str]    = field(default_factory=list)
     investigation_coverage: List[str]         = field(default_factory=list)
+    total_duration: float                     = 0.0
 
     def snapshot(self) -> dict:
         return {
@@ -401,10 +403,12 @@ class InvestigationWorker:
         parent_id: Optional[str] = None,
         parent_context: Optional[List[dict]] = None,
         expected_diagnostic_domains: Optional[List[str]] = None,
+        role: str = "",
     ):
         self.state = WorkerState(
             id=worker_id,
             goal=goal,
+            role=role or f"Worker {worker_id}",
             is_child=is_child,
             parent_id=parent_id,
             expected_diagnostic_domains=expected_diagnostic_domains or [],
@@ -614,17 +618,51 @@ class InvestigationWorker:
                 if hypothesis_update:
                     self.state.hypothesis = hypothesis_update
 
-                # 2. Duplicate check
+                # 2. Duplicate check — one free retry: the warning itself tells
+                # the model to pick a NEW tool or conclude, so enforce it by
+                # continuing once instead of killing the worker outright.
+                # A repeated repeat means a stuck loop: conclude with whatever
+                # real evidence exists (degraded completion) rather than
+                # failing dependents, but only if genuine tool output backs it.
                 exec_hash = self._hash(tool_name, tool_args)
                 if exec_hash in self._execution_hashes:
+                    prior_dupes = sum(1 for f in self.state.findings
+                                      if "Duplicate tool execution" in str(f.get("output", "")))
+                    if prior_dupes < 1:
+                        self.state.findings.append({
+                            "tool": tool_name, "args": tool_args,
+                            "output": "BLOCKED: Duplicate tool execution. You must select a NEW tool or set 'done': true.",
+                            "signal": "WARNING", "iteration": self.state.iteration,
+                        })
+                        self.state.tool_history.append(f"{tool_name}({json.dumps(tool_args)[:100]}) - BLOCKED: DUPLICATE")
+                        self.state.iteration += 1
+                        continue
+                    useful = [f for f in self.state.findings
+                              if str(f.get("output", "")).strip()
+                              and not str(f.get("output", "")).lower().startswith(
+                                  ("error", "blocked", "failed", "denied"))]
+                    if len(useful) >= 2:
+                        self.state.findings.append({
+                            "tool": "_loop_guard", "args": {},
+                            "output": ("Loop guard: same action repeated. Concluding with the "
+                                       "verified tool evidence collected above instead of failing."),
+                            "signal": "INFO", "finding": "degraded_completion",
+                            "iteration": self.state.iteration, "timestamp": time.time(),
+                        })
+                        self.state.status = "completed"
+                        self.state.completed = True
+                        if not self.state.root_cause:
+                            self.state.root_cause = "; ".join(
+                                str(f.get("output", ""))[:200] for f in useful[-3:])
+                        break
                     self.state.findings.append({
                         "tool": tool_name, "args": tool_args,
                         "output": "BLOCKED: Duplicate tool execution. You must select a NEW tool or set 'done': true.",
                         "signal": "WARNING", "iteration": self.state.iteration,
                     })
                     self.state.tool_history.append(f"{tool_name}({json.dumps(tool_args)[:100]}) - BLOCKED: DUPLICATE")
-                    self.state.iteration += 1
-                    continue
+                    self.state.status = "failed"
+                    break
                 self._execution_hashes.add(exec_hash)
                 self.state.last_tool = tool_name
                 self.state.tool_history.append(f"{tool_name}({json.dumps(tool_args)[:100]})")
@@ -632,6 +670,24 @@ class InvestigationWorker:
                 # 3. Safety check
                 approved, block_reason = self._safety_check(tool_name, tool_args)
                 if not approved:
+                    prior_denials = sum(1 for f in self.state.findings if f.get("signal") == "BLOCKED")
+                    if "approval_required" in block_reason.lower() and prior_denials < 1:
+                        # Soft denial: the exact formulation needs a human,
+                        # but a different read-only approach may not. Give the
+                        # worker one more turn instead of killing the run.
+                        # Retrying the SAME denied action via another shell,
+                        # tool, or encoding stays forbidden (POLICY).
+                        self.state.findings.append({
+                            "tool": tool_name, "args": tool_args,
+                            "output": (f"DENIED (will need approval as formulated): {block_reason}. "
+                                       "Do NOT retry this action or rephrase it through another shell/tool. "
+                                       "Pick a different read-only approach that needs no approval, "
+                                       "or set 'done' with the evidence gathered so far."),
+                            "signal": "BLOCKED", "iteration": self.state.iteration,
+                        })
+                        self.state.tool_history.append(f"{tool_name}({json.dumps(tool_args)[:100]}) - DENIED: NEEDS-APPROVAL")
+                        self.state.iteration += 1
+                        continue
                     self.state.findings.append({
                         "tool": tool_name, "args": tool_args,
                         "output": f"BLOCKED: {block_reason}",
@@ -639,10 +695,8 @@ class InvestigationWorker:
                     })
                     if "approval_required" in block_reason.lower():
                         self.state.requires_approval = True
-                        self.state.status = "blocked"
-                        break
-                    self.state.iteration += 1
-                    continue
+                    self.state.status = "blocked"
+                    break
 
                 # 4. Execute tool
                 if on_progress:
@@ -663,9 +717,16 @@ class InvestigationWorker:
                     "finding": rule_match.finding,
                     "iteration": self.state.iteration,
                     "timestamp": time.time(),
-                    # Evidence quality metadata
-                    "evidence_type": "direct_error" if is_rule_root_cause else "observation",
-                    "verified": is_rule_root_cause and rule_match.signal in ("CRITICAL", "FAILURE"),
+                    # Evidence quality metadata. Deterministic SUCCESS states
+                    # (service running, port listening, config valid, clean
+                    # exit) are first-class service_status evidence — a
+                    # verified fix or a confirmed healthy component must be
+                    # allowed to conclude, not only failures.
+                    "evidence_type": "direct_error" if is_rule_root_cause else (
+                        "service_status" if rule_match.signal == "SUCCESS" else "observation"),
+                    "verified": (is_rule_root_cause and rule_match.signal in ("CRITICAL", "FAILURE")) or (
+                        rule_match.signal == "SUCCESS" and rule_match.finding in {
+                            "service_running", "port_listening", "config_valid", "zero_exit"}),
                 }
                 self.state.findings.append(finding_record)
 
@@ -724,9 +785,8 @@ class InvestigationWorker:
                 # 6. Worker-level LLM termination (Option C) handles completion now.
 
             # Iteration limit reached
-            if not self.state.completed:
-                self.state.status = "completed"  # report what we have
-                self.state.completed = True
+            if not self.state.completed and self.state.status == "running":
+                self.state.status = "failed"
 
             # Await any pending children before returning
             if self._active_children:
@@ -749,8 +809,8 @@ class InvestigationWorker:
                 on_progress(self.state, "Failed")
 
         self.state.total_duration = time.time() - start_time
-        if self.state.status == "completed" and on_progress:
-            on_progress(self.state, "Completed")
+        if on_progress and self.state.status in {"completed", "failed", "blocked", "cancelled"}:
+            on_progress(self.state, self.state.status.title())
             
         return self.state
 
@@ -811,7 +871,13 @@ RULES:
   4. Generic environmental symptoms (e.g. permission denied, disk warnings, generic resource usage)
 - Generic environmental symptoms MUST NOT override a direct service failure root cause.
 - Read the AVAILABLE TOOLS carefully. Workers MUST ONLY select actions explicitly exposed by tool schemas. Never invent tool actions, parameters, or capabilities.
-- For service config tests, DO NOT invent actions for `service_manager`. You MUST use `terminal_execute` to run the specific test command (e.g., `apache2ctl configtest` or equivalent).
+- For service config tests, DO NOT invent actions for `service_manager`; use `service_config_check` when the service is supported.
+- SYSTEM PATH ROUTING: `read_file` may inspect bounded regular files across the operating system. Prefer `log_reader` for large/rotating logs and `service_config_check` for syntax validation, but use `read_file` for targeted `/etc`, `/var/log`, and runtime configuration inspection when useful. Credential/device paths remain unavailable.
+- Prefer `service_config_check` over `terminal_execute` for supported service configuration validation because it is bounded and read-only.
+- When several read-only observations can be expressed as one bounded pipeline, prefer one concise `terminal_execute` pipeline using `grep`, `sed -n`, `head`, or `tail`. Never split it into repetitive calls merely to gather the same evidence.
+- SHELL DISCIPLINE: `terminal_execute` only auto-runs single read-only pipelines. NEVER use `cd`, `&&`, `||`, `;`, backticks, `$()`, or redirect operators (`>`, `>>`, `<`) — any of them routes the call to human approval and stalls the worker. Use absolute paths instead of `cd`. Prefer dedicated tools (`read_file`, `log_reader`, `search_files`) over shell equivalents.
+- APPROVED SHELL EXAMPLES (copy these shapes): `find /abs/dir -type f -name '*.log'`, `grep -c ERROR /abs/file.log`, `grep ERROR /abs/file.log | wc -l`, `grep -r ERROR /abs/dir 2>/dev/null`, `du -sh /abs/dir`, `ls -la /abs/dir | head -n 20`. DENIED shapes (need human approval, do NOT use): anything with `-exec`, `-delete`, `-printf`, `xargs`, `sh -c`, `cd`, `&&`, `;`, or output redirects (`>`, `>>`, `<`). Only `2>/dev/null` is allowed.
+- Once the assigned goal has decisive evidence, set `done`: true instead of generating another plan cycle.
 - Do NOT repeat a tool+args combination already in the ALREADY EXECUTED list. If you do, it will be BLOCKED.
 - If a diagnostic domain has already been satisfied and verified, move to the next logical domain.
 - RETRIEVAL PRIORITY: For SIMPLE_INFORMATION or data retrieval tasks, prioritize direct retrieval tools over investigative tools.
@@ -1071,10 +1137,32 @@ Respond with ONLY valid JSON:
         tool_obj = self.tool_map.get(tool_name)
         if not tool_obj:
             return json.dumps({"error": f"Tool '{tool_name}' not found", "exit_code": 1})
+        # loop.run_in_executor does not propagate ContextVars, so the
+        # authorization snapshot is re-bound explicitly inside the thread.
+        # Otherwise Full Access silently degrades to controlled at the exact
+        # moment a tool runs.
+        from .approvals import _CTX, bind_context, current_context
+        snapshot = dict(current_context())
+
+        def _invoke_with_context():
+            token = bind_context(
+                snapshot.get("session_id", ""),
+                snapshot.get("user_id", "anonymous"),
+                mode=snapshot.get("mode", "controlled"),
+                scope=snapshot.get("scope", []),
+                goal=snapshot.get("goal", ""))
+            try:
+                return tool_obj.invoke(tool_args)
+            finally:
+                try:
+                    _CTX.reset(token)
+                except Exception:
+                    pass
+
         try:
             result = await asyncio.wait_for(
                 asyncio.get_running_loop().run_in_executor(
-                    None, lambda: tool_obj.invoke(tool_args)
+                    None, _invoke_with_context
                 ),
                 timeout=TOOL_TIMEOUT_SEC
             )
@@ -1210,12 +1298,18 @@ class WorkerScheduler:
 
     def __init__(self, llm, tool_map: Dict[str, Any], safety,
                  global_threshold: float = GLOBAL_CONFIDENCE_THRESHOLD,
-                 mode: str = "guided"):
+                 mode: str = "guided",
+                 approval_context: Optional[Dict[str, Any]] = None):
         self.llm = llm
         self.tool_map = tool_map
         self.safety = safety
         self.global_threshold = global_threshold
         self.mode = mode
+        # Authorization for the worker thread pool: ContextVars do not cross
+        # the ThreadPoolExecutor boundary used below, so the engine passes an
+        # explicit snapshot (session/user/mode/scope/goal) to re-bind there.
+        # Without this, Full Access degrades to controlled inside workers.
+        self.approval_context = dict(approval_context or {})
 
     async def run_workers(
         self,
@@ -1240,7 +1334,9 @@ class WorkerScheduler:
             # Maintain active worker list without overwriting the object itself
             active_workers_state[ws.id] = {
                 "id": ws.id,
+                "role": getattr(ws, "role", "") or f"Worker {ws.id}",
                 "goal": ws.goal,
+                "status": ws.status,
                 "current_action": current_action,
                 "last_tool": getattr(ws, "last_tool", None),
                 "findings_count": len(ws.findings),
@@ -1257,6 +1353,7 @@ class WorkerScheduler:
                 if cancel_event.is_set():
                     results[idx] = WorkerState(
                         id=spec["id"], goal=spec.get("goal", ""),
+                        role=spec.get("role", f"Worker {spec['id']}"),
                         status="cancelled", completed=True
                     )
                     return
@@ -1278,11 +1375,22 @@ class WorkerScheduler:
                 worker = InvestigationWorker(
                     worker_id=spec["id"],
                     goal=goal,
+                    role=spec.get("role", f"Worker {spec['id']}"),
                     llm=self.llm,
                     tool_map=self.tool_map,
                     safety=self.safety,
                     max_iterations=spec.get("max_iterations", MAX_WORKER_ITERATIONS),
+                    parent_context=[
+                        finding
+                        for dep_id in spec.get("depends_on", [])
+                        for dep_index, dep_spec in enumerate(worker_specs)
+                        if dep_spec.get("id") == dep_id and results[dep_index] is not None
+                        for finding in results[dep_index].findings[-4:]
+                    ],
+                    expected_diagnostic_domains=spec.get("expected_diagnostic_domains", []),
                 )
+                worker.state.terminal_cwd = spec.get("terminal_cwd", "")
+                worker.state.active_workspace = spec.get("active_workspace", "")
 
                 if on_worker_start:
                     await _maybe_await(on_worker_start, spec["id"], spec.get("goal", ""))
@@ -1298,12 +1406,64 @@ class WorkerScheduler:
                 # AND confidence is >= 0.95.
                 # In autonomous_multi mode, we disable early cancellation because we want
                 # all workers (e.g. fix actions and checks) to finish their goals for the iteration report.
-                if self.mode != "autonomous_multi":
-                    if state.confidence.has_verified_evidence and state.confidence.score >= 0.95:
-                        cancel_event.set()
+                # Do not cancel sibling/dependent workers here. The orchestrator
+                # needs their complementary evidence before finalization.
 
-        await asyncio.gather(*[run_single(i, spec) for i, spec in enumerate(worker_specs)],
-                              return_exceptions=True)
+        # Execute dependency waves. Independent workers share a wave; dependent
+        # workers receive bounded evidence from completed prerequisites.
+        completed_ids = set()
+        remaining = set(range(len(worker_specs)))
+        while remaining:
+            ready = [
+                index for index in sorted(remaining)
+                if set(worker_specs[index].get("depends_on", [])).issubset(completed_ids)
+            ]
+            if not ready:
+                for index in sorted(remaining):
+                    spec = worker_specs[index]
+                    state = WorkerState(id=spec["id"], goal=spec.get("goal", ""),
+                                            role=spec.get("role", f"Worker {spec['id']}"), status="blocked")
+                    state.findings.append({
+                        "tool": "_dependency_graph", "args": {},
+                        "output": "BLOCKED: unresolved or cyclic worker dependencies",
+                        "signal": "BLOCKED", "finding": "dependency_unresolved",
+                        "iteration": 0, "timestamp": time.time(),
+                    })
+                    results[index] = state
+                break
+
+            runnable = []
+            for index in ready:
+                spec = worker_specs[index]
+                dependencies = set(spec.get("depends_on", []))
+                failed_dependencies = [
+                    results[dep_index]
+                    for dep_index, dep_spec in enumerate(worker_specs)
+                    if dep_spec.get("id") in dependencies
+                    and results[dep_index] is not None
+                    and results[dep_index].status != "completed"
+                ]
+                if failed_dependencies:
+                    state = WorkerState(id=spec["id"], goal=spec.get("goal", ""),
+                                            role=spec.get("role", f"Worker {spec['id']}"), status="blocked")
+                    state.findings.append({
+                        "tool": "_dependency_graph", "args": {},
+                        "output": "BLOCKED: prerequisite worker did not complete successfully",
+                        "signal": "BLOCKED", "finding": "dependency_failed",
+                        "iteration": 0, "timestamp": time.time(),
+                    })
+                    results[index] = state
+                else:
+                    runnable.append(index)
+
+            if runnable:
+                await asyncio.gather(
+                    *[run_single(index, worker_specs[index]) for index in runnable],
+                    return_exceptions=False,
+                )
+            for index in ready:
+                completed_ids.add(worker_specs[index]["id"])
+                remaining.discard(index)
 
         return [r for r in results if r is not None]
 
@@ -1317,9 +1477,30 @@ class WorkerScheduler:
             except RuntimeError:
                 is_running = False
             if is_running:
-                # Inside async context (ASGI/Django channels)
+                # Inside async context (ASGI/Django channels). Re-bind the
+                # engine's authorization snapshot in the pool thread so
+                # approval decisions see the real mode/scope, not defaults.
+                from .approvals import bind_context
+                snapshot = dict(self.approval_context or {})
+
+                def _run_with_context():
+                    token = bind_context(
+                        snapshot.get("session_id", ""),
+                        snapshot.get("user_id", "anonymous"),
+                        mode=snapshot.get("mode", "controlled"),
+                        scope=snapshot.get("scope", []),
+                        goal=snapshot.get("goal", ""))
+                    try:
+                        return asyncio.run(self.run_workers(worker_specs))
+                    finally:
+                        try:
+                            from .approvals import _CTX
+                            _CTX.reset(token)
+                        except Exception:
+                            pass
+
                 with concurrent.futures.ThreadPoolExecutor() as pool:
-                    future = pool.submit(asyncio.run, self.run_workers(worker_specs))
+                    future = pool.submit(_run_with_context)
                     return future.result(timeout=300)
             else:
                 return asyncio.run(self.run_workers(worker_specs))
@@ -1328,6 +1509,7 @@ class WorkerScheduler:
             states = []
             for spec in worker_specs:
                 state = WorkerState(id=spec["id"], goal=spec.get("goal", ""),
+                                    role=spec.get("role", f"Worker {spec['id']}"),
                                     status="failed")
                 state.findings.append({"tool": "_error", "args": {},
                                         "output": str(e), "signal": "WARNING",

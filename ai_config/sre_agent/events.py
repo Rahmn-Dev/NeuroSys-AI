@@ -8,6 +8,7 @@ real-time progress with proper categorisation and styling.
 from __future__ import annotations
 
 import enum
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
@@ -31,6 +32,7 @@ class AgentEventType(str, enum.Enum):
     RESTORING_ARTIFACT = "restoring_artifact"
     SECURITY_SCAN = "security_scan"
     APPROVAL_REQUIRED = "approval_required"
+    SECURITY_BLOCKED = "security_blocked"
     SAFETY_BLOCKED = "safety_blocked"
     SAFETY_WARN = "safety_warn"
     MESSAGE_CHUNK = "message_chunk"
@@ -48,6 +50,28 @@ class AgentEventType(str, enum.Enum):
     PARALLEL_PROGRESS = "parallel_progress"
     PARALLEL_COMPLETE = "parallel_complete"
     WORKER_ACTIVITY = "worker_activity"
+    LIFECYCLE = "lifecycle"
+    PROVIDER_FALLBACK = "provider_fallback"
+    VERIFYING = "verifying"
+    RESUMING = "resuming"
+
+
+def public_text(value):
+    text = str(value)
+    text = re.sub(r"<think>.*?(?:</think>|$)", "", text, flags=re.I | re.S)
+    text = re.sub(r"(?i)(authorization\s*:\s*bearer\s+)[^\s]+", r"\1[REDACTED]", text)
+    text = re.sub(r"(?i)((?:api[_-]?key|password|secret|access[_-]?token)\s*[:=]\s*)[^\s,;]+", r"\1[REDACTED]", text)
+    return re.sub(r"\bsk-[A-Za-z0-9_-]{16,}\b", "[REDACTED]", text)
+
+
+def public_value(value):
+    if isinstance(value, str):
+        return public_text(value)
+    if isinstance(value, dict):
+        return {k: "[REDACTED]" if re.search(r"password|secret|api.?key|access.?token", str(k), re.I) else public_value(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [public_value(v) for v in value]
+    return value
 
 
 @dataclass
@@ -62,11 +86,36 @@ class AgentEvent:
         """Serialize for JSON WebSocket transmission."""
         d = {
             "type": self.type.value,
-            "content": self.content,
+            "content": public_text(self.content),
             "timestamp": self.timestamp,
         }
         if self.metadata:
-            d.update(self.metadata)
+            d.update(public_value(self.metadata))
+        if self.type.value in {"thinking", "analyzing", "observing"}:
+            d["content"] = {"thinking": "Evaluating collected evidence", "analyzing": "Analyzing collected evidence", "observing": "Observation recorded"}[self.type.value]
+        if self.type.value in {"tool_start", "tool_end", "executing"}:
+            d.pop("args", None)
+            d.pop("result", None)
+            d.pop("command", None)
+            d["content"] = "Tool result recorded" if self.type.value == "tool_end" else "Tool execution started"
+        return d
+
+    def to_history_dict(self) -> Dict[str, Any]:
+        """Serialize for durable chat history.
+
+        Same shape as to_dict (history replay code paths keep working), but
+        content keeps the real bounded text instead of the live-UI
+        placeholders, so a reloaded session shows what actually happened.
+        Secrets stay redacted via public_text; message deltas are dropped
+        by the caller (the final AI message is stored separately).
+        """
+        d = self.to_dict()
+        raw = public_text(self.content or "").strip()
+        if raw:
+            d["content"] = raw[:2000]
+        findings = d.get("findings")
+        if isinstance(findings, list):
+            d["findings"] = [str(f)[:1000] for f in findings[:100]]
         return d
 
 
@@ -76,6 +125,15 @@ class AgentEvent:
 
 def evt_status(msg: str) -> AgentEvent:
     return AgentEvent(type=AgentEventType.STATUS, content=msg)
+
+def evt_lifecycle(status: str, *, run_id: str = "", task_id: str = "", provider: str = "", model: str = "", reason: str = "") -> AgentEvent:
+    return AgentEvent(type=AgentEventType.LIFECYCLE, content=status, metadata={
+        "status": status, "run_id": run_id, "task_id": task_id,
+        "provider": provider, "model": model, "reason": reason,
+    })
+
+def evt_verifying(message: str = "Verifying postconditions") -> AgentEvent:
+    return AgentEvent(type=AgentEventType.VERIFYING, content=message)
 
 def evt_exploring(msg: str) -> AgentEvent:
     return AgentEvent(type=AgentEventType.EXPLORING, content=msg)
@@ -99,15 +157,15 @@ def evt_findings(findings: list) -> AgentEvent:
     return AgentEvent(type=AgentEventType.FINDINGS, content="Updating findings", metadata={"findings": findings})
 
 def evt_thinking(msg: str) -> AgentEvent:
-    return AgentEvent(type=AgentEventType.THINKING, content=msg)
+    return AgentEvent(type=AgentEventType.THINKING, content="Evaluating collected evidence")
 
 def evt_executing(tool_name: str, args: str = "") -> AgentEvent:
     return AgentEvent(type=AgentEventType.EXECUTING, content=f"Running {tool_name}",
-                      metadata={"tool": tool_name, "args": args})
+                      metadata={"tool": tool_name, "args": "[arguments redacted]"})
 
 def evt_tool_start(tool_name: str, args: dict = None) -> AgentEvent:
     return AgentEvent(type=AgentEventType.TOOL_START, content=f"Running {tool_name}",
-                      metadata={"tool": tool_name, "command": str(args or {})})
+                      metadata={"tool": tool_name, "command": "[arguments redacted]"})
 
 def evt_tool_end(tool_name: str, result: str = "") -> AgentEvent:
     return AgentEvent(type=AgentEventType.TOOL_END, content=result[:500],
@@ -131,9 +189,13 @@ def evt_restoring_artifact(msg: str) -> AgentEvent:
 def evt_security_scan(msg: str) -> AgentEvent:
     return AgentEvent(type=AgentEventType.SECURITY_SCAN, content=msg)
 
-def evt_approval_required(tool: str, args: str, reason: str) -> AgentEvent:
+def evt_approval_required(tool: str, args: str, reason: str, approval_id=None) -> AgentEvent:
     return AgentEvent(type=AgentEventType.APPROVAL_REQUIRED, content=reason,
-                      metadata={"tool": tool, "args": args})
+                      metadata={"tool": tool, "args": args, "approval_id": approval_id})
+
+def evt_security_blocked(reason: str, request_id=None) -> AgentEvent:
+    return AgentEvent(type=AgentEventType.SECURITY_BLOCKED, content=reason,
+                      metadata={"request_id": request_id} if request_id else {})
 
 def evt_safety_blocked(tool: str, reason: str) -> AgentEvent:
     return AgentEvent(type=AgentEventType.SAFETY_BLOCKED, content=reason,

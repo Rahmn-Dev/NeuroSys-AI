@@ -163,6 +163,9 @@ class PythonToolExecutor(ExecutorInterface):
             self.last_output = f"Executor Error: Could not resolve capability '{capability}' and action '{action}' to an available tool."
             return False, self.last_output
             
+        if self.registry.get_metadata(tool_name) is None:
+            self.last_output = "BLOCKED: unregistered tool"
+            return False, self.last_output
         tool = self.tool_map[tool_name]
         mapped_args = self._map_args(tool_name, action, target, kwargs)
         

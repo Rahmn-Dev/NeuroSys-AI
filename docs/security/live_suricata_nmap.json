@@ -1,0 +1,9 @@
+{
+  "status": "not_run",
+  "reason": "No clearly identified and explicitly authorized lab target was available in the connected workspace. The request requires stopping rather than scanning an ambiguous host.",
+  "auto_block": "off",
+  "available_local_tools": ["/usr/bin/nmap", "/usr/bin/suricata"],
+  "evidence": [],
+  "mapping": [],
+  "next_safe_step": "Provide a specific authorized lab IP/interface and expected Suricata rule/signature, then run a bounded localhost/lab service scan and correlate its timestamp, reduced EVE event, database row, and dashboard analysis."
+}

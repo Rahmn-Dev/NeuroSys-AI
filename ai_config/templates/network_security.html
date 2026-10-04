@@ -424,8 +424,8 @@
                 this.aiLogsWs = null;
                 this.aiLogsReconnectAttempts = 0;
 
-                this.maxReconnectAttempts = 10; // Increased max attempts
-                this.reconnectInterval = 5000;
+                this.maxReconnectAttempts = 10;
+                this.reconnectInterval = 1000;
                 
                 this.topAttacksChart = null; // <-- Chart baru
                 this.topIpsChart = null;  
@@ -521,7 +521,7 @@
             // --- KONEKSI WEBSOCKET #2: Khusus untuk Data Chart Suricata ---
             connectSuricataWebSocket() {
                 // Alamat WebSocket KHUSUS untuk data chart
-                const suricataWsUrl = 'ws://192.168.101.20:8000/ws/suricata_monitor/';
+                const suricataWsUrl = `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws/suricata_monitor/`;
                 this.suricataWs = new WebSocket(suricataWsUrl);
                 console.log('Connecting to Suricata chart WebSocket...');
 
@@ -542,8 +542,9 @@
                     }
                 };
 
-                this.suricataWs.onclose = () => {
+                this.suricataWs.onclose = (event) => {
                     console.warn('Suricata chart WebSocket disconnected. Attempting to reconnect...');
+                    if ([1000, 1002, 1003, 1008, 4401, 4403].includes(event.code)) return;
                     this.attemptReconnect(this.connectSuricataWebSocket.bind(this), 'suricata');
                 };
 
@@ -614,7 +615,7 @@
                 });
             }
             attemptReconnect(connectorFunction, type) {
-                let attempts, maxAttempts;
+                let attempts;
 
                 if (type === 'main') {
                     this.reconnectAttempts++;
@@ -624,17 +625,10 @@
                     attempts = this.suricataReconnectAttempts;
                 }
                 
-                maxAttempts = this.maxReconnectAttempts;
-
-                if (attempts < maxAttempts) {
-                    console.log(`Attempting to reconnect ${type} WebSocket... (${attempts}/${maxAttempts})`);
-                    setTimeout(connectorFunction, this.reconnectInterval);
-                } else {
-                    console.error(`Max reconnection attempts reached for ${type} WebSocket.`);
-                    if(type === 'main') {
-                         document.getElementById('connectionText').textContent = 'Connection Failed';
-                    }
-                }
+                const base = Math.min(30000, this.reconnectInterval * (2 ** (attempts - 1)));
+                const delay = Math.min(30000, Math.round(base * (0.75 + Math.random() * 0.5)));
+                console.log(`Attempting to reconnect ${type} WebSocket in ${delay}ms`);
+                setTimeout(connectorFunction, delay);
             }
 
 

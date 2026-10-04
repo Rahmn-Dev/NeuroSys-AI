@@ -329,6 +329,10 @@ class SuricataLogConsumer(AsyncWebsocketConsumer):
         self.tail_task = None  # ← ADD THIS
 
     async def connect(self):
+        user = self.scope.get("user")
+        if not user or not user.is_authenticated or not user.is_staff:
+            await self.close(code=4403)
+            return
         await self.accept()
         self.tail_task = asyncio.create_task(self.send_suricata_logs())
 
@@ -340,34 +344,28 @@ class SuricataLogConsumer(AsyncWebsocketConsumer):
             except asyncio.CancelledError:
                 pass
 
+    async def receive(self, text_data):
+        """Application heartbeat; browser clients cannot send protocol pings."""
+        try:
+            payload = json.loads(text_data or "{}")
+        except (TypeError, json.JSONDecodeError):
+            return
+        if payload.get("type") == "ping":
+            await self.send(text_data=json.dumps({"type": "pong"}))
+
     async def send_suricata_logs(self):
         try:
-            log_file = "/var/log/suricata/fast.log"
+            from django.conf import settings
+            from ai_config.utils.eve import parse_eve
+            log_file = getattr(settings, "SURICATA_EVE_PATH", "/var/log/suricata/eve.json")
             async for new_line in self.tail_log(log_file):  # Gunakan async for
                 if new_line is None:
                     continue
-                parsed_data = parse_suricata_log(new_line.strip())
+                parsed_data = parse_eve(new_line)
                 if not parsed_data:
                     continue 
-                if parsed_data['priority'] not in [1]:
-                    continue
-                from chatbot.models import SuricataLog
-                # Use sync_to_async to save the log asynchronously
-               
+                # Persistence belongs to start_security_monitor, not each viewer.
                 try:
-                    await sync_to_async(SuricataLog.objects.create)(
-                        timestamp=parsed_data['timestamp'],
-                        message=parsed_data['message'],
-                        severity="High" if parsed_data['priority'] >= 3 else "Low",  # Contoh logika severity
-                        source_ip=parsed_data['source_ip'],
-                        source_port=parsed_data['source_port'],
-                        destination_ip=parsed_data['destination_ip'],
-                        destination_port=parsed_data['destination_port'],
-                        protocol=parsed_data['protocol'],
-                        classification=parsed_data['classification'],
-                        priority=parsed_data['priority'],
-                    )
-                    
                     # Send the log message to the WebSocket client
                     await self.send(text_data=json.dumps({
                         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -381,15 +379,18 @@ class SuricataLogConsumer(AsyncWebsocketConsumer):
             pass
 
     async def tail_log(self, file_path):
-        with open(file_path, 'r') as file:
-            # Move to the end of the file
-            file.seek(0, 2)
+        from ai_config.utils.eve import EveFollower
+        follower = EveFollower(file_path)
+        try:
             while True:
-                line = file.readline()
-                if not line:
-                    await asyncio.sleep(0.1)  # Use asyncio.sleep instead of time.sleep
-                    continue
-                yield line.strip()
+                line = await asyncio.to_thread(follower.poll)
+                if line is None:
+                    await asyncio.sleep(0.1)
+                else:
+                    yield line
+        finally:
+            follower.close()
+
 
 class ServiceControlConsumer(AsyncWebsocketConsumer):
     def __init__(self, *args, **kwargs):
@@ -575,18 +576,17 @@ class MCPSmartAgentConsumer(AsyncWebsocketConsumer):
         #     self.channel_name
         # )
         
-        # Initialize Smart Agent with this consumer
-        self.smart_agent = SmartMCPAgent()
-        self.smart_agent.setup_consumer(self)
-        
-        # Connect to MCP server
-        await self.connect_to_mcp_server()
+        # Legacy MCP execution used an independent authority. Keep the route
+        # reachable for compatibility, but fail closed until every MCP call is
+        # adapted to the canonical registry/lifecycle boundary.
+        self.mcp_disabled = True
         
         # Send connection success
         await self.send(text_data=json.dumps({
             'type': 'connection_status',
             'status': 'connected',
-            'message': 'MCP Smart Agent connected'
+            'message': 'MCP route deprecated: use /ws/sre-agent/ for guarded execution',
+            'deprecated': True,
         }))
     
     async def disconnect(self, close_code):
@@ -692,15 +692,13 @@ class MCPSmartAgentConsumer(AsyncWebsocketConsumer):
         }))
         
         try:
-            # Process smart workflow
-            workflow_result = await self.smart_agent.process_smart_workflow(user_query)
-            
-            # Send workflow result
-            await self.send(text_data=json.dumps({
-                'type': 'workflow_result',
-                'result': workflow_result,
-                'formatted_response': self.format_workflow_response(workflow_result)
-            }))
+            from sre_agent.engine import SREAgentEngine
+            session_id = str(data.get('session_id') or '')
+            model_name = data.get('model') or 'mistral-large-latest'
+            engine = SREAgentEngine(session_id=session_id, model_name=model_name,
+                                    user_id=getattr(self.scope.get('user'), 'pk', 'anonymous'))
+            async for event in engine.run(user_query, mode='guided'):
+                await self.send(text_data=json.dumps(event.to_dict()))
             
         except Exception as e:
             await self.send(text_data=json.dumps({
@@ -709,6 +707,10 @@ class MCPSmartAgentConsumer(AsyncWebsocketConsumer):
             }))
     
     async def handle_mcp_request(self, data):
+        if getattr(self, 'mcp_disabled', True):
+            await self.send(text_data=json.dumps({
+                'type': 'error', 'message': 'MCP execution disabled: use canonical SRE agent route'}))
+            return
         """Handle direct MCP request"""
         mcp_data = data.get('data', {})
         
@@ -847,7 +849,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def receive(self, text_data):
         import json
-        from .agent_core import AntigravitySysAdmin
         
         try:
             data = json.loads(text_data)
@@ -862,13 +863,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if not session_id:
             session_id = self.scope["session"].session_key or "default_session"
             
-        agent = AntigravitySysAdmin(session_id)
-        provider = data.get("provider", "gemini")
-
         try:
-            # Stream dari agent (di mana agent akan me-yield token/progress)
-            async for step in agent.stream_workflow(user_message, provider=provider):
-                await self.send(text_data=json.dumps(step))
+            # Legacy route is an adapter only: all execution now enters the
+            # guarded SRE engine and canonical lifecycle.
+            from sre_agent.engine import SREAgentEngine
+            engine = SREAgentEngine(
+                session_id=session_id,
+                model_name=data.get("model") or "mistral-large-latest",
+                user_id=getattr(self.scope.get("user"), "pk", "anonymous"),
+            )
+            async for event in engine.run(user_message, mode="guided"):
+                await self.send(text_data=json.dumps(event.to_dict()))
         except Exception as e:
             import traceback
             traceback.print_exc()
@@ -1283,6 +1288,9 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
     """
 
     async def connect(self):
+        self.agent_task = None
+        self.lifecycle = None
+        self.run_group = None
         await self.accept()
         
         # Generate RSA Key Pair for E2E Sudo Auth
@@ -1301,7 +1309,43 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
         }))
 
     async def disconnect(self, close_code):
-        pass
+        # Durable runs remain owned by the server after a browser disconnect.
+        # A reconnect rehydrates the existing run instead of starting a second
+        # task; approval expiry remains server-owned.
+        if self.run_group:
+            await self.channel_layer.group_discard(self.run_group, self.channel_name)
+
+    async def subscribe(self, session_id):
+        from asgiref.sync import sync_to_async
+        from chatbot.models import AgentRun
+        user_id = str(getattr(self.scope.get("user"), "pk", None) or "anonymous")
+        allowed = await sync_to_async(
+            lambda: AgentRun.objects.filter(session_id=session_id, user_id=user_id).exists()
+        )()
+        if not allowed:
+            return False
+        import hashlib
+        group = "sre." + hashlib.sha256(f"{session_id}:{user_id}".encode()).hexdigest()
+        if self.run_group and self.run_group != group:
+            await self.channel_layer.group_discard(self.run_group, self.channel_name)
+        self.run_group = group
+        await self.channel_layer.group_add(group, self.channel_name)
+        run = await sync_to_async(lambda: AgentRun.objects.filter(session_id=session_id, user_id=user_id).order_by('-created_at').first())()
+        if run:
+            await self.send(text_data=json.dumps({"type": "lifecycle", "status": run.status,
+                "run_id": str(run.pk), "checkpoint_version": run.checkpoint_version,
+                "event_id": f"{run.pk}:checkpoint:{run.checkpoint_version}"}))
+            if run.status == "completed":
+                await self.send(text_data=json.dumps({"type": "completed", "run_id": str(run.pk),
+                    "event_id": f"{run.pk}:terminal", "content": run.summary}))
+        return True
+
+    async def agent_event(self, event):
+        await self.send(text_data=json.dumps(event["payload"]))
+
+    async def agent_decision(self, event):
+        if self.lifecycle:
+            self.lifecycle.decide(event["payload"], event["user_id"])
 
     async def receive(self, text_data):
         try:
@@ -1315,8 +1359,43 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
 
         msg_type = data.get("type", "message")
 
+        if msg_type == "ping":
+            await self.send(text_data=json.dumps({"type": "pong"}))
+            return
+        if msg_type == "subscribe":
+            await self.subscribe(data.get("session_id", ""))
+            return
+        if msg_type == "cancel":
+            from asgiref.sync import sync_to_async
+            from sre_agent.canonical_lifecycle import request_run_cancellation
+            await sync_to_async(request_run_cancellation)(data.get("session_id", ""), str(getattr(self.scope.get("user"), "pk", None) or "anonymous"))
+            if self.agent_task and not self.agent_task.done():
+                self.agent_task.cancel()
+            return
         if msg_type == "message":
-            await self._handle_message(data)
+            if self.agent_task and not self.agent_task.done():
+                from sre_agent.canonical_lifecycle import is_terminal
+                previous = getattr(getattr(self, "engine", None), "_lifecycle", None)
+                if previous is None or not is_terminal(previous.run.status):
+                    return
+            session_id = data.get("session_id", "")
+            if session_id:
+                from asgiref.sync import sync_to_async
+                from chatbot.models import AgentRun
+                from sre_agent.canonical_lifecycle import expire_abandoned_runs, ACTIVE_STATUSES
+                await sync_to_async(expire_abandoned_runs)(session_id, str(getattr(self.scope.get("user"), "pk", None) or "anonymous"))
+                active = await sync_to_async(
+                    lambda: AgentRun.objects.filter(session_id=session_id,
+                        status__in=ACTIVE_STATUSES).order_by('-updated_at').first()
+                )()
+                if active:
+                    await self.send(text_data=json.dumps({
+                        "type": "lifecycle", "status": active.status, "run_id": str(active.pk),
+                        "checkpoint_version": active.checkpoint_version,
+                        "content": "Existing durable run is active; rehydrate instead of starting a duplicate.",
+                    }))
+                    return
+            self.agent_task = asyncio.create_task(self._handle_message(data))
         elif msg_type == "approval":
             await self._handle_approval(data)
         elif msg_type == "set_sudo_pwd":
@@ -1343,9 +1422,45 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
         selected_file = data.get("selected_file", None)
         selected_file_name = data.get("selected_file_name", None)
         model_name = data.get("model", "mistral-large-latest")
+        auto_model_rotation = data.get("auto_model_rotation") is True
         mode = data.get("mode", "guided")
+        from asgiref.sync import sync_to_async
+        from chatbot.models import Profile
+        user = self.scope.get("user")
+        if getattr(user, "is_authenticated", False):
+            permission_mode = await sync_to_async(
+                lambda: Profile.objects.get_or_create(user=user)[0].agent_permission_mode
+            )()
+        else:
+            permission_mode = "need_approval"
+        from sre_agent.approvals import derive_goal_scope
+        operational_scope = derive_goal_scope(
+            user_message, workspace=active_workspace or terminal_cwd or "",
+        ) if permission_mode == "full_access" else []
+        approval_id = None
         print(f"[CONSUMER DEBUG] WS received model='{model_name}', mode='{mode}', session_id='{session_id}'", flush=True)
+        if permission_mode == "full_access":
+            await self.send(text_data=json.dumps({
+                "type": "status",
+                "content": "Full Access mode: server-side operational scope is enforced; unscoped and hard-blocked actions still require/receive denial."
+            }))
 
+        from sre_agent.approval_lifecycle import ApprovalLifecycle, ApprovalStopped, active_lifecycle
+        async def send_event(event):
+            approval_states = {"approval_required": "awaiting_approval", "approval_approved": "running", "denied": "denied", "denied_timeout": "denied_timeout"}
+            if event.get("type") in approval_states and getattr(engine, "_lifecycle", None):
+                await engine._lifecycle.atransition("approval", approval_states[event["type"]], event["type"], {"approval_id": event.get("approval_id")})
+                event["run_id"] = str(engine._lifecycle.run.pk)
+                event["event_id"] = f"{event['run_id']}:approval:{event.get('approval_id')}:{event['type']}"
+            try:
+                if self.run_group:
+                    await self.channel_layer.group_send(self.run_group, {"type": "agent.event", "payload": event})
+                else:
+                    await self.send(text_data=json.dumps(event))
+            except Exception:
+                pass  # disconnected clients cannot prevent server-side expiry
+        self.lifecycle = ApprovalLifecycle(send_event)
+        lifecycle_token = active_lifecycle.set(self.lifecycle)
         try:
             from sre_agent.engine import SREAgentEngine
 
@@ -1353,37 +1468,58 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
                 session_id=session_id, 
                 model_name=model_name,
                 rsa_private_key=self.rsa_private_key,
-                encrypted_sudo_pwd=self.encrypted_sudo_pwd
+                encrypted_sudo_pwd=self.encrypted_sudo_pwd,
+                user_id=getattr(self.scope.get("user"), "pk", "anonymous"),
+                operational_scope=operational_scope,
+                approval_id=approval_id,
+                auto_model_rotation=auto_model_rotation,
             )
 
+            self.engine = engine
             async for event in engine.run(
                 user_message,
                 terminal_cwd=terminal_cwd,
                 active_workspace=active_workspace,
                 selected_file=selected_file,
                 selected_file_name=selected_file_name,
-                mode=mode
+                mode=mode,
+                permission_mode=permission_mode,
             ):
-                await self.send(text_data=json.dumps(event.to_dict()))
+                if not self.run_group and getattr(engine, "_lifecycle", None):
+                    await self.subscribe(str(engine.session_id))
+                await send_event(event.to_dict())
 
+        except ApprovalStopped:
+            return
+        except asyncio.CancelledError:
+            await send_event({"type": "lifecycle", "status": "cancelled", "run_id": str(engine._lifecycle.run.pk) if getattr(engine, "_lifecycle", None) else ""})
+            raise
         except Exception as e:
             import traceback
             traceback.print_exc()
             await self.send(text_data=json.dumps({
                 "type": "error",
-                "content": f"Agent Error: {str(e)}"
+                "content": "Agent execution failed. Review the recorded run state before retrying."
             }))
 
+        finally:
+            active_lifecycle.reset(lifecycle_token)
+
     async def _handle_approval(self, data):
-        """Handle user approval for HIGH-risk tool execution."""
-        # For now, acknowledge the approval — full approval flow can be
-        # implemented when the frontend supports it.
-        approved = data.get("approved", False)
-        tool_name = data.get("tool", "unknown")
-        await self.send(text_data=json.dumps({
-            "type": "status",
-            "content": f"{'✅ Approved' if approved else '❌ Rejected'}: {tool_name}"
-        }))
+        user_id = getattr(self.scope.get("user"), "pk", "anonymous")
+        if not self.lifecycle or not self.lifecycle.pending:
+            from asgiref.sync import sync_to_async
+            from sre_agent.approvals import approve, deny
+            try:
+                decision = approve if data.get("approved") is True else deny
+                await sync_to_async(decision)(data.get("approval_id"), session_id=data.get("session_id"), user_id=user_id)
+                return
+            except Exception:
+                await self.send(text_data=json.dumps({"type": "status", "content": "Approval decision rejected."}))
+                return
+        if not self.lifecycle.decide(data, user_id):
+            await self.send(text_data=json.dumps({"type":"status", "content":"Approval decision rejected."}))
+
 class ArchitectureConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         from sre_agent.crypto import generate_rsa_key_pair

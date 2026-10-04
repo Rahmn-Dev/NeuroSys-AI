@@ -20,6 +20,7 @@ from typing import Any, Callable, Coroutine, Dict, List, Optional, Set, Tuple
 
 from .safety import SafetyLayer, SafetyVerdict
 from .tools.registry import ToolRegistry
+from .resource_locks import ResourceLockManager, ResourceConflict
 
 
 # ---------------------------------------------------------------------------
@@ -68,6 +69,7 @@ class ParallelExecutor:
         self.safety = safety or SafetyLayer()
         self.registry = ToolRegistry()
         self._execution_history: Set[str] = set()   # tracks (tool+args) hashes
+        self.resource_locks = ResourceLockManager(max_concurrency=self.MAX_CONCURRENT)
 
     # -- public interface ----------------------------------------------------
 
@@ -103,9 +105,25 @@ class ParallelExecutor:
 
         total = len(tasks)
 
+        shared_results = {}
         async def _run_task(task: dict) -> TaskResult:
-            async with semaphore:
-                return await self._execute_single(task, tool_map, on_task_start, on_task_end)
+            from dataclasses import replace
+            if any(results[dep].exit_code != 0 for dep in task.get("depends_on", [])):
+                return TaskResult(task["id"], task.get("tool", ""), {}, "Dependency failed; task was not executed", 1, 0, "blocked")
+            key = json.dumps([task.get("tool"), task.get("tool_args", {})], sort_keys=True)
+            if key in shared_results:
+                result = await asyncio.shield(shared_results[key])
+                return replace(result, task_id=task["id"], duration=0)
+            future = asyncio.get_running_loop().create_future()
+            shared_results[key] = future
+            try:
+                async with semaphore:
+                    result = await self._execute_single(task, tool_map, on_task_start, on_task_end)
+                future.set_result(result)
+                return result
+            except BaseException:
+                future.cancel()
+                raise
 
         # Iterative DAG resolution
         while len(completed_ids) < total:
@@ -125,6 +143,8 @@ class ParallelExecutor:
             batch_results = await asyncio.gather(*coros, return_exceptions=True)
 
             for task, result in zip(ready, batch_results):
+                if isinstance(result, asyncio.CancelledError):
+                    raise result
                 if isinstance(result, Exception):
                     result = TaskResult(
                         task_id=task["id"],
@@ -200,7 +220,7 @@ class ParallelExecutor:
                 )
             safety_verdict = check.verdict.value
         else:
-            safety_verdict = "unknown_tool"
+            return TaskResult(task_id, tool_name, {}, "Unregistered tool blocked", 1, 0, "blocked")
 
         # Emit start callback
         if on_task_start:
@@ -208,6 +228,8 @@ class ParallelExecutor:
 
         # Execute tool
         start_time = time.time()
+        resource = task.get("resource") or tool_args.get("path") or tool_args.get("service_name") or tool_args.get("resource")
+        lock_context = self.resource_locks.acquire(str(resource), timeout=5) if resource else None
         try:
             tool_obj = tool_map.get(tool_name)
             if not tool_obj:
@@ -223,9 +245,13 @@ class ParallelExecutor:
                 )
 
             # LangChain tools have an .invoke() method
-            output = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: tool_obj.invoke(tool_args)
-            )
+            async def invoke():
+                return await tool_obj.ainvoke(tool_args)
+            if lock_context:
+                async with lock_context:
+                    output = await invoke()
+            else:
+                output = await invoke()
             output_str = str(output) if output else ""
             duration = time.time() - start_time
 
@@ -238,6 +264,10 @@ class ParallelExecutor:
                 duration=duration,
                 safety_verdict=safety_verdict,
             )
+        except ResourceConflict as e:
+            result = TaskResult(task_id=task_id, tool_name=tool_name, tool_args=tool_args,
+                                output=f"RESOURCE CONFLICT: {e}", exit_code=1,
+                                duration=time.time() - start_time, safety_verdict="blocked", error=str(e))
         except Exception as e:
             duration = time.time() - start_time
             result = TaskResult(

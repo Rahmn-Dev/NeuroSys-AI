@@ -71,6 +71,7 @@
 
   /* Override bootstrap-select plugin hijacking on header dropdowns */
   .bootstrap-select:has(#model-selector),
+  .bootstrap-select:has(#permission-selector),
   .bootstrap-select:has(#mode-selector),
   div.bootstrap-select.sre-input {
     background: transparent !important;
@@ -83,6 +84,7 @@
   }
 
   select#model-selector,
+  select#permission-selector,
   select#mode-selector {
     display: inline-flex !important;
     align-items: center !important;
@@ -98,8 +100,38 @@
     color: var(--text-primary) !important;
   }
 
+  .sre-chat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .sre-header-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    flex: 1 1 720px;
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  #permission-selector {
+    margin-right: 8px;
+  }
+
+  @media (max-width: 1100px) {
+    .sre-header-actions {
+      justify-content: flex-start;
+      flex-basis: 100%;
+    }
+  }
+
 
   div.bootstrap-select>button.dropdown-toggle[data-id="model-selector"],
+  div.bootstrap-select>button.dropdown-toggle[data-id="permission-selector"],
   div.bootstrap-select>button.dropdown-toggle[data-id="mode-selector"],
   div.bootstrap-select>div.dropdown-menu {
     display: none !important;
@@ -283,7 +315,7 @@
     style="backdrop-filter: blur(20px); background: rgba(255, 255, 255, 0); display: flex; flex-direction: column; height: calc(100vh - 80px);">
 
     <!-- Header bar -->
-    <div class="sre-panel"
+    <div class="sre-panel sre-chat-header"
       style="background: var(--bg-main); display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-bottom: 1px solid var(--border-color); position: relative; z-index: 50;">
       <div style="display: flex;flex-wrap: wrap; align-items: center; gap: 10px;">
         <button id="toggle-sidebar-btn"
@@ -302,8 +334,21 @@
           onclick="document.getElementById('sudo-modal').style.display='flex';"
           style="background: var(--bg-panel); color: #f85149; border: 1px solid var(--border-color); font-size: 12px; height: 32px; padding: 0 14px; border-radius: 20px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; margin-left: 15px; box-sizing: border-box; line-height: 1;"><i
             class="fa-solid fa-lock"></i> Set Sudo Password</button>
+        <button id="session-graph-btn" class="sre-input1" onclick="openSessionGraph()" title="View cases in this session"
+          style="background: var(--bg-panel); color: var(--text-primary); border: 1px solid var(--border-color); font-size: 12px; height: 32px; padding: 0 14px; border-radius: 20px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; box-sizing: border-box; line-height: 1;">
+          <i class="fa-solid fa-diagram-project"></i> Session Graph</button>
       </div>
-      <div style="display: flex; align-items: center; gap: 8px;">
+      <div class="sre-header-actions">
+        <button id="auto-model-btn" type="button" onclick="toggleAutoModels()" aria-pressed="false"
+          title="Try active models across providers automatically when one is unavailable"
+          style="background:var(--bg-panel); color:var(--text-secondary); border:1px solid var(--border-color); font-size:12px; height:32px; padding:0 13px; border-radius:20px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; font-weight:600; white-space:nowrap;">
+          <i class="fa-solid fa-rotate"></i> Auto Models: Off
+        </button>
+        <select id="permission-selector" class="sre-input" title="Agent action authorization"
+          style="appearance: none; -webkit-appearance: none; font-size: 12px; height: 32px; min-width: 132px; padding: 0 28px 0 14px; border-radius: 20px; cursor: pointer; outline: none; transition: all 0.2s ease; font-weight: 500; box-sizing: border-box; line-height: 1; flex-shrink: 0; background-image: url('data:image/svg+xml;utf8,<svg fill=\'%238b949e\' height=\'16\' viewBox=\'0 0 24 24\' width=\'16\' xmlns=\'http://www.w3.org/2000/svg\'><path d=\'M7 10l5 5 5-5z\'/></svg>'); background-repeat: no-repeat; background-position-x: calc(100% - 6px); background-position-y: 50%;">
+          <option value="need_approval" selected>Need Approval</option>
+          <option value="full_access">Full Access</option>
+        </select>
         <select id="model-selector" class="sre-input"
           style="appearance: none; -webkit-appearance: none; font-size: 12px; height: 32px; padding: 0 14px; padding-right: 28px; border-radius: 20px; cursor: pointer; outline: none; transition: all 0.2s ease; font-weight: 500; box-sizing: border-box; line-height: 1; background-image: url('data:image/svg+xml;utf8,<svg fill=\'%238b949e\' height=\'16\' viewBox=\'0 0 24 24\' width=\'16\' xmlns=\'http://www.w3.org/2000/svg\'><path d=\'M7 10l5 5 5-5z\'/></svg>'); background-repeat: no-repeat; background-position-x: calc(100% - 6px); background-position-y: 50%;">
           <option value="OPENCODE">OpenCode Provider (9Router)</option>
@@ -330,7 +375,7 @@
         <select id="mode-selector" class="sre-input"
           style="appearance: none; -webkit-appearance: none; font-size: 12px; height: 32px; padding: 0 14px; padding-right: 28px; border-radius: 20px; cursor: pointer; outline: none; transition: all 0.2s ease; font-weight: 500; box-sizing: border-box; line-height: 1; background-image: url('data:image/svg+xml;utf8,<svg fill=\'%238b949e\' height=\'16\' viewBox=\'0 0 24 24\' width=\'16\' xmlns=\'http://www.w3.org/2000/svg\'><path d=\'M7 10l5 5 5-5z\'/></svg>'); background-repeat: no-repeat; background-position-x: calc(100% - 6px); background-position-y: 50%;">
           <option value="guided">Guided Investigation</option>
-          <option value="autonomous_single">Autonomous Single Agent</option>
+          <option value="autonomous_single" selected>Autonomous Single Agent</option>
           <option value="autonomous_multi">Autonomous Multi Agent</option>
         </select>
         <span style="width: 8px; height: 8px; border-radius: 50%; background: #3fb950;" id="status-dot"></span>
@@ -422,10 +467,24 @@
             style="pointer-events: auto; display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; width: 100%; max-width: 800px; min-height: 0;">
             <!-- Chips injected by JS -->
           </div>
+          <div id="approval-card" hidden
+            style="pointer-events:auto;width:100%;max-width:800px;margin:0 auto 8px;padding:12px 14px;border:1px solid var(--warning);border-radius:12px;background:var(--bg-panel);">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+              <strong style="color:var(--warning)">Awaiting Approval</strong>
+              <span id="approval-countdown" style="font-size:12px;color:var(--text-secondary)"></span>
+            </div>
+            <div id="approval-action" style="font-size:13px;margin-top:6px"></div>
+            <div id="approval-reason" style="font-size:12px;color:var(--text-secondary);margin-top:4px"></div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+              <button type="button" id="approval-deny" class="btn btn-secondary">Deny</button>
+              <button type="button" id="approval-allow" class="btn btn-primary">Allow Once</button>
+            </div>
+          </div>
           <form id="chat-form"
             style="pointer-events: auto; display: flex; align-items: flex-end; gap: 12px; background: rgb(255 255 255 / 0%); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 12px 40px rgba(0,0,0,0.4); border-radius: 28px; padding: 8px 12px; transition: border-color 0.2s; width: 100%; max-width: 800px; margin: 0 auto;"
             tabindex="0" onfocusin="this.style.borderColor='var(--accent)'"
             onfocusout="this.style.borderColor='rgba(255,255,255,0.15)'">
+            {% csrf_token %}
             <textarea id="chat-input" placeholder="Ask anything" class="sre-input sre-text-strong"
               style="flex: 1; background: transparent; border: none; font-size: 15px; outline: none; resize: none; overflow-y: auto; padding: 12px 12px; line-height: 1.5; min-height: 46px; max-height: 200px; box-sizing: border-box;"
               rows="1"></textarea>
@@ -595,13 +654,63 @@
       for (let i = 0; i < cookies.length; i++) {
         const cookie = cookies[i].trim();
         if (cookie.substring(0, name.length + 1) === (name + '=')) {
+          // Keep the LAST match: rotated secrets append, stale copies first
           cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-          break;
         }
       }
     }
     return cookieValue;
   }
+
+  function getCSRFToken() {
+    // Prefer the server-rendered token (always in sync with this page load),
+    // fall back to the cookie for robustness.
+    const dom = document.querySelector('input[name="csrfmiddlewaretoken"]');
+    if (dom && dom.value) return dom.value;
+    return getCSRFToken() || '';
+  }
+
+  async function loadAgentPermission() {
+    const selector = document.getElementById('permission-selector');
+    if (!selector) return;
+    try {
+      const response = await fetch('/api/v1/agent-permission/', {credentials: 'same-origin'});
+      if (!response.ok) throw new Error(`permission load failed (${response.status})`);
+      const payload = await response.json();
+      selector.value = payload.mode === 'full_access' ? 'full_access' : 'need_approval';
+    } catch (error) {
+      selector.value = 'need_approval';
+      selector.disabled = true;
+      console.warn('Agent permission is fail-closed until the server preference is available.', error);
+    }
+  }
+
+  async function saveAgentPermission(mode) {
+    const selector = document.getElementById('permission-selector');
+    selector.disabled = true;
+    try {
+      const response = await fetch('/api/v1/agent-permission/', {
+        method: 'PUT', credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() || ''},
+        body: JSON.stringify({mode})
+      });
+      if (!response.ok) throw new Error(`permission update failed (${response.status})`);
+      const payload = await response.json();
+      selector.value = payload.mode;
+      addSystemMsg(payload.mode === 'full_access'
+        ? 'Full Access enabled for in-goal actions. Hard security boundaries remain enforced.'
+        : 'Need Approval enabled. Mutating actions require Allow Once.', 'shield');
+    } catch (error) {
+      selector.value = 'need_approval';
+      console.warn('Permission update rejected; using Need Approval.', error);
+    } finally {
+      selector.disabled = false;
+    }
+  }
+
+  const permissionSelector = document.getElementById('permission-selector');
+  if (permissionSelector) permissionSelector.addEventListener('change', event => saveAgentPermission(event.target.value));
+  loadAgentPermission();
 
   async function deleteSingleHistory(id) {
     if (!confirm('Are you sure you want to delete this chat session?')) return;
@@ -609,7 +718,7 @@
       const res = await fetch(`/api/v1/chat-sessions/${id}/`, {
         method: 'DELETE',
         headers: {
-          'X-CSRFToken': getCookie('csrftoken') || ''
+          'X-CSRFToken': getCSRFToken() || ''
         }
       });
       if (res.ok) {
@@ -643,7 +752,7 @@
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-CSRFToken': getCookie('csrftoken') || ''
+          'X-CSRFToken': getCSRFToken() || ''
         },
         body: JSON.stringify({ session_ids: sessionIds })
       });
@@ -697,6 +806,17 @@
     let sessionId = null;
     let currentAIMsg = null;
     let isProcessing = false;
+    let pendingApproval = null;
+    let approvalTimer = null;
+    let snapshotInFlight = false;
+    let lastSnapshotCheckpoint = 0;
+    let rehydratedSessionId = null;
+    let snapshotPollTimer = null;
+    let snapshotPollAttempts = 0;
+    let agentHeartbeatTimer = null;
+    let agentLastActivity = 0;
+    let initialSnapshotDone = false;
+    let agentRetryAttempt = 0;
 
     // --- IDE Context State ---
     window.currentTerminalCwd = localStorage.getItem('sre_terminal_cwd') || null;
@@ -753,28 +873,77 @@
       window.sreAgentWs = ws;
 
       ws.onopen = () => {
-        badge.textContent = 'Connected';
+        badge.textContent = 'Live';
         badge.style.background = '#23863633';
         badge.style.color = '#3fb950';
         dot.style.background = '#3fb950';
+        ensureConnectionCard();
+        agentRetryAttempt = 0;
+        snapshotPollAttempts = 0;
+        agentLastActivity = Date.now();
+        clearInterval(agentHeartbeatTimer);
+        agentHeartbeatTimer = setInterval(() => {
+          if (!ws || ws.readyState !== WebSocket.OPEN) return;
+          if (Date.now() - agentLastActivity > 45000) { ws.close(4000, 'heartbeat timeout'); return; }
+          ws.send(JSON.stringify({type: 'ping'}));
+        }, 15000);
+        stopSnapshotPolling();
+        if (sessionId) ws.send(JSON.stringify({type: 'subscribe', session_id: sessionId}));
+        if (!initialSnapshotDone) {
+          initialSnapshotDone = true;
+          bootstrapActiveRun();
+        }
       };
 
-      ws.onclose = () => {
-        badge.textContent = 'Disconnected';
+      ws.onclose = (event) => {
+        clearInterval(agentHeartbeatTimer);
+        document.querySelector('[data-agent-connection-card="true"]')?.remove();
+        const permanent = [4401, 4403].includes(event.code);
+        badge.textContent = permanent ? 'Offline' : 'Reconnecting';
         badge.style.background = '#da363333';
         badge.style.color = '#f85149';
-        dot.style.background = '#f85149';
-        setTimeout(connect, 3000);
+        dot.style.background = permanent ? '#d29922' : '#f85149';
+        if (permanent) return;
+        startSnapshotPolling();
+        const base = Math.min(30000, 1000 * (2 ** agentRetryAttempt++));
+        const delay = Math.round(base * (0.75 + Math.random() * 0.5));
+        clearTimeout(reconnectTimer);
+        reconnectTimer = setTimeout(connect, delay);
       };
 
       ws.onmessage = (e) => {
-        const data = JSON.parse(e.data);
-        handleEvent(data);
+        agentLastActivity = Date.now();
+        try { handleEvent(JSON.parse(e.data)); }
+        catch (error) { badge.textContent = 'Message error'; console.warn('Invalid Agent event', error); }
       };
     }
 
     // --- Event handler ---
+    function lifecycleNarration(status) {
+      const messages = {
+        queued: 'Preparing the investigation...',
+        running: 'Checking the requested system...',
+        planning: 'Planning the next diagnostic steps...',
+        executing: 'Running the authorized action...',
+        awaiting_approval: 'This action needs your approval.',
+        verifying: 'Verifying the results...',
+        completed: 'The investigation is complete based on the available evidence.',
+        failed: 'The investigation stopped and needs review.',
+        blocked: 'The action was blocked by a security boundary.',
+        security_blocked: 'The action was blocked by a security boundary.',
+        cancelled: 'The investigation was cancelled.'
+      };
+      return messages[String(status || '').toLowerCase()] || 'Updating investigation status...';
+    }
+
     function handleEvent(data) {
+      window.agentSeenEvents = window.agentSeenEvents || new Set();
+      if (data.event_id) {
+        if (window.agentSeenEvents.has(data.event_id)) return;
+        window.agentSeenEvents.add(data.event_id);
+        if (window.agentSeenEvents.size > 2000) window.agentSeenEvents.delete(window.agentSeenEvents.values().next().value);
+      }
+      if (data.run_id) window.activeAgentRunId = data.run_id;
       const type = data.type;
 
       switch (type) {
@@ -785,6 +954,9 @@
         case 'session_id':
           const oldSessionId = sessionId;
           sessionId = data.content;
+          if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({type: 'subscribe', session_id: sessionId}));
+          bootstrapActiveRun();
+          startSnapshotPolling();
 
           // If this is a new session (not from loading history), refresh the history sidebar
           if (!window.isLoadingHistory && oldSessionId !== sessionId && sessionId) {
@@ -802,6 +974,31 @@
           }
           break;
 
+        case 'resuming':
+        case 'lifecycle':
+          if (!['completed', 'failed', 'cancelled', 'blocked', 'denied', 'denied_timeout', 'security_blocked', 'error', 'finalized'].includes(data.status)) {
+            updateRunStateCard(data.run_id, data.status || 'running');
+            addAgentStep('Progress', lifecycleNarration(data.status), '#79c0ff', 'activity');
+          } else {
+            stopAllAgentStepTimers();
+            updateRunStateCard(data.run_id, data.status);
+            window.sessionStartTime = null;
+          }
+          if (data.status === 'awaiting_approval') isProcessing = true;
+          if (['completed', 'failed', 'cancelled', 'blocked', 'denied', 'denied_timeout', 'security_blocked', 'error', 'finalized'].includes(data.status)) {
+            isProcessing = false;
+            sendBtn.disabled = false;
+          }
+          break;
+
+        case 'verifying':
+          addAgentStep('Verifying', data.content || 'Checking postconditions...', '#79c0ff', 'shield-check');
+          break;
+
+        case 'provider_fallback':
+          addAgentStep('Provider Fallback', data.content || `Switched to ${data.to || 'fallback provider'}`, '#d29922', 'refresh-cw');
+          break;
+
         case 'session_title':
           const titleContent = data.content;
           document.title = titleContent;
@@ -817,6 +1014,9 @@
           break;
 
         case 'exploring':
+          // Safety net: if no run container is active (e.g. stream resumed
+          // without a fresh submit), open one so steps stay grouped.
+          if (!window.isLoadingHistory && !window.activeRunWrap) startRunWrap();
           addAgentStep('Exploring', data.content, 'var(--accent)', 'search');
           break;
 
@@ -844,6 +1044,19 @@
           addAgentStep('Thinking', data.content, '#ff69b4', 'brain');
           break;
 
+        case 'hypothesis':
+          addAgentStep('Hypothesis', data.content, '#a371f7', 'lightbulb');
+          break;
+
+        case 'resolution_plan': {
+          const steps = data.steps || (data.metadata && data.metadata.steps) || [];
+          const stepsHtml = Array.isArray(steps) && steps.length > 0
+            ? '<ol style="margin: 6px 0 0 18px; padding: 0;">' + steps.map(s => `<li>${escapeHtml(String(s))}</li>`).join('') + '</ol>'
+            : escapeHtml(data.content || '');
+          addAgentStep('Resolution Plan', stepsHtml, '#39c5cf', 'list-checks');
+          break;
+        }
+
         case 'tool_start':
           addAgentStep('Executing', `<code>${data.tool || ''}</code> ${data.command || ''}`, 'var(--warning)', 'zap', data.step_id, false);
           break;
@@ -855,7 +1068,33 @@
 
         case 'approval_required':
           addAgentStep('Approval Required', data.content, 'var(--warning)', 'lock');
-          // showApprovalModal(data.tool, data.args || data.command, data.content);
+          showApprovalCard(data);
+          break;
+
+        case 'approval_approved':
+          hideApprovalCard();
+          pendingApproval = null;
+          addSystemMsg('Approved once; resuming the pending action.', 'check');
+          break;
+
+        case 'denied':
+        case 'denied_timeout':
+        case 'security_blocked':
+          hideApprovalCard();
+          pendingApproval = null;
+          stopAllAgentStepTimers();
+          updateRunStateCard(data.run_id, data.type === 'security_blocked' ? 'security_blocked' : data.type);
+          finalizeRunWrap(data.type === 'security_blocked' ? 'security_blocked' : 'failed');
+          addAgentStep(data.type === 'security_blocked' ? 'Blocked by Security Policy' : data.type === 'denied_timeout' ? 'Denied — Approval Timeout' : 'Approval Denied', escapeHtml(data.content || ''), 'var(--error)', 'shield-alert', null, true);
+          window.sessionStartTime = null;
+          if (activeInvestigationId && investigations[activeInvestigationId]) {
+            investigations[activeInvestigationId].status = data.type;
+            renderInvestigationTimeline();
+          }
+          isProcessing = false;
+          sendBtn.disabled = false;
+          sendBtn.style.opacity = '1';
+          sendBtn.innerHTML = 'Send';
           break;
 
         case 'safety_blocked':
@@ -992,14 +1231,13 @@
 
 
         case 'completed':
+          window.agentCompletedRuns = window.agentCompletedRuns || new Set();
+          if (data.run_id && window.agentCompletedRuns.has(data.run_id)) break;
+          if (data.run_id) window.agentCompletedRuns.add(data.run_id);
+          updateRunStateCard(data.run_id, 'completed', data.duration);
+          finalizeRunWrap('completed', data.duration);
           if (activeInvestigationId && investigations[activeInvestigationId]) {
             investigations[activeInvestigationId].status = 'completed';
-            if (Array.isArray(investigations[activeInvestigationId].plan)) {
-              investigations[activeInvestigationId].plan.forEach(p => {
-                p.status = 'completed';
-                p.completed = true;
-              });
-            }
             if (sessionId) {
               loadHistory();
             }
@@ -1008,7 +1246,7 @@
             renderInvestigationTimeline();  // Always refresh
             loadArtifacts();
           }
-          if (lastGenericStepId) { stopStep(lastGenericStepId); lastGenericStepId = null; }
+          stopAllAgentStepTimers();
           const activeDash = document.getElementById('active-dashboard');
           if (activeDash) { activeDash.removeAttribute('id'); }
 
@@ -1026,9 +1264,12 @@
                             <i class="fa-solid fa-chevron-down" style="margin-left: auto; color: var(--success); font-size: 10px; transition: transform 0.2s;"></i>
                         </summary>
                         <div style="padding: 16px; font-size: 13px; background: var(--bg-panel); border-top: 1px solid var(--border-color);">
-                            <p style="margin-top: 0; margin-bottom: 12px;">${data.content}</p>
+                            <details style="margin-bottom: 12px;">
+                                <summary style="cursor: pointer; font-size: 12px; color: var(--text-secondary);">Lihat ringkasan hasil (sudah tampil di pesan di atas)</summary>
+                                <p style="margin: 8px 0 0 0;">${escapeHtml(data.content || "")}</p>
+                            </details>
                             <table style="width: 100%; border-collapse: collapse; font-size: 12px; border: 1px solid var(--border-color);">
-                                <tr style="background: #21262d;"><th style="color: var(--success); padding: 6px; border: 1px solid var(--border-color); text-align: left;">Audit Trail</th><th style="color: var(--success); padding: 6px; border: 1px solid var(--border-color); text-align: left;">Details</th></tr>
+                                <tr style="background: var(--bg-panel);"><th style="color: var(--success); padding: 6px; border: 1px solid var(--border-color); text-align: left;">Audit Trail</th><th style="color: var(--success); padding: 6px; border: 1px solid var(--border-color); text-align: left;">Details</th></tr>
                                 <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Status</td><td style="padding: 6px; border: 1px solid var(--border-color); color: var(--success);"><strong>COMPLETED</strong></td></tr>
                                 <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Start Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${startTime.toLocaleTimeString()}</td></tr>
                                 <tr><td style="padding: 6px; border: 1px solid var(--border-color);">End Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${endTime.toLocaleTimeString()}</td></tr>
@@ -1040,6 +1281,7 @@
           messagesDiv.innerHTML += auditHtml;
 
           currentAIMsg = null;
+          window.sessionStartTime = null;
           isProcessing = false;
           sendBtn.disabled = false;
           sendBtn.style.opacity = '1';
@@ -1047,8 +1289,18 @@
           break;
 
         case 'error':
-          if (lastGenericStepId) { stopStep(lastGenericStepId); lastGenericStepId = null; }
-          addAgentStep('Error', data.content, 'var(--error)', 'x-circle');
+          stopAllAgentStepTimers();
+          updateRunStateCard(data.run_id, 'failed');
+          finalizeRunWrap('failed');
+          addAgentStep('Error', data.content, 'var(--error)', 'x-circle', null, true);
+          {
+            const retryDiv = document.createElement('div');
+            retryDiv.style.cssText = 'margin: 8px 0;';
+            retryDiv.innerHTML = `<button onclick="window.continueRun()" style="background: rgba(88,166,255,0.12); color: var(--text-strong); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 14px; font-size: 12px; cursor: pointer; font-weight: 600;">▶ Lanjutkan dari sini</button> <span style="font-size: 11px; color: var(--text-secondary);">melanjutkan case aktif dengan verifikasi ulang</span>`;
+            messagesDiv.appendChild(retryDiv);
+            scrollToBottom();
+          }
+          window.sessionStartTime = null;
           isProcessing = false;
           sendBtn.disabled = false;
           sendBtn.style.opacity = '1';
@@ -1070,38 +1322,57 @@
 
 
 
-    function addUserMessage(text) {
+    function chatTimeLabel(ts) {
+      try {
+        const d = ts ? new Date(ts) : new Date();
+        return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+      } catch (e) {
+        return '';
+      }
+    }
+
+    function addUserMessage(text, ts) {
       const div = document.createElement('div');
       div.className = 'sre-msg-user';
-      div.style.cssText = 'align-self: flex-end; border-radius: 12px; padding: 12px 16px; max-width: 70%; font-size: 14px; line-height: 1.5; margin-bottom: 8px;';
+      div.style.cssText = 'align-self: flex-end; border-radius: 16px; padding: 12px 16px; max-width: 70%; font-size: 14px; line-height: 1.5; margin-bottom: 2px;';
 
       const contextRegex = /\n\n\[Context Attached: (file:\/\/[^\]]+)\]/g;
       const matches = [...text.matchAll(contextRegex)];
 
-      let html = escapeHtml(text.replace(contextRegex, '')).replace(/\n/g, '<br>');
+      const html = escapeHtml(text.replace(contextRegex, '').trim()).replace(/\n/g, '<br>');
 
+      // Attachments render as their own card ABOVE the chat bubble (chat stays text-only)
       if (matches.length > 0) {
+        const attachCard = document.createElement('div');
+        attachCard.style.cssText = 'align-self: flex-end; max-width: 70%; margin-bottom: 6px; display: flex; flex-direction: column; gap: 6px;';
         matches.forEach(match => {
           const fileUrl = match[1];
           const fileName = fileUrl.split('/').pop();
-          html += `<div style="margin-top: 8px; display: inline-flex; flex-direction: column; background: rgba(0,0,0,0.15); padding: 6px 10px; border-radius: 8px; font-size: 11px; border: 1px solid rgba(0,0,0,0.1);">
-                    <div style="font-weight: 600; display: flex; align-items: center; gap: 6px;">
-                        <i class="fas fa-file-alt" style="color: #fff;"></i> ${escapeHtml(fileName)}
-                    </div>
-                    <div style="opacity: 0.7; font-family: monospace; margin-top: 2px;">${escapeHtml(fileUrl)}</div>
-                </div>`;
+          const item = document.createElement('div');
+          item.style.cssText = 'display: flex; align-items: center; gap: 8px; background: var(--bg-panel); padding: 8px 12px; border-radius: 12px; font-size: 12px; border: 1px solid var(--border-color);';
+          item.title = fileUrl;
+          item.innerHTML = `<i class="fas fa-file-alt" style="color: var(--accent);"></i>
+            <span style="flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(fileName)}</span>`;
+          attachCard.appendChild(item);
         });
+        messagesDiv.appendChild(attachCard);
       }
 
-      div.innerHTML = html;
-      messagesDiv.appendChild(div);
+      if (html) {
+        div.innerHTML = html;
+        messagesDiv.appendChild(div);
+      }
+      const timeDiv = document.createElement('div');
+      timeDiv.style.cssText = 'align-self: flex-end; font-size: 10px; color: var(--text-secondary); opacity: 0.7; margin-bottom: 8px; padding-right: 4px;';
+      timeDiv.textContent = chatTimeLabel(ts);
+      messagesDiv.appendChild(timeDiv);
       scrollToBottom();
     }
 
-    function addAIMessage(content) {
+    function addAIMessage(content, ts) {
       const div = document.createElement('div');
       div.className = 'agent-msg sre-msg-ai';
-      div.style.cssText = 'border-radius: 12px; padding: 16px; max-width: 85%; margin-bottom: 8px;';
+      div.style.cssText = 'border-radius: 16px; padding: 16px; max-width: 85%; margin-bottom: 2px;';
       div.innerHTML = `
             <div style="font-size: 12px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;" class="sre-text-secondary">
                 <span>NeuroSysAI</span>
@@ -1109,6 +1380,10 @@
             <div class="ai-content sre-text-primary" style="line-height: 1.6; font-size: 14px;">${marked.parse(content || '')}</div>
         `;
       messagesDiv.appendChild(div);
+      const aiTime = document.createElement('div');
+      aiTime.style.cssText = 'font-size: 10px; color: var(--text-secondary); opacity: 0.7; margin-bottom: 8px; padding-left: 4px;';
+      aiTime.textContent = chatTimeLabel(ts);
+      messagesDiv.appendChild(aiTime);
       scrollToBottom();
       return div;
     }
@@ -1137,6 +1412,143 @@
       }
 
       delete stepTimers[stepId];
+    }
+
+    function stopAllAgentStepTimers() {
+      Object.keys(stepTimers).forEach(stepId => stopStep(stepId));
+      lastGenericStepId = null;
+    }
+
+    function startAgentStepTimer(stepId) {
+      if (stepTimers[stepId] || window.isLoadingHistory) return;
+      const timer = document.getElementById(`timer-${stepId}`);
+      if (timer) {
+        timer.textContent = '0.0s';
+        timer.style.color = '';
+      }
+      stepTimers[stepId] = {
+        startTime: Date.now(),
+        interval: setInterval(() => {
+          const el = document.getElementById(`timer-${stepId}`);
+          if (el) el.textContent = `${((Date.now() - stepTimers[stepId].startTime) / 1000).toFixed(1)}s...`;
+        }, 100)
+      };
+    }
+
+    // --- Run grouping: one collapsible roadmap container per agent run ---
+    // Steps stream into the active container (with a left timeline rail);
+    // history replays group per run_id the same way (collapsed by default).
+    window.activeRunWrap = null;
+    window.historyRunWraps = {};
+
+    function startRunWrap() {
+      // Collapse any previous still-open run first
+      if (window.activeRunWrap && window.activeRunWrap.dataset.open === '1') {
+        toggleRunWrap(window.activeRunWrap.dataset.wrapId, false);
+      }
+      const wrapId = 'runwrap-' + Math.random().toString(36).substr(2, 9);
+      const wrap = document.createElement('div');
+      wrap.id = wrapId;
+      wrap.style.cssText = 'border: 1px solid var(--border-color); border-radius: 12px; margin-bottom: 10px; background: transparent;';
+      wrap.innerHTML = `
+        <div onclick="toggleRunWrap('${wrapId}')" style="cursor: pointer; padding: 10px 14px; display: flex; align-items: center; gap: 8px; background: var(--bg-panel); user-select: none; border-radius: 11px 11px 0 0;">
+          <span id="${wrapId}-spin" style="color: var(--accent); display: flex; align-items: center;"><i class="fa-solid fa-spinner spin-anim"></i></span>
+          <strong style="font-size: 13px;">Agent Run</strong>
+          <span id="${wrapId}-pill" style="font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; background: rgba(88,166,255,0.15); color: var(--text-strong); text-transform: uppercase;">running</span>
+          <span id="${wrapId}-dur" style="font-size: 11px; color: var(--text-secondary);"></span>
+          <i class="fa-solid fa-chevron-down" id="${wrapId}-chev" style="margin-left: auto; font-size: 10px; color: var(--text-secondary); transition: transform 0.2s; transform: rotate(180deg);"></i>
+        </div>
+        <div id="${wrapId}-body" style="padding: 10px 10px 10px 18px; border-left: 2px solid var(--accent); margin: 4px 0 4px 20px; display: flex; flex-direction: column; gap: 8px; max-height: 420px; overflow-y: auto;"></div>
+      `;
+      messagesDiv.appendChild(wrap);
+      const body = document.getElementById(wrapId + '-body');
+      body.dataset.wrapId = wrapId;
+      body.dataset.open = '1';
+      window.activeRunWrap = body;
+      scrollToBottom();
+    }
+
+    window.toggleRunWrap = function (wrapId, force) {
+      const body = document.getElementById(wrapId + '-body');
+      const chev = document.getElementById(wrapId + '-chev');
+      if (!body) return;
+      const open = (typeof force === 'boolean') ? force : body.dataset.open !== '1';
+      body.dataset.open = open ? '1' : '0';
+      body.style.display = open ? 'flex' : 'none';
+      if (chev) chev.style.transform = open ? 'rotate(180deg)' : 'rotate(0deg)';
+    };
+
+    function paintRunWrap(wrapId, status, duration) {
+      const pill = document.getElementById(wrapId + '-pill');
+      const dur = document.getElementById(wrapId + '-dur');
+      const spin = document.getElementById(wrapId + '-spin');
+      const ok = String(status || '').toLowerCase() === 'completed';
+      const terminal = ['completed', 'failed', 'cancelled', 'blocked', 'denied', 'denied_timeout', 'security_blocked', 'error', 'finalized'].includes(String(status || '').toLowerCase());
+      if (pill && (terminal || status)) {
+        pill.textContent = status || (ok ? 'completed' : 'failed');
+        pill.style.background = ok ? 'rgba(63,185,80,0.15)' : (terminal ? 'rgba(248,81,73,0.15)' : 'rgba(88,166,255,0.15)');
+        pill.style.color = ok ? 'var(--success-text)' : (terminal ? 'var(--error)' : 'var(--text-strong)');
+      }
+      if (dur && duration != null) dur.textContent = `✓ ${Number(duration).toFixed(1)}s`;
+      if (spin && terminal) spin.innerHTML = `<i class="fa-solid ${ok ? 'fa-circle-check' : 'fa-circle-exclamation'}" style="color: ${ok ? 'var(--success-text)' : 'var(--error)'};"></i>`;
+    }
+
+    function finalizeRunWrap(status, duration) {
+      const body = window.activeRunWrap;
+      if (!body) return;
+      const wrapId = body.dataset.wrapId;
+      paintRunWrap(wrapId, status, duration);
+      // Stay OPEN so the just-finished run stays visible; it collapses when
+      // the next run starts (startRunWrap) or via manual toggle.
+      window.activeRunWrap = null;
+      scrollToBottom();
+    }
+
+    // History replay grouping: one collapsed container per past run_id.
+    function ensureHistoryWrap(runId) {
+      if (!runId) return null;
+      window.historyRunWraps = window.historyRunWraps || {};
+      let wrapId = window.historyRunWraps[runId];
+      if (wrapId && document.getElementById(wrapId + '-body')) {
+        window.activeRunWrap = document.getElementById(wrapId + '-body');
+        return window.activeRunWrap;
+      }
+      startRunWrap();
+      wrapId = window.activeRunWrap ? window.activeRunWrap.dataset.wrapId : null;
+      if (wrapId) {
+        window.historyRunWraps[runId] = wrapId;
+        toggleRunWrap(wrapId, false);
+      }
+      return window.activeRunWrap;
+    }
+
+    function updateRunStateCard(runId, status, duration = null) {
+      const safeRunId = String(runId || window.activeAgentRunId || 'current').replace(/[^a-zA-Z0-9_-]/g, '-');
+      const stepId = `run-state-${safeRunId}`;
+      const terminal = ['completed', 'failed', 'cancelled', 'blocked', 'denied', 'denied_timeout', 'security_blocked', 'error', 'finalized'].includes(String(status).toLowerCase());
+      const successful = String(status).toLowerCase() === 'completed';
+      const color = terminal && !successful ? 'var(--error)' : '#79c0ff';
+      const existing = document.getElementById(`step-${stepId}`);
+      if (!existing) {
+        const timer = terminal ? `✓ ${Number(duration || 0).toFixed(1)}s` : null;
+        addAgentStep('Run State', escapeHtml(status || 'running'), color,
+          successful ? 'check-circle' : terminal ? 'x-circle' : 'activity', stepId, terminal, timer);
+        return;
+      }
+
+      const content = document.getElementById(`step-content-${stepId}`);
+      if (content) content.textContent = String(status || 'running');
+      if (terminal) {
+        stopStep(stepId);
+        const icon = document.getElementById(`icon-${stepId}`);
+        if (icon) {
+          icon.innerHTML = getIcon(successful ? 'check-circle' : 'x-circle');
+          icon.style.color = successful ? 'var(--success-text)' : 'var(--error)';
+          icon.querySelector('svg')?.classList.remove('fa-spin');
+        }
+      } else {
+        startAgentStepTimer(stepId);
+      }
     }
 
 
@@ -1207,19 +1619,13 @@
                     </div>
                 </div>
             `;
-        messagesDiv.appendChild(stepDiv);
+        // Stream into the active run container (roadmap rail); fall back to
+        // the bare timeline for ungrouped contexts.
+        const stepParent = (window.activeRunWrap) || messagesDiv;
+        stepParent.appendChild(stepDiv);
 
         if (!isEnd && !window.isLoadingHistory) {
-          stepTimers[stepId] = {
-            startTime: Date.now(),
-            interval: setInterval(() => {
-              const el = document.getElementById('timer-' + stepId);
-              if (el) {
-                const elapsed = ((Date.now() - stepTimers[stepId].startTime) / 1000).toFixed(1);
-                el.textContent = `${elapsed}s...`;
-              }
-            }, 100)
-          };
+          startAgentStepTimer(stepId);
         }
       } else {
         const contentDiv = document.getElementById('step-content-' + stepId);
@@ -1237,14 +1643,25 @@
         }
       }
 
-      scrollToBottom();
+      // Scroll the run container itself when the step lives inside one,
+      // so reading the runner never yanks the whole chat history.
+      const _host = stepDiv.parentElement;
+      if (_host && _host.id && /-body$/.test(_host.id)) {
+        _host.scrollTop = _host.scrollHeight;
+      } else {
+        scrollToBottom();
+      }
       if (window.lucide) window.lucide.createIcons();
     }
 
     function addSystemMsg(text, iconName = 'info') {
+      if (text.includes('Connected to NeuroSysAI') || text.includes('🚀')) {
+        if (messagesDiv.querySelector('[data-agent-connection-card="true"]')) return;
+      }
       const div = document.createElement('div');
 
       if (text.includes('Connected to NeuroSysAI') || text.includes('🚀')) {
+        div.dataset.agentConnectionCard = 'true';
         div.className = 'my-2 w-100';
         div.style.cssText = 'width: 100%; max-width: 100%; box-sizing: border-box; align-self: stretch; flex-shrink: 0; border-radius: 14px; overflow: hidden; background: var(--bg-panel); border: 1px solid var(--border-color); padding: 14px 18px; margin: 12px 0; box-shadow: 0 4px 15px rgba(0,0,0,0.15);';
         div.innerHTML = `
@@ -1296,6 +1713,75 @@
       scrollToBottom();
     }
 
+    function ensureConnectionCard() {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      addSystemMsg('Connected to NeuroSysAI SRE Agent', 'check');
+      const card = messagesDiv.querySelector('[data-agent-connection-card="true"]');
+      if (card && messagesDiv.firstElementChild !== card) messagesDiv.prepend(card);
+    }
+
+    window.closeSessionGraph = function () {
+      document.getElementById('session-graph-modal').style.display = 'none';
+    };
+
+    window.openSessionGraph = async function () {
+      const modal = document.getElementById('session-graph-modal');
+      const canvas = document.getElementById('session-graph-canvas');
+      modal.style.display = 'flex';
+      if (!sessionId) {
+        canvas.innerHTML = '<div style="color:var(--text-secondary); padding:30px; text-align:center;">Start a chat to create the first case node.</div>';
+        return;
+      }
+      canvas.innerHTML = '<div style="color:var(--text-secondary); padding:30px; text-align:center;"><i class="fa-solid fa-circle-notch fa-spin"></i> Loading case graph…</div>';
+      try {
+        const response = await fetch(`/api/v1/chat-sessions/${encodeURIComponent(sessionId)}/case-graph/`, { credentials: 'same-origin' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        renderSessionGraph(await response.json());
+      } catch (error) {
+        canvas.innerHTML = `<div style="color:var(--error); padding:30px; text-align:center;">Unable to load graph: ${escapeHtml(error.message)}</div>`;
+      }
+    };
+
+    function renderSessionGraph(graph) {
+      const canvas = document.getElementById('session-graph-canvas');
+      const nodes = graph && Array.isArray(graph.nodes) ? graph.nodes : [];
+      const edges = graph && Array.isArray(graph.edges) ? graph.edges : [];
+      if (nodes.length === 0) {
+        canvas.innerHTML = '<div style="color:var(--text-secondary); padding:30px; text-align:center;">No case nodes in this session yet.</div>';
+        return;
+      }
+      const cases = nodes.filter(node => node.node_type === 'case');
+      const entities = nodes.filter(node => node.node_type === 'entity');
+      const evidence = nodes.filter(node => node.node_type === 'evidence');
+      const width = Math.max(820, cases.length * 240 + 100, Math.max(entities.length, evidence.length) * 185 + 100);
+      const height = 560;
+      const positions = {};
+      cases.forEach((node, index) => { positions[node.id] = { x: 140 + index * 240, y: 105 }; });
+      entities.forEach((node, index) => { positions[node.id] = { x: 105 + index * 185, y: 300 }; });
+      evidence.forEach((node, index) => { positions[node.id] = { x: 105 + index * 185, y: 470 }; });
+      const edgeSvg = edges.filter(edge => positions[edge.source] && positions[edge.target]).map(edge => {
+        const from = positions[edge.source], to = positions[edge.target];
+        const semantic = edge.relation === 'same_entity' || edge.relation === 'semantically_related';
+        const color = semantic ? 'var(--success)' : (edge.relation === 'evidence' ? 'var(--warning)' : 'var(--accent)');
+        const confidence = semantic ? ` ${Math.round(Number(edge.confidence || 0) * 100)}%` : '';
+        const midY = (from.y + to.y) / 2;
+        return `<g><path d="M ${from.x} ${from.y + 45} C ${from.x} ${midY}, ${to.x} ${midY}, ${to.x} ${to.y - 34}" fill="none" stroke="${color}" stroke-opacity=".7" stroke-width="1.5" marker-end="url(#case-arrow)"/><text x="${(from.x + to.x) / 2}" y="${midY - 5}" text-anchor="middle" fill="var(--text-secondary)" font-size="10">${escapeHtml((edge.relation || 'related') + confidence)}</text></g>`;
+      }).join('');
+      const nodeSvg = nodes.map(node => {
+        const p = positions[node.id];
+        const active = node.raw_id === activeInvestigationId;
+        const statusColor = node.status === 'completed' ? 'var(--success)' : (node.status === 'failed' ? 'var(--error)' : 'var(--accent)');
+        const title = String(node.label || 'Untitled');
+        const label = title.length > 30 ? title.slice(0, 30) + '…' : title;
+        const isCase = node.node_type === 'case';
+        const nodeColor = isCase ? statusColor : (node.node_type === 'entity' ? 'var(--purple)' : 'var(--warning)');
+        const w = isCase ? 184 : 160, h = isCase ? 94 : 68;
+        const secondary = isCase ? (node.kind || 'general') : node.node_type;
+        return `<g><rect x="${p.x - w / 2}" y="${p.y - h / 2}" width="${w}" height="${h}" rx="12" fill="var(--bg-panel)" stroke="${active ? 'var(--accent)' : nodeColor}" stroke-opacity="${active ? 1 : .65}" stroke-width="${active ? 3 : 1.5}"/><text x="${p.x}" y="${p.y - 12}" text-anchor="middle" fill="var(--text-secondary)" font-size="10">${escapeHtml(secondary)}</text><text x="${p.x}" y="${p.y + 9}" text-anchor="middle" fill="var(--text-strong)" font-size="12" font-weight="600">${escapeHtml(label)}</text>${isCase ? `<text x="${p.x}" y="${p.y + 31}" text-anchor="middle" fill="${statusColor}" font-size="10">${escapeHtml(node.status || 'active')}</text>` : ''}<title>${escapeHtml(title + (node.summary ? '\n' + node.summary : ''))}</title></g>`;
+      }).join('');
+      canvas.innerHTML = `<div style="display:flex; gap:14px; flex-wrap:wrap; color:var(--text-secondary); font-size:11px; margin-bottom:8px;"><span>● Case</span><span style="color:var(--purple)">● Entity</span><span style="color:var(--warning)">● Evidence</span><span style="color:var(--success)">— Semantic correlation</span></div><svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Semantic session memory graph"><defs><marker id="case-arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="var(--accent)"/></marker></defs>${edgeSvg}${nodeSvg}</svg>`;
+    }
+
 
 
     // -- Investigation Timeline State --
@@ -1322,9 +1808,23 @@
 
         let planHtml = '';
         if (inv.plan && inv.plan.length > 0) {
-          planHtml = inv.plan.map(p => {
-            const icon = p.status === 'completed' ? `<span style="color: var(--success)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg></span>` : `<span style="color: var(--text-secondary)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle></svg></span>`;
-            return `<div style="display: flex; align-items: start; gap: 8px;">${icon} <span style="${p.status === 'completed' ? 'text-decoration: line-through; opacity: 0.6;' : ''}">${escapeHtml(p.description || p.task || '')}</span></div>`;
+          const total = inv.plan.length;
+          const doneCount = inv.plan.filter(p => String(p.status || '').toLowerCase() === 'completed').length;
+          planHtml = `<div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px;">${doneCount}/${total} selesai</div>` + inv.plan.map(p => {
+            const st = String(p.status || 'pending').toLowerCase();
+            let box, color, extra;
+            if (st === 'completed') {
+              box = '☑'; color = 'var(--success)'; extra = 'text-decoration: line-through; opacity: 0.6;';
+            } else if (st === 'failed' || st === 'error') {
+              box = '☒'; color = 'var(--error)'; extra = '';
+            } else if (st === 'blocked' || st === 'awaiting_approval') {
+              box = '⦸'; color = 'var(--warning)'; extra = '';
+            } else if (st === 'running' || st === 'in_progress' || st === 'executing') {
+              box = '⧗'; color = 'var(--accent)'; extra = '';
+            } else {
+              box = '☐'; color = 'var(--text-secondary)'; extra = '';
+            }
+            return `<div style="display: flex; align-items: start; gap: 8px;"><span style="color: ${color}; font-size: 14px; line-height: 1.4;">${box}</span> <span style="${extra} flex: 1; word-break: break-word;">${p.role ? `<span style="font-size: 10px; background: rgba(88,166,255,0.15); color: var(--text-strong); padding: 1px 6px; border-radius: 8px; margin-right: 6px; font-weight: 700; white-space: nowrap;">${escapeHtml(p.role)}</span>` : ''}${escapeHtml(p.description || p.task || '')} <span style="font-size: 10px; color: ${color}; text-transform: uppercase;">[${escapeHtml(st)}]</span></span></div>`;
           }).join('');
         } else {
           planHtml = `<div class="sre-text-secondary" style="font-style: italic;">No tasks yet</div>`;
@@ -1340,12 +1840,21 @@
             if (match) {
               const worker = escapeHtml(match[1]);
               const level = escapeHtml(match[2]);
-              const text = escapeHtml(match[3]);
+              let text = match[3];
 
               let badgeColor = 'var(--text-secondary)';
-              if (level === 'FAILURE' || level === 'ERROR') badgeColor = 'var(--error)';
+              if (level === 'FAILURE' || level === 'ERROR' || level === 'CRITICAL' || level === 'BLOCKED') badgeColor = 'var(--error)';
               if (level === 'SUCCESS' || level === 'INFO') badgeColor = 'var(--success)';
               if (level === 'WARNING') badgeColor = 'var(--warning)';
+
+              if (text.length > 300) {
+                const fid = 'finding-' + (window.findingSeq = (window.findingSeq || 0) + 1);
+                window.findingContents = window.findingContents || {};
+                window.findingContents[fid] = text;
+                text = `<span id="${fid}-short">${escapeHtml(text.slice(0, 300))}… </span><span id="${fid}-full" style="display: none;">${escapeHtml(text)}</span><a href="javascript:void(0)" onclick="window.toggleFinding('${fid}')" id="${fid}-btn" style="color: var(--text-strong); font-size: 11px; white-space: nowrap;">tampilkan semua</a>`;
+              } else {
+                text = escapeHtml(text);
+              }
 
               content = `<span style="font-size: 10px; background: ${badgeColor}22; color: ${badgeColor}; padding: 2px 6px; border-radius: 4px; margin-right: 6px; font-weight: 600;">${level}</span>
                             <span style="color: var(--text-secondary); font-weight: 600; margin-right: 6px;">[${worker}]</span>
@@ -1405,13 +1914,22 @@
       }
 
       container.style.display = 'flex';
+      const terminalWorkerStates = new Set(['completed', 'failed', 'blocked', 'cancelled']);
+      const allWorkersTerminal = activeWorkers.every(w =>
+        terminalWorkerStates.has(String(w.status || w.current_action || '').toLowerCase())
+      );
+      const headerIcon = allWorkersTerminal
+        ? `<i class="fa-solid fa-circle-check" style="color:var(--success);"></i>`
+        : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spin-anim" style="color: var(--accent);"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="4.93"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line></svg>`;
       let html = `<div style="padding: 12px 16px; font-weight: 600; color: var(--text-primary); background: var(--bg-panel); display: flex; align-items: center; gap: 8px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spin-anim" style="color: var(--accent);"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>
-            Active Workers
+            ${headerIcon}
+            ${allWorkersTerminal ? 'Workers Completed' : 'Active Workers'}
         </div>
         <div style="padding: 12px 16px; display: flex; flex-direction: column; gap: 16px;">`;
 
       activeWorkers.forEach((w) => {
+        const workerStatus = String(w.status || w.current_action || '').toLowerCase();
+        const workerTerminal = terminalWorkerStates.has(workerStatus);
         let toolHtml = '';
         if (w.last_tool) {
           toolHtml += `<div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--success);">
@@ -1421,15 +1939,18 @@
         }
 
         let actionColor = w.current_action.toLowerCase().includes('executing') ? 'var(--warning)' : 'var(--text-secondary)';
-        let currentActionHtml = `<div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: ${actionColor}; margin-top: 4px;">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spin-anim"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>
+        const workerIcon = workerTerminal
+          ? `<i class="fa-solid ${workerStatus === 'completed' ? 'fa-circle-check' : 'fa-circle-exclamation'}"></i>`
+          : `<i class="fa-solid fa-spinner spin-anim"></i>`;
+        let currentActionHtml = `<div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: ${workerTerminal && workerStatus === 'completed' ? 'var(--success)' : actionColor}; margin-top: 4px;">
+                ${workerIcon}
                 ${escapeHtml(w.current_action)}
             </div>`;
 
         html += `
                 <div style="background: var(--bg-main); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                        <div style="font-weight: 600; color: var(--text-primary); font-size: 13px;">Worker ${w.id.substring(0, 4).toUpperCase()}</div>
+                        <div style="font-weight: 600; color: var(--text-primary); font-size: 13px;">${escapeHtml(w.role || ('Worker ' + String(w.id || '').substring(0, 4).toUpperCase()))} <span style="font-weight: 400; color: var(--text-secondary); font-size: 11px;">[${escapeHtml(String(w.id || ''))}]</span></div>
                         <div style="display: flex; gap: 6px;">
                             <span style="font-size: 10px; background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; color: var(--text-secondary);" title="Findings Count">${w.findings_count} findings</span>
                             <span style="font-size: 10px; background: rgba(63, 185, 80, 0.2); padding: 2px 6px; border-radius: 4px; color: var(--success);" title="Evidence Count">${w.evidence_count} evidence</span>
@@ -1464,12 +1985,16 @@
       addUserMessage(msg);
       input.value = '';
       input.style.height = 'auto';
+      stopAllAgentStepTimers();
+      startRunWrap();
+      window.sessionStartTime = new Date();
       isProcessing = true;
       currentAIMsg = null;
       sendBtn.disabled = true;
       sendBtn.style.opacity = '0.5';
       sendBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spin-anim"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>`;
 
+      window.lastSubmittedMessage = msg;
       ws.send(JSON.stringify({
         type: 'message',
         message: msg,
@@ -1479,6 +2004,7 @@
         selected_file: window.selectedFile || '',
         selected_file_name: window.selectedFile ? window.selectedFile.split('/').pop() : '',
         model: document.getElementById('model-selector').value,
+        auto_model_rotation: localStorage.getItem('sre_auto_models') === 'true',
         mode: document.getElementById('mode-selector').value
       }));
     });
@@ -1628,10 +2154,116 @@
       }
     }
 
+    function hideApprovalCard() {
+      const card = document.getElementById('approval-card');
+      if (card) card.hidden = true;
+      if (approvalTimer) { clearInterval(approvalTimer); approvalTimer = null; }
+    }
+
+    async function bootstrapActiveRun() {
+      if (!sessionId || snapshotInFlight) return;
+      snapshotInFlight = true;
+      try {
+        const res = await fetch(`/api/v1/agent-runs/snapshot/?session_id=${encodeURIComponent(sessionId)}`, { credentials: 'same-origin' });
+        if (!res.ok) return;
+        const snapshot = await res.json();
+        const run = snapshot.run;
+        if (!run || (window.activeAgentRunId === run.id && run.checkpoint_version <= lastSnapshotCheckpoint)) return;
+        lastSnapshotCheckpoint = run.checkpoint_version;
+        window.activeAgentRunId = run.id;
+        const terminalRunStates = ['completed', 'failed', 'cancelled', 'blocked', 'denied', 'denied_timeout', 'security_blocked', 'error', 'finalized'];
+        if (terminalRunStates.includes(run.status)) stopAllAgentStepTimers();
+        updateRunStateCard(run.id, run.status, run.duration);
+        if (rehydratedSessionId !== sessionId) {
+          rehydratedSessionId = sessionId;
+          // A locally-started run already owns the live DOM. Replacing it with
+          // a history snapshot here races the Agent WebSocket and erases
+          // Discovering/Planning/Executing steps. Hydrate only on initial load
+          // or recovery when no local run is actively rendering.
+          if (!isProcessing) await loadSession(sessionId);
+        }
+        if (run.pending_approval) {
+          showApprovalCard({ ...run.pending_approval, approval_id: run.pending_approval.id, session_id: sessionId });
+        } else if (terminalRunStates.includes(run.status)) {
+          hideApprovalCard();
+          window.sessionStartTime = null;
+          isProcessing = false;
+          sendBtn.disabled = false;
+          stopSnapshotPolling();
+        } else {
+          isProcessing = true;
+          sendBtn.disabled = true;
+        }
+        (run.events || []).slice().reverse().forEach(evt => {
+          if (evt.event_type === 'provider_fallback') handleEvent({ type: 'provider_fallback', content: 'Provider fallback recorded', ...evt.payload });
+          else if (evt.event_type === 'task_verified') handleEvent({ type: 'verifying', content: 'Task verification recorded' });
+        });
+      } catch (err) {
+        console.warn('Agent run snapshot unavailable', err);
+      } finally {
+        snapshotInFlight = false;
+      }
+    }
+
+    function startSnapshotPolling() {
+      if (snapshotPollTimer || !sessionId) return;
+      snapshotPollTimer = setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) { stopSnapshotPolling(); return; }
+        if (++snapshotPollAttempts > 12) { stopSnapshotPolling(); return; }
+        if (sessionId) bootstrapActiveRun();
+      }, 5000);
+    }
+
+    function stopSnapshotPolling() {
+      if (snapshotPollTimer) clearInterval(snapshotPollTimer);
+      snapshotPollTimer = null;
+    }
+
+    function showApprovalCard(data) {
+      const approvalId = data.approval_id;
+      if (!approvalId) return;
+      const card = document.getElementById('approval-card');
+      if (!card) return;
+      card.hidden = false;
+      document.getElementById('approval-action').innerHTML = `Tool: <code>${escapeHtml(data.tool || 'unknown')}</code> · Target: <code>${escapeHtml(JSON.stringify(data.args || 'redacted'))}</code>`;
+      document.getElementById('approval-reason').textContent = `Risk: ${data.risk || "high"} · ${data.content || 'This action needs operator approval.'}`;
+      const expires = Date.parse(data.expires_at);
+      if (!Number.isFinite(expires)) { hideApprovalCard(); return; }
+      Object.keys(stepTimers).forEach(stopStep);
+      pendingApproval = {id: approvalId};
+      isProcessing = true;
+      sendBtn.disabled = true;
+      document.getElementById('approval-deny').disabled = false;
+      document.getElementById('approval-allow').disabled = false;
+      const sendDecision = (approved, timedOut = false) => {
+        if (window.sreAgentWs && window.sreAgentWs.readyState === WebSocket.OPEN) {
+          window.sreAgentWs.send(JSON.stringify({type:'approval', approved, timed_out: timedOut, approval_id: approvalId, session_id: data.session_id}));
+          document.getElementById('approval-deny').disabled = true;
+          document.getElementById('approval-allow').disabled = true;
+        }
+      };
+      document.getElementById('approval-deny').onclick = () => sendDecision(false);
+      document.getElementById('approval-allow').onclick = () => sendDecision(true);
+      if (approvalTimer) clearInterval(approvalTimer);
+      approvalTimer = setInterval(() => {
+        const left = Math.max(0, Math.ceil((expires - Date.now()) / 1000));
+        document.getElementById('approval-countdown').textContent = `${left}s remaining`;
+        if (!left) { clearInterval(approvalTimer); document.getElementById('approval-countdown').textContent = 'Waiting for server timeout decision…'; }
+      }, 250);
+    }
+
 
     window.startNewChat = function () {
 
+      stopSnapshotPolling();
+      stopAllAgentStepTimers();
+      window.sessionStartTime = null;
+      isProcessing = false;
+      sendBtn.disabled = false;
+      window.activeAgentRunId = null;
       sessionId = null;
+      lastSnapshotCheckpoint = 0;
+      rehydratedSessionId = null;
       document.querySelectorAll('.sre-history-item').forEach(i => i.classList.remove('active'));
       activeWorkers = [];
       renderWorkerActivity();
@@ -1648,9 +2280,11 @@
           </div>
         </div>
       `;
+      ensureConnectionCard();
 
       investigations = {};
       activeInvestigationId = null;
+      window.activeRunWrap = null;
       renderInvestigationTimeline();
       document.getElementById('artifacts-list').innerHTML = '<div class="sre-text-secondary" style="font-style: italic; padding: 16px;">No artifacts for this session</div>';
       window.history.pushState({}, '', window.location.pathname);
@@ -1660,7 +2294,14 @@
 
     async function loadSession(id) {
 
+      const previousSessionId = sessionId;
+      stopAllAgentStepTimers();
+      window.sessionStartTime = null;
+      isProcessing = false;
+      sendBtn.disabled = false;
+      if (previousSessionId !== id) window.activeAgentRunId = null;
       sessionId = id;
+      rehydratedSessionId = id;
       window.history.pushState({}, '', window.location.pathname + '?session=' + id);
       activeWorkers = [];
       renderWorkerActivity();
@@ -1669,6 +2310,9 @@
         const res = await fetch(`/api/v1/chat-sessions/${id}/messages/`);
         const data = await res.json();
         messagesDiv.innerHTML = '';
+        window.agentSeenEvents = new Set();
+        window.agentCompletedRuns = new Set();
+        const replayMessages = new Set();
         investigations = {};
         activeInvestigationId = null;
 
@@ -1691,6 +2335,8 @@
         }
 
         window.isLoadingHistory = true;
+        window.historyRunWraps = {};
+        window.activeRunWrap = null;
         let sessionStartTimestamp = null;
         let lastEventTimestamp = null;  // ← TAMBAHIN INI!
         const messages = (data.results || data);
@@ -1698,8 +2344,10 @@
         messages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
         messages.forEach(msg => {
+          if (msg.id && replayMessages.has(msg.id)) return;
+          if (msg.id) replayMessages.add(msg.id);
           if (msg.sender === 'user') {
-            addUserMessage(msg.message);
+            addUserMessage(msg.message, msg.created_at);
           } else if (msg.sender === 'ai') {
             if (msg.metadata && msg.metadata.events && Array.isArray(msg.metadata.events)) {
 
@@ -1712,6 +2360,21 @@
               }
 
               msg.metadata.events.forEach(evt => {
+                // Group replayed steps into the same collapsible run
+                // container the live view uses (collapsed by default).
+                if (evt.run_id) {
+                  ensureHistoryWrap(evt.run_id);
+                  if (['completed', 'error', 'failed', 'cancelled', 'blocked', 'denied', 'denied_timeout', 'security_blocked'].includes(evt.type)) {
+                    const wid = window.historyRunWraps[evt.run_id];
+                    if (wid) paintRunWrap(wid, evt.type === 'completed' ? 'completed' : (evt.status || evt.type), evt.duration);
+                  }
+                }
+                if (evt.event_id && window.agentSeenEvents.has(evt.event_id)) return;
+                if (evt.event_id) window.agentSeenEvents.add(evt.event_id);
+                if (evt.type === 'completed' && evt.run_id) {
+                  if (window.agentCompletedRuns.has(evt.run_id)) return;
+                  window.agentCompletedRuns.add(evt.run_id);
+                }
                 // === HITUNG DURASI DARI EVENT SEBELUMNYA ===
                 const diff = lastEventTimestamp ? (evt.timestamp - lastEventTimestamp) : 0;
                 const time = '✓ ' + (diff >= 0 ? diff : 0).toFixed(1) + 's';
@@ -1720,6 +2383,12 @@
                 lastEventTimestamp = evt.timestamp;
 
                 switch (evt.type) {
+                  case 'lifecycle':
+                  case 'resuming':
+                  case 'provider_fallback':
+                  case 'verifying':
+                    updateRunStateCard(evt.run_id || `history-${msg.id || 'current'}`, evt.status || evt.content || evt.type);
+                    break;
                   case 'session_id':
                     sessionStartTimestamp = evt.timestamp;
                     break;
@@ -1732,6 +2401,22 @@
                     break;
 
                   case 'task_plan':
+                    (function () {
+                      const planData = evt.plan;
+                      if (planData && planData.investigation_id) {
+                        if (!investigations[planData.investigation_id]) {
+                          investigations[planData.investigation_id] = {
+                            id: planData.investigation_id,
+                            title: planData.title || 'Investigation',
+                            status: 'active',
+                            plan: [],
+                            findings: []
+                          };
+                        }
+                        investigations[planData.investigation_id].plan = Array.isArray(planData) ? planData : (planData.tasks || []);
+                        renderInvestigationTimeline();
+                      }
+                    })();
                     addAgentStep('Task Plan', 'Plan updated', '#dac654', 'list-todo', null, false, time);
                     break;
 
@@ -1752,7 +2437,7 @@
                     break;
 
                   case 'thinking':
-                    addAgentStep('Thinking', evt.content, '#ff69b4', 'brain', null, false, time);
+                    addAgentStep('Thinking', String(evt.content || '').slice(0, 600), '#ff69b4', 'brain', null, false, time);
                     break;
 
                   case 'tool_start':
@@ -1787,10 +2472,22 @@
                     break;
 
                   case 'findings':
+                    (function () {
+                      const f = evt.findings;
+                      const invId = (f && f.investigation_id) || null;
+                      if (invId) {
+                        if (!investigations[invId]) {
+                          investigations[invId] = { id: invId, title: 'Investigation', status: 'active', plan: [], findings: [] };
+                        }
+                        investigations[invId].findings = Array.isArray(f) ? f : (f.findings || []);
+                        renderInvestigationTimeline();
+                      }
+                    })();
                     addAgentStep('Findings', 'New findings recorded', 'var(--success)', 'check-square', null, false, time);
                     break;
 
                   case 'completed':
+                    updateRunStateCard(evt.run_id || `history-${msg.id || 'current'}`, 'completed', evt.duration);
                     const endTime = new Date(evt.timestamp * 1000);
                     const startTime = new Date(endTime.getTime() - ((evt.duration || 0) * 1000));
                     const dur = (evt.duration || 0).toFixed(1);
@@ -1805,9 +2502,12 @@
                                           <i class="fa-solid fa-chevron-down" style="margin-left: auto; color: var(--success); font-size: 10px; transition: transform 0.2s;"></i>
                                       </summary>
                                       <div style="padding: 16px; font-size: 13px; background: var(--bg-panel); border-top: 1px solid var(--border-color);">
-                                          <p style="margin-top: 0; margin-bottom: 12px;">${evt.content}</p>
+                                          <details style="margin-bottom: 12px;">
+                                              <summary style="cursor: pointer; font-size: 12px; color: var(--text-secondary);">Lihat ringkasan hasil (sudah tampil di pesan di atas)</summary>
+                                              <p style="margin: 8px 0 0 0;">${escapeHtml(evt.content || "")}</p>
+                                          </details>
                                           <table style="width: 100%; border-collapse: collapse; font-size: 12px; border: 1px solid var(--border-color);">
-                                              <tr style="background: #21262d;"><th style="color: var(--success); padding: 6px; border: 1px solid var(--border-color); text-align: left;">Audit Trail</th><th style="color: var(--success); padding: 6px; border: 1px solid var(--border-color); text-align: left;">Details</th></tr>
+                                              <tr style="background: var(--bg-panel);"><th style="color: var(--success); padding: 6px; border: 1px solid var(--border-color); text-align: left;">Audit Trail</th><th style="color: var(--success); padding: 6px; border: 1px solid var(--border-color); text-align: left;">Details</th></tr>
                                               <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Status</td><td style="padding: 6px; border: 1px solid var(--border-color); color: var(--success);"><strong>COMPLETED</strong></td></tr>
                                               <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Start Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${startTime.toLocaleTimeString()}</td></tr>
                                               <tr><td style="padding: 6px; border: 1px solid var(--border-color);">End Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${endTime.toLocaleTimeString()}</td></tr>
@@ -1817,6 +2517,16 @@
                                   </details>
                               `;
                     messagesDiv.innerHTML += auditHtml;
+                    break;
+
+                  case 'error':
+                  case 'failed':
+                  case 'cancelled':
+                  case 'blocked':
+                  case 'denied':
+                  case 'denied_timeout':
+                  case 'security_blocked':
+                    updateRunStateCard(evt.run_id || `history-${msg.id || 'current'}`, evt.type);
                     break;
 
                   case 'investigation_started':
@@ -1837,10 +2547,23 @@
                     break;
 
                   case 'task_updated':
-                    const taskData = evt.data?.task || (evt.data?.metadata && evt.data?.metadata?.task);
+                    const taskData = evt.task;
                     if (taskData && taskData.new_status === 'completed') {
                       addAgentStep('Task Completed', taskData.task, 'var(--success)', 'check-circle', null, false, time);
                     }
+                    break;
+
+                  case 'resolution_plan': {
+                    const steps = evt.steps || [];
+                    const stepsHtml = Array.isArray(steps) && steps.length > 0
+                      ? '<ol style="margin: 6px 0 0 18px; padding: 0;">' + steps.map(s => `<li>${escapeHtml(String(s))}</li>`).join('') + '</ol>'
+                      : escapeHtml(evt.content || '');
+                    addAgentStep('Resolution Plan', stepsHtml, '#39c5cf', 'list-checks', null, false, time);
+                    break;
+                  }
+
+                  case 'status':
+                    addSystemMsg(evt.content, 'check');
                     break;
 
                   default:
@@ -1849,14 +2572,17 @@
               });
             }
             if (msg.message && msg.message.trim() !== "") {
-              addAIMessage(msg.message);
+              addAIMessage(msg.message, msg.created_at);
             }
           }
         });
         window.isLoadingHistory = false;
+        window.activeRunWrap = null;
+        ensureConnectionCard();
         lucide.createIcons();
         loadArtifacts();
         renderInvestigationTimeline();
+        if (ws && ws.readyState === WebSocket.OPEN) await bootstrapActiveRun();
 
       } catch (e) {
         console.error('Failed to load session', e);
@@ -2031,6 +2757,11 @@
           }
 
           const cardId = 'artifact-' + art.id;
+          window.artifactContents[cardId] = {
+            full: contentToShow,
+            preview: previewLines + (hasMore ? '\n... (truncated — click Show full)' : ''),
+            fileName: fileName
+          };
 
           const el = document.createElement('div');
           el.style.cssText = 'margin-bottom: 12px;';
@@ -2066,15 +2797,16 @@
                 
                 <!-- Content Preview -->
                 <div style="padding: 12px 14px;">
-                  <pre style="background: #0d1117; color: #c9d1d9; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 11px; max-height: 200px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.06); font-family: 'JetBrains Mono', 'Fira Code', monospace; line-height: 1.5; margin: 0;">${escapeHtml(previewLines)}${hasMore ? '\n... (truncated)' : ''}</pre>
+                  <pre id="${cardId}-pre" style="background: var(--bg-panel); color: var(--text-primary); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 11px; max-height: 200px; overflow-y: auto; border: 1px solid var(--border-color); font-family: 'JetBrains Mono', 'Fira Code', monospace; line-height: 1.5; margin: 0; white-space: pre-wrap; word-break: break-word;">${escapeHtml(previewLines)}${hasMore ? '\n... (truncated — click Show full)' : ''}</pre>
                 </div>
-                
-                ${rollbackBtn ? `
+
                 <!-- Actions -->
-                <div style="padding: 8px 14px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 6px;">
+                <div style="padding: 8px 14px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 6px; flex-wrap: wrap;">
+                  ${hasMore ? `<button onclick="window.toggleArtifactFull('${cardId}')" id="${cardId}-expandbtn" style="background: rgba(88,166,255,0.12); color: var(--text-strong); border: 1px solid var(--border-color); border-radius: 6px; padding: 4px 10px; font-size: 11px; cursor: pointer; font-weight: 500;">⤢ Show full</button>` : ''}
+                  <button onclick="window.copyArtifact('${cardId}')" style="background: rgba(88,166,255,0.12); color: var(--text-strong); border: 1px solid var(--border-color); border-radius: 6px; padding: 4px 10px; font-size: 11px; cursor: pointer; font-weight: 500;">⧉ Copy</button>
+                  <button onclick="window.downloadArtifact('${cardId}')" style="background: rgba(88,166,255,0.12); color: var(--text-strong); border: 1px solid var(--border-color); border-radius: 6px; padding: 4px 10px; font-size: 11px; cursor: pointer; font-weight: 500;">⤓ Download</button>
                   ${rollbackBtn}
                 </div>
-                ` : ''}
               </div>
             </div>
           `;
@@ -2114,6 +2846,72 @@
       } catch (e) {
         alert('Error rollback');
       }
+    };
+
+    window.artifactContents = window.artifactContents || {};
+
+    window.continueRun = function () {
+      try {
+        if (typeof isProcessing !== 'undefined' && isProcessing) return;
+        const inputEl = document.getElementById('chat-input') || (typeof input !== 'undefined' ? input : null);
+        const formEl = (typeof form !== 'undefined' && form) ? form : (inputEl ? inputEl.form : null);
+        if (!inputEl || !formEl) return;
+        inputEl.value = 'lanjut';
+        if (formEl.requestSubmit) formEl.requestSubmit();
+        else formEl.dispatchEvent(new Event('submit', { cancelable: true }));
+      } catch (e) { /* no-op */ }
+    };
+
+    window.toggleFinding = function (fid) {
+      const shortEl = document.getElementById(fid + '-short');
+      const fullEl = document.getElementById(fid + '-full');
+      const btn = document.getElementById(fid + '-btn');
+      if (!shortEl || !fullEl || !btn) return;
+      const expanded = fullEl.style.display !== 'none';
+      fullEl.style.display = expanded ? 'none' : 'inline';
+      shortEl.style.display = expanded ? 'inline' : 'none';
+      btn.textContent = expanded ? 'tampilkan semua' : 'ringkas';
+    };
+
+    window.toggleArtifactFull = function (cardId) {
+      const entry = window.artifactContents[cardId];
+      const pre = document.getElementById(cardId + '-pre');
+      const btn = document.getElementById(cardId + '-expandbtn');
+      if (!entry || !pre) return;
+      if (pre.dataset.expanded === '1') {
+        pre.textContent = entry.preview;
+        pre.style.maxHeight = '200px';
+        pre.dataset.expanded = '0';
+        if (btn) btn.textContent = '⤢ Show full';
+      } else {
+        pre.textContent = entry.full;
+        pre.style.maxHeight = '600px';
+        pre.dataset.expanded = '1';
+        if (btn) btn.textContent = '⤢ Show less';
+      }
+    };
+
+    window.copyArtifact = async function (cardId) {
+      const entry = window.artifactContents[cardId];
+      if (!entry) return;
+      try {
+        await navigator.clipboard.writeText(entry.full);
+        alert('Artifact disalin ke clipboard!');
+      } catch (e) {
+        alert('Gagal menyalin.');
+      }
+    };
+
+    window.downloadArtifact = function (cardId) {
+      const entry = window.artifactContents[cardId];
+      if (!entry) return;
+      const blob = new Blob([entry.full], { type: 'text/markdown;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = entry.fileName || 'artifact.md';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
     };
 
     // --- Terminal ---
@@ -2267,7 +3065,7 @@
   #sre-agent-app .ai-content h1,
   #sre-agent-app .ai-content h2,
   #sre-agent-app .ai-content h3 {
-    color: #f0f6fc;
+    color: var(--text-strong);
     margin: 12px 0 6px 0;
   }
 
@@ -2290,8 +3088,56 @@
   }
 
   #sre-agent-app .ai-content th {
-    background: #21262d;
-    color: #f0f6fc;
+    background: var(--bg-panel);
+    color: var(--text-strong);
+  }
+
+  #sre-agent-app .ai-content {
+    color: var(--text-primary);
+    word-break: break-word;
+  }
+
+  #sre-agent-app .ai-content pre {
+    background: var(--bg-panel);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 10px 12px;
+    overflow-x: auto;
+    font-size: 12px;
+  }
+
+  #sre-agent-app .ai-content code {
+    background: var(--bg-panel);
+    color: var(--text-strong);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 12px;
+  }
+
+  #sre-agent-app .ai-content pre code {
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: inherit;
+  }
+
+  #sre-agent-app .ai-content blockquote {
+    border-left: 3px solid var(--warning);
+    margin: 8px 0;
+    padding: 6px 12px;
+    color: var(--text-secondary);
+    background: var(--bg-panel);
+    border-radius: 0 6px 6px 0;
+  }
+
+  #sre-agent-app .ai-content ul {
+    padding-left: 22px;
+  }
+
+  #sre-agent-app .ai-content input[type="checkbox"] {
+    accent-color: var(--success);
   }
 
   #chat-messages::-webkit-scrollbar {
@@ -2512,6 +3358,18 @@
   </div>
 </div>
 
+<!-- Session Case Graph Modal -->
+<div id="session-graph-modal"
+  style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.68); z-index:10020; align-items:center; justify-content:center; padding:24px;">
+  <div style="width:min(920px, 94vw); max-height:86vh; overflow:hidden; display:flex; flex-direction:column; background:var(--bg-panel); border:1px solid var(--border-color); border-radius:16px; box-shadow:0 24px 80px rgba(0,0,0,.45);">
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:16px 18px; border-bottom:1px solid var(--border-color);">
+      <div><div style="font-weight:700; color:var(--text-strong);">Session Graph</div><div style="font-size:11px; color:var(--text-secondary); margin-top:3px;">Each node is an isolated case. Edges show when the conversation switches to another case.</div></div>
+      <button onclick="closeSessionGraph()" aria-label="Close" style="border:0; background:transparent; color:var(--text-secondary); cursor:pointer; font-size:20px;">&times;</button>
+    </div>
+    <div id="session-graph-canvas" style="min-height:360px; overflow:auto; padding:18px; background:var(--bg-main);"></div>
+  </div>
+</div>
+
 <!-- Sudo Password Modal -->
 <div id="sudo-modal"
   style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); backdrop-filter: blur(5px); z-index: 9999; align-items: center; justify-content: center;">
@@ -2633,16 +3491,26 @@
 
       <!-- Existing Models List -->
       <div>
-        <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="d-flex justify-content-between align-items-center mb-3" style="flex-wrap: wrap; gap: 8px;">
           <div class="d-flex align-items-center" style="gap: 8px;">
             <h4 style="margin: 0; font-size: 14px; font-weight: 600; color: var(--text-primary);">Configured Models</h4>
             <span id="model-count-badge" class="badge rounded-pill sre-input"
               style="font-size: 10px; font-weight: 500; padding: 4px 8px; color: var(--text-secondary);">0 models</span>
           </div>
-          <button onclick="openAddAIModelForm()" class="sre-btn-primary btn btn-sm rounded-pill px-3 shadow-sm"
-            style="font-weight: 600; font-size: 12px; border: none;">
-            <i class="fa-solid fa-plus me-1"></i> Add New Model
-          </button>
+          <div class="d-flex align-items-center" style="gap: 8px;">
+            <div id="model-status-filter" style="display: flex; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 16px; padding: 2px; gap: 2px;">
+              <button type="button" data-statusfilter="all" onclick="setModelStatusFilter('all')"
+                style="border: none; border-radius: 14px; padding: 3px 12px; font-size: 11px; font-weight: 600; cursor: pointer;">All</button>
+              <button type="button" data-statusfilter="active" onclick="setModelStatusFilter('active')"
+                style="border: none; border-radius: 14px; padding: 3px 12px; font-size: 11px; font-weight: 600; cursor: pointer;">Active</button>
+              <button type="button" data-statusfilter="inactive" onclick="setModelStatusFilter('inactive')"
+                style="border: none; border-radius: 14px; padding: 3px 12px; font-size: 11px; font-weight: 600; cursor: pointer;">Inactive</button>
+            </div>
+            <button onclick="openAddAIModelForm()" class="sre-btn-primary btn btn-sm rounded-pill px-3 shadow-sm"
+              style="font-weight: 600; font-size: 12px; border: none;">
+              <i class="fa-solid fa-plus me-1"></i> Add New Model
+            </button>
+          </div>
         </div>
 
         <div
@@ -2701,8 +3569,19 @@
             <div class="col-md-6">
               <label class="form-label mb-1"
                 style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">Provider</label>
-              <input type="text" id="model-provider-input" placeholder="e.g. 9router, nvidia, ollama, mistral" required
+              <input type="text" id="model-provider-input" placeholder="e.g. CLAUDE, NVIDIA, 9router" required
                 class="sre-input" style="width: 100%; padding: 8px 12px; border-radius: 8px; font-size: 12px;">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label mb-1"
+                style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">Endpoint Type</label>
+              <div id="model-endpoint-toggle" style="display: flex; background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 8px; padding: 3px; gap: 3px;">
+                <button type="button" data-endpoint="openai" onclick="setModelEndpointType('openai')"
+                  style="flex: 1; border: none; border-radius: 6px; padding: 6px 4px; font-size: 11px; font-weight: 600; cursor: pointer;">OpenAI-compatible</button>
+                <button type="button" data-endpoint="anthropic" onclick="setModelEndpointType('anthropic')"
+                  style="flex: 1; border: none; border-radius: 6px; padding: 6px 4px; font-size: 11px; font-weight: 600; cursor: pointer;">Anthropic native</button>
+              </div>
+              <div id="model-endpoint-hint" style="font-size: 11px; color: var(--text-secondary); margin-top: 4px; opacity: 0.85;"></div>
             </div>
             <div class="col-md-6">
               <label class="form-label mb-1"
@@ -2759,13 +3638,44 @@
 <script>
   let currentLoadedAIModels = [];
 
+  function compatibleAutoModels() {
+    return currentLoadedAIModels.filter(model => model.is_active);
+  }
+
+  function updateAutoModelsButton() {
+    const button = document.getElementById('auto-model-btn');
+    const selector = document.getElementById('model-selector');
+    if (!button || !selector) return;
+    const active = localStorage.getItem('sre_auto_models') === 'true';
+    const count = compatibleAutoModels().length;
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    button.style.color = active ? 'var(--success)' : 'var(--text-secondary)';
+    button.style.borderColor = active ? 'var(--success)' : 'var(--border-color)';
+    button.innerHTML = `<i class="fa-solid fa-rotate"></i> Auto Models: ${active ? `On (${count})` : 'Off'}`;
+    button.title = active
+      ? `Automatic failover is active across ${count} active models and providers`
+      : 'Try active models across providers automatically when one is unavailable';
+    selector.style.opacity = active ? '0.72' : '1';
+  }
+
+  function toggleAutoModels() {
+    const next = localStorage.getItem('sre_auto_models') !== 'true';
+    const compatible = compatibleAutoModels();
+    if (next && compatible.length < 2) {
+      alert('Auto Models needs at least 2 active models. Activate another model in Model Settings first.');
+      return;
+    }
+    localStorage.setItem('sre_auto_models', next ? 'true' : 'false');
+    updateAutoModelsButton();
+  }
+
   function purgeBootstrapSelect() {
     if (window.jQuery && $.fn.selectpicker) {
       try {
-        $('#model-selector, #mode-selector, #arch-model-selector').selectpicker('destroy');
+        $('#permission-selector, #model-selector, #mode-selector, #arch-model-selector').selectpicker('destroy');
       } catch (e) { }
     }
-    ['model-selector', 'mode-selector', 'arch-model-selector'].forEach(id => {
+    ['permission-selector', 'model-selector', 'mode-selector', 'arch-model-selector'].forEach(id => {
       const el = document.getElementById(id);
       if (el) {
         const parent = el.closest('.bootstrap-select');
@@ -2804,6 +3714,7 @@
         } else if (selector.options.length > 0) {
           localStorage.setItem('sre_selected_model', selector.options[0].value);
         }
+        updateAutoModelsButton();
       }
     } catch (err) {
       console.error('Failed to load AI models:', err);
@@ -2813,6 +3724,7 @@
 
   function openModelManagerModal() {
     document.getElementById('ai-model-modal').style.display = 'flex';
+    setModelStatusFilter(window.modelStatusFilter || 'all');
     renderModelManagerTable();
     closeAIModelForm();
   }
@@ -2839,17 +3751,39 @@
     resetAIModelForm();
   }
 
+  function setModelStatusFilter(val) {
+    window.modelStatusFilter = (val === 'active' || val === 'inactive') ? val : 'all';
+    const bar = document.getElementById('model-status-filter');
+    if (bar) {
+      Array.from(bar.querySelectorAll('button')).forEach(b => {
+        const active = b.dataset.statusfilter === window.modelStatusFilter;
+        b.style.background = active ? 'var(--accent)' : 'transparent';
+        b.style.color = active ? '#fff' : 'var(--text-secondary)';
+      });
+    }
+    if (typeof renderModelManagerTable === 'function') renderModelManagerTable();
+  }
+
   function renderModelManagerTable() {
     const tbody = document.getElementById('ai-models-table-body');
     const badge = document.getElementById('model-count-badge');
-    if (badge) badge.innerText = `${currentLoadedAIModels.length} models`;
+    const filt = window.modelStatusFilter || 'all';
+    const visibleModels = (currentLoadedAIModels || []).filter(m => {
+      if (filt === 'active') return !!m.is_active;
+      if (filt === 'inactive') return !m.is_active;
+      return true;
+    });
+    if (badge) badge.innerText = `${visibleModels.length} of ${currentLoadedAIModels.length} models`;
 
     if (!tbody) return;
-    if (currentLoadedAIModels.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="8" style="padding: 24px; text-align: center; color: var(--text-secondary);">No models configured. Click <b>Add New Model</b> to create one.</td></tr>`;
+    if (visibleModels.length === 0) {
+      const emptyMsg = filt === 'all'
+        ? 'No models configured. Click <b>Add New Model</b> to create one.'
+        : `No ${filt} models.`;
+      tbody.innerHTML = `<tr><td colspan="8" style="padding: 24px; text-align: center; color: var(--text-secondary);">${emptyMsg}</td></tr>`;
       return;
     }
-    tbody.innerHTML = currentLoadedAIModels.map(m => `
+    tbody.innerHTML = visibleModels.map(m => `
       <tr style="border-bottom: 1px solid var(--border-color);">
         <td style="padding: 10px 12px; text-align: center; white-space: nowrap;">
           <span style="font-family: monospace; font-size: 11px; color: var(--text-secondary); background: var(--bg-main); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">${m.order}</span>
@@ -2860,6 +3794,7 @@
         </td>
         <td style="padding: 10px 12px; white-space: nowrap;">
           <span style="font-size: 10px; font-weight: 600; background: rgba(137, 87, 229, 0.12); color: var(--purple); padding: 3px 8px; border-radius: 12px; border: 1px solid rgba(137, 87, 229, 0.3);">${m.provider}</span>
+          <span title="${(m.endpoint_type || 'openai') === 'anthropic' ? 'Anthropic native Messages API' : 'OpenAI-compatible chat-completions'}" style="font-size: 10px; font-weight: 600; background: ${(m.endpoint_type || 'openai') === 'anthropic' ? 'rgba(210,153,34,0.12); color: var(--warning); border: 1px solid rgba(210,153,34,0.3)' : 'rgba(88,166,255,0.12); color: var(--text-strong); border: 1px solid var(--border-color)'}; padding: 3px 8px; border-radius: 12px; margin-left: 4px;">${(m.endpoint_type || 'openai') === 'anthropic' ? 'Anthropic' : 'OpenAI'}</span>
         </td>
         <td style="padding: 10px 12px; font-family: monospace; font-size: 11px; color: var(--text-secondary); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
           ${m.base_url ? m.base_url : '<span style="opacity: 0.5; font-style: italic;">Default</span>'}
@@ -2889,6 +3824,35 @@
 
 
 
+  const MODEL_ENDPOINT_INFO = {
+    'openai': { hint: 'Chat-completions transport (OpenAI, 9Router, proxy apapun). Default untuk semua provider.', placeholder: 'http://localhost:20128/v1' },
+    'anthropic': { hint: 'Anthropic NATIVE Messages API (api.anthropic.com). Kosongkan Base URL. Wajib API key sk-ant-... Isi Base URL hanya bila pakai proxy OpenAI-compatible.', placeholder: '(kosongkan untuk native)' }
+  };
+
+  function setModelEndpointType(val) {
+    const toggle = document.getElementById('model-endpoint-toggle');
+    const hint = document.getElementById('model-endpoint-hint');
+    const base = document.getElementById('model-baseurl-input');
+    const v = (val === 'anthropic') ? 'anthropic' : 'openai';
+    if (toggle) {
+      toggle.dataset.value = v;
+      Array.from(toggle.querySelectorAll('button')).forEach(b => {
+        const active = b.dataset.endpoint === v;
+        b.style.background = active ? 'var(--accent)' : 'transparent';
+        b.style.color = active ? '#fff' : 'var(--text-secondary)';
+      });
+    }
+    const info = MODEL_ENDPOINT_INFO[v];
+    if (hint) hint.textContent = info.hint;
+    if (base && !base.value) base.placeholder = info.placeholder;
+  }
+
+  function getModelEndpointType() {
+    const toggle = document.getElementById('model-endpoint-toggle');
+    const v = toggle && toggle.dataset.value;
+    return (v === 'anthropic') ? 'anthropic' : 'openai';
+  }
+
   function resetAIModelForm() {
     const editId = document.getElementById('model-edit-id');
     if (editId) editId.value = '';
@@ -2898,6 +3862,7 @@
     if (idInput) idInput.value = '';
     const providerInput = document.getElementById('model-provider-input');
     if (providerInput) providerInput.value = '9router';
+    setModelEndpointType('openai');
     const baseUrlInput = document.getElementById('model-baseurl-input');
     if (baseUrlInput) baseUrlInput.value = '';
     const apiKeyInput = document.getElementById('model-apikey-input');
@@ -2916,7 +3881,8 @@
     document.getElementById('model-edit-id').value = m.id;
     document.getElementById('model-name-input').value = m.name;
     document.getElementById('model-id-input').value = m.model_id;
-    document.getElementById('model-provider-input').value = m.provider;
+    document.getElementById('model-provider-input').value = m.provider || '';
+    setModelEndpointType(m.endpoint_type || 'openai');
     document.getElementById('model-baseurl-input').value = m.base_url || '';
     document.getElementById('model-apikey-input').value = m.api_key || '';
     document.getElementById('model-order-input').value = m.order;
@@ -2938,6 +3904,7 @@
       name: document.getElementById('model-name-input').value,
       model_id: document.getElementById('model-id-input').value,
       provider: document.getElementById('model-provider-input').value,
+      endpoint_type: getModelEndpointType(),
       base_url: document.getElementById('model-baseurl-input').value,
       api_key: document.getElementById('model-apikey-input').value,
       order: parseInt(document.getElementById('model-order-input').value) || 0,
@@ -2997,6 +3964,7 @@
     const payload = {
       model_id: document.getElementById('model-id-input').value,
       provider: document.getElementById('model-provider-input').value,
+      endpoint_type: getModelEndpointType(),
       base_url: document.getElementById('model-baseurl-input').value,
       api_key: document.getElementById('model-apikey-input').value,
     };
@@ -3437,10 +4405,15 @@
       }
       selector.addEventListener('change', function () {
         localStorage.setItem('sre_selected_model', this.value);
+        if (localStorage.getItem('sre_auto_models') === 'true' && compatibleAutoModels().length < 2) {
+          localStorage.setItem('sre_auto_models', 'false');
+        }
+        updateAutoModelsButton();
       });
     }
     purgeBootstrapSelect();
     loadAIModels();
+    updateAutoModelsButton();
     setTimeout(purgeBootstrapSelect, 300);
     setTimeout(purgeBootstrapSelect, 1000);
   });

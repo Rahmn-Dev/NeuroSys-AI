@@ -28,7 +28,8 @@ class InvestigationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.Investigation
-        fields = ['id', 'session', 'title', 'status', 'created_at', 'updated_at', 'tasks', 'findings']
+        fields = ['id', 'session', 'title', 'status', 'parent', 'relation_type', 'case_kind',
+                  'goal_signature', 'created_at', 'updated_at', 'tasks', 'findings']
 
 class ChatSessionSerializer(serializers.ModelSerializer):
     messages = ChatMessageSerializer(many=True, read_only=True)
@@ -54,5 +55,4 @@ class ChatSessionSerializer(serializers.ModelSerializer):
 
 #         ChatMessage.objects.create(session=session, sender=sender, message=message)
 #         return Response({'status': 'message sent'})
-
 

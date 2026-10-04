@@ -27,6 +27,18 @@ def _run(cmd: str, timeout: int = 30) -> str:
         return f"Error: {e}"
 
 
+def _run_argv(command, timeout: int = 30) -> str:
+    """Run validated dynamic arguments without a shell."""
+    try:
+        result = subprocess.run(command, shell=False, capture_output=True, text=True, timeout=timeout)
+        output = (result.stdout + "\n" + result.stderr).strip()
+        return (output[:3000] + ("\n... (output truncated)" if len(output) > 3000 else "")) or "(no output)"
+    except subprocess.TimeoutExpired:
+        return f"Error: Command timed out after {timeout}s"
+    except Exception:
+        return "Error: command execution failed"
+
+
 # ---------------------------------------------------------------------------
 # Tool implementations
 # ---------------------------------------------------------------------------
@@ -65,12 +77,33 @@ def service_manager(action: str, service_name: str = "") -> str:
         return _run("systemctl list-units --type=service --state=running --no-pager --no-legend | head -40")
     elif action == "failed":
         return _run("systemctl list-units --failed --no-pager --no-legend")
-    elif action in ("status", "start", "stop", "restart"):
+    elif action in ("status", "is-active", "show", "start", "stop", "restart"):
         if not service_name:
             return f"Error: service_name is required for action '{action}'"
-        return _run(f"systemctl {action} {service_name} 2>&1")
+        result = _run_argv(["systemctl", action, service_name])
+        if action in {"start", "stop", "restart"}:
+            state = _run_argv(["systemctl", "is-active", service_name]).strip()
+            expected = "inactive" if action == "stop" else "active"
+            if state != expected:
+                return f"Error: service postcondition not verified (expected {expected}, observed {state})"
+            return f"Service action verified: {service_name} is {state}"
+        return result
     else:
         return "Unknown action. Use: status, start, stop, restart, list, failed."
+
+
+@tool
+def service_config_check(service_name: str) -> str:
+    """Validate configuration syntax for an allowlisted service without mutation."""
+    commands = {
+        "nginx": ["nginx", "-t"],
+        "apache2": ["apache2ctl", "configtest"],
+        "httpd": ["apachectl", "configtest"],
+    }
+    command = commands.get(str(service_name).lower())
+    if not command:
+        return "Error: configuration validation is not supported for this service"
+    return _run_argv(command, timeout=30)
 
 
 @tool
@@ -85,11 +118,11 @@ def process_manager(action: str, target: str = "") -> str:
     elif action == "search":
         if not target:
             return "Error: target (process name) is required for search."
-        return _run(f"pgrep -af '{target}'")
+        return _run_argv(["pgrep", "-af", target])
     elif action == "kill":
         if not target:
             return "Error: target (PID) is required for kill."
-        return _run(f"kill {target}")
+        return _run_argv(["kill", target])
     else:
         return "Unknown action. Use: list, top, search, kill."
 
@@ -104,17 +137,17 @@ def package_manager(action: str, package: str = "") -> str:
     elif action == "search":
         if not package:
             return "Error: package name required."
-        return _run(f"apt-cache search '{package}' | head -20")
+        return _run_argv(["apt-cache", "search", package])
     elif action == "info":
         if not package:
             return "Error: package name required."
-        return _run(f"apt-cache show '{package}' 2>/dev/null | head -30")
+        return _run_argv(["apt-cache", "show", package])
     elif action == "update":
         return _run("apt update 2>&1 | tail -5", timeout=120)
     elif action == "install":
         if not package:
             return "Error: package name required."
-        return _run(f"apt install -y '{package}' 2>&1", timeout=120)
+        return _run_argv(["apt", "install", "-y", package], timeout=120)
     else:
         return "Unknown action. Use: list_installed, search, info, update, install."
 
@@ -131,18 +164,24 @@ def log_reader(source: str, lines: int = 50, filter_pattern: str = "") -> str:
         "kern": "/var/log/kern.log",
     }
 
-    if source == "journal":
-        cmd = f"journalctl --no-pager -n {lines}"
-    elif source in log_map:
-        cmd = f"tail -n {lines} {log_map[source]}"
-    else:
-        # treat as file path
-        cmd = f"tail -n {lines} {source}"
+    try:
+        lines = max(1, min(int(lines), 500))
+        if source == "journal":
+            command = ["journalctl", "--no-pager", "-n", str(lines)]
+        elif source in log_map or source.startswith("/"):
+            command = ["tail", "-n", str(lines), "--", log_map.get(source, source)]
+        else:
+            command = ["journalctl", "--no-pager", "-n", str(lines), "-u", source]
+        result = subprocess.run(command, capture_output=True, text=True, timeout=15)
+        if result.returncode:
+            return "Error: log collection failed"
+        output = result.stdout
+        if filter_pattern:
+            output = "\n".join(line for line in output.splitlines() if filter_pattern.lower() in line.lower())
+        return output[:12000] or "(no matching log entries)"
+    except (ValueError, OSError, subprocess.TimeoutExpired):
+        return "Error: log collection failed"
 
-    if filter_pattern:
-        cmd += f" | grep -i '{filter_pattern}'"
-
-    return _run(cmd, timeout=15)
 
 
 @tool
@@ -278,6 +317,17 @@ def register_linux_tools() -> None:
             priority=80,
             capabilities=["service_management", "environment_discovery"],
         )),
+        (service_config_check, ToolMetadata(
+            name="service_config_check",
+            description="Read-only syntax validation for allowlisted service configuration (nginx/apache)",
+            category="linux",
+            risk_level=RiskLevel.LOW,
+            input_schema={"service_name": "nginx|apache2|httpd"},
+            examples=["service_config_check('nginx')"],
+            keywords=["nginx", "apache", "config", "configuration", "syntax", "validate", "test"],
+            priority=90,
+            capabilities=["service_config_validation", "environment_discovery"],
+        )),
         (process_manager, ToolMetadata(
             name="process_manager",
             description="List, search, or kill Linux processes",
@@ -303,7 +353,7 @@ def register_linux_tools() -> None:
         )),
         (log_reader, ToolMetadata(
             name="log_reader",
-            description="Read system logs (syslog, auth, kern, journalctl, or arbitrary log file)",
+            description="Read bounded system logs under /var/log or journalctl; use this instead of read_file for service logs",
             category="filesystem_operation",
             risk_level=RiskLevel.LOW,
             input_schema={"source": "syslog|auth|kern|journal|<filepath>", "lines": "int", "filter_pattern": "string"},

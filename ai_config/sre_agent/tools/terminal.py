@@ -200,7 +200,7 @@ def register_terminal_tools() -> None:
     registry.bulk_register([
         (terminal_execute, ToolMetadata(
             name="terminal_execute",
-            description="Execute arbitrary terminal commands in the active workspace",
+            description="Execute a concise terminal action. Prefer one bounded read-only pipeline (for example journalctl | grep | tail) over repeated broad queries.",
             category="terminal",
             risk_level=RiskLevel.HIGH,
             input_schema={"command": "string", "timeout": "int"},
@@ -216,7 +216,14 @@ def register_terminal_tools() -> None:
                 "working directory",
                 "uptime",
                 "operating system information",
-                "arbitrary shell execution"
+                "arbitrary shell execution",
+                "shell_execution",
+                "command_execution",
+                "filesystem_operation",
+                "file_search",
+                "log_analysis",
+                "disk_usage",
+                "service_diagnostics",
             ],
             supported_intents=["SIMPLE_INFORMATION", "DIAGNOSIS", "REMEDIATION"],
             safe_fast_path=True,
