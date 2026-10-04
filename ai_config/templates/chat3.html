@@ -1543,8 +1543,6 @@
             currentAIMsg.remove();
             currentAIMsg = null;
           }
-          // The pending bubble is gone, so the orb goes back to the run header.
-          window.orbInRun = false;
           addAgentStep('Thinking', data.content, '#ff69b4', 'brain');
           window.setProgressOrb('thinking');
           break;
@@ -1724,11 +1722,8 @@
           if (!currentAIMsg) {
             currentAIMsg = addAIMessage('');
           }
-          // First words of the reply: the avatar moves down into the bubble.
-          if (window.orbInRun) {
-            window.orbInRun = false;
-            if (window.activeRunOrb) window.activeRunOrb.style.display = 'none';
-          }
+          // Reply is streaming: the bubble keeps the bot avatar, the header
+          // orb steps aside until the next agent phase.
           window.setProgressOrb('composing');
 
           let rawData = data.content;
@@ -1955,30 +1950,105 @@
       </svg>`;
     };
 
-    // --- Thinking Orb: replaces the bot avatar in the current AI bubble while
-    // the agent works, then snaps back to the bot on completion. Small conic
-    // gradient orb with spin + opacity pulse; colors and speed tell the
-    // operator what the agent is doing, no heavy library.
+    // --- Thinking Orb: a particle sphere (dots on a fibonacci sphere) that
+    // spins and twinkles while the agent works. Front and back hemispheres
+    // counter-rotate so the orb reads as a woven ball of light instead of a
+    // flat spinning disc. State changes the dot count, radius, spin speed and
+    // tint; 'thinking' swaps the dots for a striped globe lattice.
     window.activeProgressState = null;
+
+    window.orbStates = {
+      exploring: { count: 78, r: 19, spin: 7.0, tint: '#a6b8ff', dot: 1.05 },
+      search:    { count: 62, r: 18, spin: 5.4, tint: '#c3dbff', dot: 1.0, ring: 20 },
+      planning:  { count: 44, r: 16, spin: 9.5, tint: '#dcc4ff', dot: 1.1, ring: 14 },
+      thinking:  { count: 90, r: 20, spin: 12.0, tint: '#d6c6ff', dot: 0.85, globe: true },
+      working:   { count: 72, r: 19, spin: 3.8, tint: '#ffdf9e', dot: 1.05 },
+      listening: { count: 54, r: 13, spin: 8.0, tint: '#ffeab5', dot: 1.0 },
+      composing: { count: 64, r: 21, spin: 6.0, tint: '#a6ecd0', dot: 1.0, ring: 26 },
+    };
+
+    window.orbSpherePoints = function (count, radius) {
+      var pts = [];
+      var golden = Math.PI * (3 - Math.sqrt(5));
+      for (var i = 0; i < count; i++) {
+        var y = count === 1 ? 0 : 1 - (i / (count - 1)) * 2;
+        var r = Math.sqrt(Math.max(0, 1 - y * y));
+        var th = golden * i;
+        pts.push({ x: Math.cos(th) * r * radius, y: y * radius, z: Math.sin(th) * r });
+      }
+      return pts;
+    };
+
+    window.orbDot = function (p, i, cfg) {
+      var depth = (p.z + 1) / 2;
+      var rr = (cfg.dot * (0.45 + 0.6 * depth)).toFixed(2);
+      var op = (0.18 + 0.72 * depth).toFixed(2);
+      var dur = (1.5 + (i % 7) * 0.24).toFixed(2);
+      var off = -((i % 13) * 0.19).toFixed(2);
+      return '<circle cx="' + p.x.toFixed(2) + '" cy="' + p.y.toFixed(2) + '" r="' + rr +
+        '" fill="' + cfg.tint + '" opacity="' + op + '">' +
+        '<animate attributeName="opacity" values="' + op + ';0.12;' + op + '" dur="' + dur + 's" begin="' + off + 's" repeatCount="indefinite"/>' +
+        '<animate attributeName="r" values="' + rr + ';' + (cfg.dot * 1.5).toFixed(2) + ';' + rr + '" dur="' + dur + 's" begin="' + off + 's" repeatCount="indefinite"/>' +
+        '</circle>';
+    };
+
+    window.orbRingDots = function (count, radius, cfg, i) {
+      var out = '';
+      for (var k = 0; k < count; k++) {
+        var a = (k / count) * Math.PI * 2;
+        var rr = (cfg.dot * 0.85).toFixed(2);
+        var dur = (2 + (k % 5) * 0.3).toFixed(2);
+        out += '<circle cx="' + (Math.cos(a) * radius).toFixed(2) + '" cy="' + (Math.sin(a) * radius * 0.92).toFixed(2) +
+          '" r="' + rr + '" fill="' + cfg.tint + '" opacity="0.7">' +
+          '<animate attributeName="opacity" values="0.7;0.15;0.7" dur="' + dur + 's" begin="-' + (k * 0.16).toFixed(2) + 's" repeatCount="indefinite"/>' +
+          '</circle>';
+      }
+      return out;
+    };
+
+    window.orbGlobe = function (cfg) {
+      var R = cfg.r;
+      var out = '<g fill="none" stroke="' + cfg.tint + '" stroke-width="0.85">';
+      for (var k = -3; k <= 3; k++) {
+        var y = (k / 3.4) * R;
+        var rx = Math.sqrt(Math.max(0, R * R - y * y));
+        var op = (0.85 - Math.abs(k) * 0.08).toFixed(2);
+        out += '<ellipse cx="0" cy="' + y.toFixed(2) + '" rx="' + rx.toFixed(2) + '" ry="' + (rx * 0.16).toFixed(2) + '" opacity="' + op + '"/>';
+      }
+      var arcs = [1, 0.72, 0.42];
+      arcs.forEach(function (f, idx) {
+        out += '<ellipse cx="0" cy="0" rx="' + (R * 0.98).toFixed(2) + '" ry="' + (R * 0.98 * f).toFixed(2) +
+          '" opacity="' + (0.75 - idx * 0.12).toFixed(2) + '">' +
+          '<animateTransform attributeName="transform" type="rotate" values="0 0 0;360 0 0" dur="' + (cfg.spin * (1 + idx * 0.35)).toFixed(1) + 's" repeatCount="indefinite"/>' +
+          '</ellipse>';
+      });
+      out += '</g>';
+      return out;
+    };
 
     window.neuroOrbAvatar = function (state, size) {
       var s = size || 42;
-      var palettes = {
-        exploring:   ['#6e7ffb', '#7bd6c2', '#58a6ff'],
-        search:      ['#58a6ff', '#79c0ff', '#a5d6ff'],
-        planning:    ['#b392f0', '#9a65d9', '#e17be8'],
-        thinking:    ['#8957e5', '#b392f0', '#c297ff'],
-        working:     ['#f6c343', '#e3b341', '#d29922'],
-        listening:   ['#f0c000', '#ffd866', '#ffe9a8'],
-        composing:   ['#3fb950', '#7bd6c2', '#58a6ff'],
-      };
-      var speeds = {
-        exploring: '2.1s', search: '1.9s', planning: '1.5s', thinking: '1.7s',
-        working: '1.1s', listening: '2.6s', composing: '1.4s',
-      };
-      var c = palettes[state] || palettes.thinking;
-      var dur = speeds[state] || '1.6s';
-      return '<div style="width:' + s + 'px;height:' + s + 'px;border-radius:50%;background:conic-gradient(from 0deg, ' + c[0] + ', ' + c[1] + ', ' + c[2] + ', ' + c[0] + '); filter: blur(5px); animation: neuro-orb-rotate ' + dur + ' linear infinite, neuro-orb-pulse ' + (parseFloat(dur) * 0.8).toFixed(2) + 's ease-in-out infinite;"></div>';
+      var cfg = window.orbStates[state] || window.orbStates.thinking;
+      var pts = window.orbSpherePoints(cfg.count, cfg.r);
+      var front = '', back = '';
+      pts.forEach(function (p, i) {
+        (p.z >= 0 ? front += window.orbDot(p, i, cfg) : back += window.orbDot(p, i + 3, cfg));
+      });
+
+      var body;
+      if (cfg.globe) {
+        body = window.orbGlobe(cfg);
+      } else {
+        body =
+          '<g><animateTransform attributeName="transform" type="rotate" values="0 0 0;360 0 0" dur="' + cfg.spin.toFixed(1) + 's" repeatCount="indefinite"/>' + front + '</g>' +
+          '<g><animateTransform attributeName="transform" type="rotate" values="0 0 0;-360 0 0" dur="' + (cfg.spin * 1.45).toFixed(1) + 's" repeatCount="indefinite"/>' + back + '</g>';
+        if (cfg.ring) {
+          body += '<g opacity="0.8"><animateTransform attributeName="transform" type="rotate" values="0 0 0;-360 0 0" dur="' + (cfg.spin * 2.1).toFixed(1) + 's" repeatCount="indefinite"/>' +
+            window.orbRingDots(cfg.ring, cfg.r + 7, cfg) + '</g>';
+        }
+      }
+
+      return '<svg width="' + s + '" height="' + s + '" viewBox="-32 -32 64 64" aria-hidden="true" style="display:block">' + body + '</svg>';
     };
 
     // While the run is in flight the orb belongs to the Agent Run header. Only
@@ -1988,10 +2058,16 @@
 
     window.applyOrbTo = function (box, state) {
       if (!box) return;
-      if (!box.dataset.botHtml) box.dataset.botHtml = box.innerHTML;
-      if (!state || state === 'done') {
-        box.innerHTML = box.dataset.botHtml;
-        return;
+      var done = !state || state === 'done';
+      if (box.dataset.orbOnly === '1') {
+        box.style.display = done ? 'none' : '';
+        if (done) return;
+      } else {
+        if (!box.dataset.botHtml) box.dataset.botHtml = box.innerHTML;
+        if (done) {
+          box.innerHTML = box.dataset.botHtml;
+          return;
+        }
       }
       var orbSize = parseInt(box.dataset.orbSize || '42', 10);
       box.innerHTML = window.neuroOrbAvatar(state, orbSize);
@@ -1999,28 +2075,21 @@
 
     window.setProgressOrb = function (state) {
       window.activeProgressState = state;
-      // History replay must never mutate old avatars.
+      // History replay must never mutate stored avatars.
       if (window.isLoadingHistory) return;
-
-      var box = null;
-      if (window.activeRunOrb) {
-        // Run is still open: the header owns the orb...
-        if (window.orbInRun) {
-          box = window.activeRunOrb;
-          box.style.display = '';
-        } else if (currentAIMsg) {
-          // ...unless the reply already moved the avatar down into the bubble.
-          box = currentAIMsg.querySelector('[data-avatar="agent"]') || currentAIMsg.querySelector(':scope > div:first-child');
-          window.activeRunOrb.style.display = 'none';
-        } else {
-          window.orbInRun = true;
-          box = window.activeRunOrb;
-          box.style.display = '';
-        }
-      } else if (currentAIMsg) {
-        box = currentAIMsg.querySelector('[data-avatar="agent"]') || currentAIMsg.querySelector(':scope > div:first-child');
+      var slot = window.activeRunOrb;
+      if (!slot) return;
+      // The Agent Run header owns the orb for the whole run. While the reply is
+      // streaming the bubble shows the bot avatar instead, so the header orb
+      // steps aside; the next agent phase brings it back.
+      var composing = state === 'composing';
+      window.orbInRun = !composing;
+      if (composing) {
+        slot.style.display = 'none';
+        return;
       }
-      window.applyOrbTo(box, state);
+      slot.style.display = '';
+      window.applyOrbTo(slot, state);
     };
 
     function addAIMessage(content, ts) {
@@ -2111,7 +2180,7 @@
       wrap.style.cssText = 'border: 1px solid var(--border-color); border-radius: 12px; margin-bottom: 10px; background: transparent;';
       wrap.innerHTML = `
         <div onclick="toggleRunWrap('${wrapId}')" style="cursor: pointer; padding: 10px 14px; display: flex; align-items: center; gap: 8px; background: var(--bg-panel); user-select: none; border-radius: 11px 11px 0 0;">
-          <span id="${wrapId}-orb" data-orb-size="20" style="width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; overflow:hidden; background: rgba(31, 111, 235, 0.10); border:1px solid var(--border-color);">${window.neuroBotAvatar(20)}</span>
+          <span id="${wrapId}-orb" data-orb-size="20" data-orb-only="1" style="width:30px; height:30px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">${window.neuroOrbAvatar('exploring', 24)}</span>
           <span id="${wrapId}-spin" style="color: var(--accent); display: flex; align-items: center;"><i class="fa-solid fa-spinner spin-anim"></i></span>
           <strong style="font-size: 13px;">Agent Run</strong>
           <span id="${wrapId}-pill" style="font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; background: rgba(88,166,255,0.15); color: var(--text-strong); text-transform: uppercase;">running</span>
