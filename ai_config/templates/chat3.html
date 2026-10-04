@@ -1499,7 +1499,7 @@
         }
 
         case 'tool_start':
-          addAgentStep('Executing', `<code>${data.tool || ''}</code> ${data.command || ''}`, 'var(--warning)', 'zap', data.step_id, false);
+          addAgentStep('Executing', `<code>${escapeHtml(data.tool || '')}</code> ${escapeHtml(data.command || '')}`, 'var(--warning)', 'zap', data.step_id, false);
           break;
 
         case 'tool_end':
@@ -2891,7 +2891,7 @@
                     break;
 
                   case 'tool_start':
-                    addAgentStep('Executing', `<code>${evt.tool || ''}</code> ${evt.command || ''}`, 'var(--warning)', 'zap', evt.step_id, false, time);
+                    addAgentStep('Executing', `<code>${escapeHtml(evt.tool || '')}</code> ${escapeHtml(evt.command || '')}`, 'var(--warning)', 'zap', evt.step_id, false, time);
                     break;
 
                   case 'tool_end':

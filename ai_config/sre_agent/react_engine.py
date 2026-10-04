@@ -141,7 +141,10 @@ class ReactEngine:
             mgr = ArtifactManager(workspace_path=os.getcwd(), session_id=session_id)
             timestamp = int(time.time())
             file_path = f".neurosys/sessions/{session_id}/artifacts/agent_{tool_name}_{timestamp}.md"
-            content = f"# Agent Tool Execution Record ({tool_name.upper()})\n\n**Tool Name**: {tool_name}\n**Timestamp**: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n## Input Parameters\n```json\n{json.dumps({'arguments': 'omitted'})}\n```\n\n## Output / Result\n```\n[output omitted from execution audit]\n```\n"
+            from .events import sanitize_tool_args_for_audit, redact_text
+            safe_args = sanitize_tool_args_for_audit(params)
+            safe_result = redact_text(result, 3000)
+            content = f"# Agent Tool Execution Record ({tool_name.upper()})\n\n**Tool Name**: {tool_name}\n**Timestamp**: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n## Input Parameters\n```json\n{json.dumps(safe_args, indent=2, default=str)[:2000]}\n```\n\n## Output / Result\n```\n{safe_result}\n```\n"
             await mgr.create_artifact(file_path, content, action_type="agent_execution")
         except Exception as e:
             print(f"[AgentArtifact] Warning: Failed to record artifact: {e}")
@@ -484,13 +487,9 @@ Do NOT stop calling tools until you are ready to call `finish_task`.
                                 ))
                                 continue
 
-                    # Clean UI: Do not show raw JSON arguments, just the intent
-                    if tool_name == "terminal_execute" and "command" in tool_args:
-                        yield evt_tool_start(tool_name, "Executing guarded diagnostic")
-                    elif tool_name == "spawn_subagent" and "agent_type" in tool_args:
-                        yield evt_tool_start(tool_name, f"Delegating to {tool_args['agent_type']}...")
-                    else:
-                        yield evt_tool_start(tool_name, f"Calling {tool_name}...")
+                    # Show what will actually run; evt_tool_start summarises and
+                    # masks secrets itself.
+                    yield evt_tool_start(tool_name, tool_args)
 
                     if tool_name in self.tool_map:
                         tool = self.tool_map[tool_name]

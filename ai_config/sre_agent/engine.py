@@ -1335,14 +1335,15 @@ Output strictly the category name."""
     @sync_to_async
     def _log_tool_execution(self, tool_name, args, result, status, duration):
         from chatbot.models import ToolExecutionLog, ChatSession
+        from .events import sanitize_tool_args_for_audit, redact_text
         try:
             session = ChatSession.objects.filter(id=self.session_id).first()
             if session:
                 ToolExecutionLog.objects.create(
                     conversation=session,
                     tool_name=tool_name,
-                    input_parameters="[arguments omitted from audit]",
-                    output_result="[output omitted from audit]",
+                    input_parameters=json.dumps(sanitize_tool_args_for_audit(args), default=str)[:2000],
+                    output_result=redact_text(result, 3000),
                     status=status,
                     execution_time=duration
                 )

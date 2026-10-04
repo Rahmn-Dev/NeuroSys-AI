@@ -8,10 +8,59 @@ real-time progress with proper categorisation and styling.
 from __future__ import annotations
 
 import enum
+import json
 import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
+
+
+
+import re
+
+_SECRET_PATTERNS = [
+    (re.compile(r"(?i)(api[_-]?key|password|secret|token|bearer)\s*[:=]\s*\S+"), r"\1=***"),
+    (re.compile(r"sk-[A-Za-z0-9_-]{10,}"), "sk-***"),
+    (re.compile(r"-----BEGIN[^-]*PRIVATE KEY-----.*?-----END[^-]*PRIVATE KEY-----", re.S), "[REDACTED PRIVATE KEY]"),
+]
+
+
+def redact_text(text, max_len: int = 4000) -> str:
+    """Strip obvious secret material and cap length. For UI/audit display."""
+    if not text:
+        return "" if text is None else text
+    out = str(text)
+    for pattern, repl in _SECRET_PATTERNS:
+        out = pattern.sub(repl, out)
+    if len(out) > max_len:
+        out = out[:max_len] + "\n... [truncated]"
+    return out
+
+
+def summarize_tool_args(args) -> str:
+    """One-line, secret-safe description of what the tool call does."""
+    if isinstance(args, str):
+        return redact_text(args, 120)
+    if not isinstance(args, dict):
+        return str(args)[:120]
+    for key in ("command", "path", "file_path", "target_file", "url", "pattern"):
+        if key in args and args[key]:
+            return redact_text(str(args[key]), 120)
+    if "agent_type" in args:
+        return str(args["agent_type"])
+    return redact_text(json.dumps(args, default=str), 120)
+
+
+def sanitize_tool_args_for_audit(args) -> dict:
+    """Copy of the call args suitable for the execution audit record."""
+    safe = {}
+    for key, value in (args or {}).items():
+        text = value if isinstance(value, str) else json.dumps(value, default=str)
+        if any(marker in key.lower() for marker in ("password", "secret", "api_key", "apikey", "token", "auth")):
+            safe[key] = "***"
+        else:
+            safe[key] = redact_text(text, 300)
+    return safe
 
 
 class AgentEventType(str, enum.Enum):
@@ -164,8 +213,9 @@ def evt_executing(tool_name: str, args: str = "") -> AgentEvent:
                       metadata={"tool": tool_name, "args": "[arguments redacted]"})
 
 def evt_tool_start(tool_name: str, args: dict = None) -> AgentEvent:
+    detail = summarize_tool_args(args)
     return AgentEvent(type=AgentEventType.TOOL_START, content=f"Running {tool_name}",
-                      metadata={"tool": tool_name, "command": "[arguments redacted]"})
+                      metadata={"tool": tool_name, "command": detail})
 
 def evt_tool_end(tool_name: str, result: str = "") -> AgentEvent:
     return AgentEvent(type=AgentEventType.TOOL_END, content=result[:500],
