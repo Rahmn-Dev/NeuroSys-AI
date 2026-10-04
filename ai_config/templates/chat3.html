@@ -2989,8 +2989,12 @@
       let msg = input.value.trim();
       if (!msg || isProcessing) return;
 
-      if (window.selectedFile) {
-        msg = msg + `\n\n[Context Attached: file://${window.selectedFile}]`;
+      // The attached file is context for this one message only: capture it,
+      // then drop the chip so it does not sit above the composer forever.
+      const attachedFile = window.selectedFile || '';
+      const attachedFileName = attachedFile ? attachedFile.split('/').pop() : '';
+      if (attachedFile) {
+        msg = msg + `\n\n[Context Attached: file://${attachedFile}]`;
       }
 
       addUserMessage(msg);
@@ -3012,12 +3016,13 @@
         session_id: sessionId || '',
         terminal_cwd: window.currentTerminalCwd || '',
         active_workspace: window.customWorkspaceOverride || window.currentTerminalCwd || '',
-        selected_file: window.selectedFile || '',
-        selected_file_name: window.selectedFile ? window.selectedFile.split('/').pop() : '',
+        selected_file: attachedFile,
+        selected_file_name: attachedFileName,
         model: document.getElementById('model-selector').value,
         auto_model_rotation: localStorage.getItem('sre_auto_models') === 'true',
         mode: document.getElementById('mode-selector').value
       }));
+      if (attachedFile) window.clearSelectedFile();
     });
 
     // Auto-resize textarea and Enter key submit
