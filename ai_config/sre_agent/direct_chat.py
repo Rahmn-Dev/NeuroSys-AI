@@ -29,6 +29,7 @@ _OPS_WORDS = re.compile(
     r"api|endpoint|websocket|socket|thread|race|permission|sudo|root|user|group|"
     r"install|package|dependency|module|package|version|release|upgrade|patch|"
     r"monitoring|monitor|alert|alerts|alerting|incident|outage|downtime|postmortem|"
+    r"code|kode|script|program|aplikasi|app|endpoint|request|response|payload|"
     r"test|tests|pytest|unittest|coverage|trace|metric|metrics|logline|"
     r"cert|certificate|tls|ssl|key|token|auth|authentication|authorization|sso|"
     r"disk usage|storage|ceph|nfs|raid|mount|volume|kernel|module|driver|hardware"
@@ -60,13 +61,79 @@ _IDENTITY = re.compile(
     re.I,
 )
 
+# A question about what was already said/found. The answer lives in the
+# conversation, so it must not trigger tools.
+_REFERENCE = re.compile(
+    r"\b("
+    r"itu|ini|yang\s+(tadi|kamu|anda|lu|lo|you)\s*(tulis|katakan|cari|found|said|wrote)|"
+    r"jawaban(nya)?|hasil(nya)?|temuan|ringkasan|laporan(nya)?|case|kasus(nya)?|investigasi|"
+    r"that|those|this|what\s+you\s+(said|wrote|found|mean)|what\s+did\s+you\s+(say|find|mean|do)|"
+    r"your\s+(answer|conclusion|finding)|"
+    r"the\s+(case|result|findings?|report)|previous|earlier|before"
+    r")\b",
+    re.I,
+)
+
+# A question can carry its question word anywhere ("itu apa ya?"), so this is
+# matched against the whole message instead of only its first word.
+_QUESTION = re.compile(
+    r"\?|\b(why|what|how|when|which|who|"
+    r"apa|mengapa|kenapa|maksud|bagai(iman)?|gimana|jelaskan|ceritakan|ringkas|"
+    r"ulangi|ulang|lagi|explain|summari[sz]e|repeat|mean)\b",
+    re.I,
+)
+
+# Words that really mean "carry on with the investigation", not "answer me".
+_RESUME = re.compile(
+    r"\b(lanjut(?:kan|in)?|lanjutkan|lanjutin|teruskan|sambung|resume|continue|go\s+on|"
+    r"carry\s+on|keep\s+going|run\s+it|jalankan|eksekusi|fix|perbaiki|cek|check)\b",
+    re.I,
+)
+
+# "Explain / summarize / why ...?" — asking to restate or interpret what was
+# already reported. A bare question word is not enough: "what time is it?"
+# still needs a lookup.
+_META_VERB = re.compile(
+    r"\b(jelaskan|ceritakan|ringkas|ulangi|ulang|lagi|"
+    r"explain|summari[sz]e|repeat|mean|maksud|kenapa|mengapa|why)\b",
+    re.I,
+)
+
 _MAX_LEN = 200
+_MAX_HISTORY_LEN = 400
+
+
+def is_case_question(message: str) -> bool:
+    """True when the turn only asks about the previous case/answer.
+
+    "itu apa ya?", "jelaskan lagi", "why did you say that?" are answerable
+    from the conversation itself, so they must not spin up the agent.
+    "lanjut" and any command-style verb stay with the investigation.
+    """
+    text = (message or "").strip()
+    if not text or len(text) > _MAX_HISTORY_LEN:
+        return False
+    if _OPS_WORDS.search(text) or _RESUME.search(text):
+        return False
+    # Either it points back at the previous case/answer and reads as a
+    # question, or it explicitly asks to explain/restate what was reported.
+    if _REFERENCE.search(text) and _QUESTION.search(text):
+        return True
+    return bool(_META_VERB.search(text))
 
 
 def is_direct_conversation(message: str) -> bool:
-    """True when the turn is everyday conversation needing no tools at all."""
+    """True when the turn needs no tools at all.
+
+    Covers everyday small talk and questions about what the assistant already
+    said or found.
+    """
     text = (message or "").strip()
-    if not text or len(text) > _MAX_LEN:
+    if not text:
+        return False
+    if is_case_question(text):
+        return True
+    if len(text) > _MAX_LEN:
         return False
     if _OPS_WORDS.search(text):
         # "test the service" or "install docker" are work, not small talk.
@@ -77,11 +144,13 @@ def is_direct_conversation(message: str) -> bool:
 
 
 DIRECT_CHAT_SYSTEM_PROMPT = (
-    "You are NeuroSysAI, an SRE assistant. This turn is everyday conversation, "
-    "so answer directly and briefly without calling any tool, without inspecting "
-    "the system, and without describing a plan. Keep the warm, human tone of a "
-    "teammate. If the operator actually needs something checked or changed, say "
-    "what you would need and let them send the real request."
+    "You are NeuroSysAI, an SRE assistant. This turn needs no tooling: it is "
+    "everyday conversation or a question about what you already reported. "
+    "Answer directly from the conversation, without calling any tool, without "
+    "re-inspecting the system, and without describing a plan. Keep the warm, "
+    "human tone of a teammate. Never invent findings that are not in the "
+    "conversation. If the operator actually needs something checked or "
+    "changed, say what you would need and let them send the real request."
 )
 
 

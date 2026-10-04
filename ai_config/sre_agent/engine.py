@@ -420,7 +420,7 @@ class SREAgentEngine:
         selected_file: Optional[str] = None,
     ) -> AsyncGenerator[AgentEvent, None]:
         """Plain conversation: stream one answer, bind no tools, log no case."""
-        from langchain_core.messages import HumanMessage, SystemMessage
+        from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
         from chatbot.models import ChatSession
 
         start_time = time.time()
@@ -435,13 +435,25 @@ class SREAgentEngine:
             await sync_to_async(session_obj.save)(update_fields=["title"])
             yield evt_session_title(title)
 
+        # Recent conversation is the whole point of a direct answer: a question
+        # about the previous case can only be answered from what was said.
+        # Fetched before the new turn is stored so it is not duplicated.
+        history = await self._fetch_history(db_session_id)
         await self._save_message(db_session_id, "user", user_message)
 
         llm = await self._get_llm()
         messages = [
             SystemMessage(content=direct_chat_prompt(terminal_cwd, active_workspace, selected_file)),
-            HumanMessage(content=user_message),
         ]
+        for entry in history:
+            text = (getattr(entry, "message", "") or "").strip()
+            if not text:
+                continue
+            if getattr(entry, "sender", "") == "ai":
+                messages.append(AIMessage(content=text[:4000]))
+            else:
+                messages.append(HumanMessage(content=text[:4000]))
+        messages.append(HumanMessage(content=user_message))
 
         answer = ""
         try:

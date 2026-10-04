@@ -65,3 +65,31 @@ def test_prompt_carries_environment_only_when_present():
     assert "Terminal Directory" not in bare
     with_env = direct_chat_prompt("/srv/app", "/srv/app", "/srv/app/main.py")
     assert "/srv/app/main.py" in with_env
+
+@pytest.mark.parametrize("message", [
+    "itu apa ya",
+    "jelaskan lagi",
+    "kenapa begitu?",
+    "what did you find?",
+    "why did you say that?",
+    "summarize the case",
+    "case tadi gimana?",
+    "the result earlier?",
+    "explain that again",
+])
+def test_questions_about_the_previous_case_stay_direct(message):
+    """Asking about what was already reported needs no tools either."""
+    assert is_direct_conversation(message) is True
+
+
+@pytest.mark.parametrize("message", [
+    "lanjut",
+    "lanjutkan investigasinya",
+    "fix error di nginx",
+    "jelaskan kode ini",
+    "apa arti error ini",
+    "kenapa server down?",
+    "cek ram",
+])
+def test_case_question_rules_do_not_swallow_real_work(message):
+    assert is_direct_conversation(message) is False
