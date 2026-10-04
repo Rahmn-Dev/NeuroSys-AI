@@ -1,4 +1,5 @@
 import json
+import os
 import time
 import uuid
 import traceback
@@ -278,7 +279,22 @@ Do NOT stop calling tools until you are ready to call `finish_task`.
             yield evt_task_plan(single_plan)
             await self._sync_single_plan_tasks(single_plan)
 
-        max_iterations = 10 if self.mode == "autonomous_single" else 20
+        # Single-agent investigations can need many steps (collect evidence,
+        # read configs, apply a fix, verify it). A small hard cap makes every
+        # non-trivial task die with "Max iterations reached" - so the budget is
+        # generous by default and env-overridable. The real safety guards are
+        # the duplicate-command suppression and the approval policy, not a tiny
+        # step counter.
+        if self.mode == "autonomous_single":
+            try:
+                max_iterations = int(os.environ.get("SRE_SINGLE_MAX_ITERATIONS", "40"))
+            except ValueError:
+                max_iterations = 40
+        else:
+            try:
+                max_iterations = int(os.environ.get("SRE_MULTI_MAX_ITERATIONS", "20"))
+            except ValueError:
+                max_iterations = 20
         iteration = 0
         # signature -> how many times that exact call has been suppressed
         seen_tool_calls: Dict[str, int] = {}
@@ -546,7 +562,13 @@ Do NOT stop calling tools until you are ready to call `finish_task`.
 
         if not self.completed and iteration >= max_iterations:
             self.outcome = "paused"
-            yield evt_error("Max iterations reached in Autonomous Mode.")
-            yield evt_message_chunk("Investigation stopped: Reached maximum allowed iterations without concluding.")
+            yield evt_status(
+                f"Step budget reached ({max_iterations}). The case is still active - "
+                "reply 'continue' to keep going, or tell me to focus on one specific step."
+            )
+            yield evt_message_chunk(
+                "Investigation paused before concluding to avoid runaway looping. "
+                "All evidence collected so far is saved in the timeline; resume to continue."
+            )
             if lifecycle:
                 await lifecycle.atransition("finalization", "failed", "iteration_budget_exhausted", {"iterations": iteration})
