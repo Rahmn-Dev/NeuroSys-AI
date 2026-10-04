@@ -936,24 +936,51 @@
     return match ? decodeURIComponent(match[1]) : '';
   }
 
+  // Permission state has three writers: the initial GET, the PUTs triggered by
+  // the composer picker, and rapid clicks from the operator. They used to race:
+  // a slow GET could land after a click and silently reset the pill, and two
+  // PUTs could resolve out of order so the label showed one mode while the
+  // hidden select (and the server) held the other.
+  let permissionLoadSeq = 0;
+  let permissionSaveSeq = 0;
+  let permissionSaving = false;
+  let permissionUserPicked = false;
+  let permissionQueuedMode = null;
+
+  function applyPermissionValue(mode) {
+    const selector = document.getElementById('permission-selector');
+    if (!selector) return;
+    selector.value = mode === 'full_access' ? 'full_access' : 'need_approval';
+    // Label and hidden value must never disagree.
+    if (typeof updatePermissionPickerLabel === 'function') updatePermissionPickerLabel();
+  }
+
   async function loadAgentPermission() {
     const selector = document.getElementById('permission-selector');
     if (!selector) return;
+    const seq = ++permissionLoadSeq;
     try {
       const response = await fetch('/api/v1/agent-permission/', {credentials: 'same-origin'});
       if (!response.ok) throw new Error(`permission load failed (${response.status})`);
       const payload = await response.json();
-      selector.value = payload.mode === 'full_access' ? 'full_access' : 'need_approval';
+      // Drop stale loads: a newer load started, or the operator already chose.
+      if (seq !== permissionLoadSeq || permissionUserPicked) return;
+      applyPermissionValue(payload.mode);
     } catch (error) {
-      selector.value = 'need_approval';
+      if (seq !== permissionLoadSeq) return;
+      applyPermissionValue('need_approval');
       selector.disabled = true;
+      updatePermissionPickerLabel();
       console.warn('Agent permission is fail-closed until the server preference is available.', error);
     }
   }
 
   async function saveAgentPermission(mode) {
     const selector = document.getElementById('permission-selector');
-    selector.disabled = true;
+    if (!selector) return;
+    const seq = ++permissionSaveSeq;
+    permissionSaving = true;
+    updatePermissionPickerLabel();
     try {
       const response = await fetch('/api/v1/agent-permission/', {
         method: 'PUT', credentials: 'same-origin',
@@ -962,21 +989,39 @@
       });
       if (!response.ok) throw new Error(`permission update failed (${response.status})`);
       const payload = await response.json();
-      selector.value = payload.mode;
+      // A newer PUT already went out; its response owns the final state.
+      if (seq !== permissionSaveSeq) return;
+      applyPermissionValue(payload.mode);
       addSystemMsg(payload.mode === 'full_access'
         ? 'Full Access enabled for in-goal actions. Hard security boundaries remain enforced.'
         : 'Need Approval enabled. Mutating actions require Allow Once.', 'shield');
     } catch (error) {
-      selector.value = 'need_approval';
+      if (seq !== permissionSaveSeq) return;
+      // Fail closed, and make the UI say so instead of keeping a stale label.
+      applyPermissionValue('need_approval');
       console.warn('Permission update rejected; using Need Approval.', error);
+      addSystemMsg('Permission update rejected; falling back to Need Approval.', 'shield');
     } finally {
-      selector.disabled = false;
+      if (seq === permissionSaveSeq) {
+        permissionSaving = false;
+        updatePermissionPickerLabel();
+        // Last click wins: flush a click that arrived while this PUT was in flight.
+        const queued = permissionQueuedMode;
+        permissionQueuedMode = null;
+        if (queued && queued !== selector.value) {
+          applyPermissionValue(queued);
+          saveAgentPermission(queued);
+        }
+      }
     }
   }
 
   const permissionSelector = document.getElementById('permission-selector');
   if (permissionSelector) {
-    permissionSelector.addEventListener('change', event => saveAgentPermission(event.target.value));
+    permissionSelector.addEventListener('change', event => {
+      permissionUserPicked = true;
+      saveAgentPermission(event.target.value);
+    });
     permissionSelector.addEventListener('change', updatePermissionPickerLabel);
   }
 
@@ -1028,15 +1073,26 @@
     const hidden = document.getElementById('permission-selector');
     if (!hidden) return;
     if (hidden.disabled) {
+      // Fail-closed: the server preference could not be read at all.
       alert('Izin agent belum bisa diubah: preferensi server belum terbaca. Coba muat ulang halaman.');
       return;
     }
-    if (hidden.value !== value) {
-      hidden.value = value;
-      hidden.dispatchEvent(new Event('change'));
-    } else {
+    if (hidden.value === value && !permissionSaving) {
       closePermissionPicker();
+      return;
     }
+    // Show the choice immediately, then persist it. If a PUT is still in
+    // flight the value is queued and flushed as soon as it settles, so rapid
+    // toggling always ends on the last click.
+    hidden.value = value;
+    updatePermissionPickerLabel();
+    closePermissionPicker();
+    permissionUserPicked = true;
+    if (permissionSaving) {
+      permissionQueuedMode = value;
+      return;
+    }
+    saveAgentPermission(value);
   }
 
   function updatePermissionPickerLabel() {
@@ -1051,6 +1107,9 @@
     if (btn) {
       btn.style.color = mode.value === 'full_access' ? 'var(--warning)' : 'var(--text-secondary)';
       btn.style.opacity = hidden.disabled ? '0.5' : '1';
+      btn.title = permissionSaving
+        ? 'Menyimpan preferensi izin...'
+        : 'Izin agent: ' + mode.label;
     }
   }
 
