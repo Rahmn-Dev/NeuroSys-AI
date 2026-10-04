@@ -1399,16 +1399,72 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
         elif msg_type == "approval":
             await self._handle_approval(data)
         elif msg_type == "set_sudo_pwd":
-            self.encrypted_sudo_pwd = data.get("encrypted_password", "")
-            await self.send(text_data=json.dumps({
-                "type": "status",
-                "content": "🔒 Sudo password securely received (End-to-End Encrypted)."
-            }))
+            await self._handle_sudo_pwd(data)
         else:
             await self.send(text_data=json.dumps({
                 "type": "error",
                 "content": f"Unknown message type: {msg_type}"
             }))
+
+    async def _handle_sudo_pwd(self, data):
+        """Store the caller's sudo password only after validating it.
+
+        Previously the consumer accepted any payload and replied with a
+        success message without checking the password, so a typo silently
+        disabled privileged commands later. Now the password is decrypted with
+        the same RSA private key the agent will use and validated with
+        `sudo -S -p "" -v` before it is kept in memory.
+        """
+        encrypted = data.get("encrypted_password", "")
+        if not encrypted:
+            await self.send(text_data=json.dumps({
+                "type": "sudo_pwd_error",
+                "content": "No encrypted sudo password received."
+            }))
+            return
+        try:
+            from sre_agent.crypto import decrypt_rsa_oaep
+            password = decrypt_rsa_oaep(self.rsa_private_key, encrypted)
+        except Exception as e:
+            await self.send(text_data=json.dumps({
+                "type": "sudo_pwd_error",
+                "content": "Could not decrypt the password. Please try again."
+            }))
+            return
+
+        import asyncio as _asyncio
+        proc = await _asyncio.create_subprocess_exec(
+            "sudo", "-S", "-p", "", "-v",
+            stdin=_asyncio.subprocess.PIPE,
+            stdout=_asyncio.subprocess.PIPE,
+            stderr=_asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await _asyncio.wait_for(
+                proc.communicate(input=(password + "\n").encode()), timeout=15
+            )
+        except _asyncio.TimeoutError:
+            proc.kill()
+            await self.send(text_data=json.dumps({
+                "type": "sudo_pwd_error",
+                "content": "Sudo validation timed out. The password was NOT saved."
+            }))
+            return
+
+        if proc.returncode != 0:
+            detail = (stderr or b"").decode(errors="ignore").strip().splitlines()
+            await self.send(text_data=json.dumps({
+                "type": "sudo_pwd_error",
+                "content": "Incorrect sudo password (validation failed). It was NOT saved."
+                           + (f" — {detail[-1]}" if detail else "")
+            }))
+            return
+
+        self.encrypted_sudo_pwd = encrypted
+        await self.send(text_data=json.dumps({
+            "type": "sudo_pwd_saved",
+            "content": "Sudo password validated and saved for this session (RSA-OAEP)."
+        }))
 
     async def _handle_message(self, data):
         """Handle a user chat message — run the SRE agent loop."""

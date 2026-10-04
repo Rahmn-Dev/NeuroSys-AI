@@ -1431,6 +1431,29 @@
           addSystemMsg(data.content, 'check');
           break;
 
+        case 'sudo_pwd_saved':
+          addSystemMsg(data.content, 'shield-check');
+          {
+            const sudoBtn = document.getElementById('sudo-auth-btn');
+            if (sudoBtn) {
+              sudoBtn.style.color = '#3fb950';
+              sudoBtn.innerHTML = '<i class="fa-solid fa-shield-check"></i> Sudo Active';
+            }
+            document.getElementById('sudo-modal').style.display = 'none';
+            const saveBtn = document.getElementById('sudo-save-btn');
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = 'Encrypt & Save'; }
+          }
+          break;
+
+        case 'sudo_pwd_error':
+          addSystemMsg(data.content, 'alert-triangle');
+          alert(data.content);
+          {
+            const saveBtn = document.getElementById('sudo-save-btn');
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = 'Encrypt & Save'; }
+          }
+          break;
+
         case 'exploring':
           // Safety net: if no run container is active (e.g. stream resumed
           // without a fresh submit), open one so steps stay grouped.
@@ -3817,7 +3840,7 @@
     <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 5px;">
       <button onclick="document.getElementById('sudo-modal').style.display='none'"
         class="btn btn-secondary btn-sm">Cancel</button>
-      <button onclick="submitSudoPassword()" class="btn btn-success btn-sm">Encrypt & Save</button>
+      <button id="sudo-save-btn" onclick="submitSudoPassword()" class="btn btn-success btn-sm">Encrypt & Save</button>
     </div>
   </div>
 </div>
@@ -3879,9 +3902,14 @@
         encrypted_password: encryptedBase64
       }));
 
-      document.getElementById('sudo-auth-btn').style.color = '#3fb950';
-      document.getElementById('sudo-auth-btn').innerHTML = '<i class="fa-solid fa-shield-check"></i> Sudo Active';
-      document.getElementById('sudo-modal').style.display = 'none';
+      // The server now decrypts and validates with `sudo -v` before keeping
+      // anything. Wait for sudo_pwd_saved / sudo_pwd_error above rather than
+      // blindly declaring the session privileged.
+      const saveBtn = document.getElementById('sudo-save-btn');
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<i class="fa-solid fa-spinner spin-anim"></i> Validating...';
+      }
       pwdInput.value = '';
     } catch (err) {
       console.error("Encryption failed:", err);
