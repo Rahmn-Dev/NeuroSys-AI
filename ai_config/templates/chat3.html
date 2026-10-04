@@ -156,13 +156,16 @@
   }
 
   .sre-msg-user {
-    background: var(--accent) !important;
-    color: #ffffff !important;
-    box-shadow: 0 4px 14px 0 rgba(0, 118, 255, 0.2);
+    /* Same translucent plate as the bot avatar disc (rgba(31,111,235,.12)),
+       instead of a solid accent block. */
+    background: rgba(31, 111, 235, 0.12) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-color) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   }
 
   .sre-msg-edit-btn:hover {
-    background: rgba(31, 111, 235, 0.28) !important;
+    background: rgba(31, 111, 235, 0.38) !important;
     color: #ffffff !important;
   }
 
@@ -2044,7 +2047,7 @@
         // readable on top of the solid accent bubble.
         actions.innerHTML =
           `<button title="Edit this message" class="sre-msg-edit-btn" onclick="window.editUserMessage(this)"` +
-          ` style="background:rgba(31, 111, 235, 0.12); border:1px solid var(--border-color);` +
+          ` style="background:rgba(31, 111, 235, 0.20); border:1px solid var(--border-color);` +
           ` color:var(--text-strong); border-radius:6px; padding:3px 8px; font-size:10px; cursor:pointer;` +
           ` font-weight:600; display:inline-flex; align-items:center; gap:4px; transition:background 0.15s ease;">` +
           `<i class="fa-solid fa-pen" style="font-size:9px;"></i> Edit</button>`;
