@@ -2,12 +2,34 @@ import json
 import time
 import uuid
 import traceback
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Dict
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
 from .events import *
 from .security_boundary import POLICY, INJECTION, audit, untrusted_observation
 from .tools.registry import ToolRegistry
+
+# How many times the exact same tool call may be suppressed before the engine
+# forces the agent to conclude. 1 = first duplicate only nudges, 2 = second
+# duplicate forces finish_task, 3 = still repeating ends the run. Looping is
+# allowed; burning the whole budget on one command is not.
+DUPLICATE_TOLERANCE = 3
+
+
+def _call_signature(tool_name: str, tool_args: dict) -> str:
+    """Stable signature for duplicate detection.
+
+    Whitespace-only and trailing-separator differences must count as the same
+    call, otherwise a model can 'vary' a command cosmetically and loop forever.
+    """
+    normalized = {}
+    for key, value in (tool_args or {}).items():
+        if isinstance(value, str):
+            value = " ".join(value.split())
+            while value.endswith((";", "|", "&&")):
+                value = value[:-1].rstrip()
+        normalized[key] = value
+    return f"{tool_name}:{json.dumps(normalized, sort_keys=True, default=str)}"
 
 @tool
 def finish_task(summary: str) -> str:
@@ -258,8 +280,10 @@ Do NOT stop calling tools until you are ready to call `finish_task`.
 
         max_iterations = 10 if self.mode == "autonomous_single" else 20
         iteration = 0
-        seen_tool_calls = set()
+        # signature -> how many times that exact call has been suppressed
+        seen_tool_calls: Dict[str, int] = {}
         no_tool_streak = 0
+        must_conclude = False
 
         while iteration < max_iterations:
             iteration += 1
@@ -340,12 +364,54 @@ Do NOT stop calling tools until you are ready to call `finish_task`.
                     tool_args = tc["args"]
                     tool_call_id = tc["id"]
 
-                    call_signature = (tool_name, json.dumps(tool_args, sort_keys=True, default=str))
-                    if tool_name != "finish_task" and call_signature in seen_tool_calls:
+                    call_signature = _call_signature(tool_name, tool_args)
+                    repeat_count = seen_tool_calls.get(call_signature, 0)
+                    if tool_name != "finish_task" and repeat_count:
+                        # A duplicate call is suppressed, NOT fatal. The run keeps
+                        # going so the model can pick a different approach; only a
+                        # persistent repeat loop ends the run.
+                        seen_tool_calls[call_signature] = repeat_count + 1
+                        if repeat_count + 1 < DUPLICATE_TOLERANCE:
+                            yield evt_thinking(
+                                f"Duplicate {tool_name} suppressed (attempt {repeat_count + 1}); "
+                                "asking for a different approach."
+                            )
+                            history.append(ToolMessage(
+                                content=(
+                                    "SUPPRESSED - this exact call already ran and returned the same "
+                                    "result. Repeating it changes nothing. Either vary the command "
+                                    "(different flags, different path, different tool) or call "
+                                    "'finish_task' and report what you verified so far."
+                                ),
+                                name=tool_name,
+                                tool_call_id=tool_call_id,
+                            ))
+                            continue
+
+                        if not must_conclude:
+                            must_conclude = True
+                            yield evt_thinking(
+                                "Same action repeated again; no new evidence is possible from it. "
+                                "Forcing a conclusion."
+                            )
+                            history.append(HumanMessage(content=(
+                                "SYSTEM INSTRUCTION: You have repeated the same action too many times and "
+                                "it yields no new evidence. STOP calling tools. Call 'finish_task' now with "
+                                "an honest summary of what you verified and what remains unverified."
+                            )))
+                            continue
+
                         self.outcome = "paused"
-                        yield evt_error("Repeated identical action stopped; using the evidence already collected.")
+                        yield evt_error(
+                            "Agent kept repeating the identical action "
+                            f"({tool_name}) and was asked to conclude three times. Run paused instead of "
+                            "looping further. Continue with a different approach, e.g. another tool, "
+                            "another path, or a manual decision."
+                        )
                         return
-                    seen_tool_calls.add(call_signature)
+
+                    seen_tool_calls[call_signature] = 1
+                    must_conclude = False
 
                     if tool_name == "finish_task":
                         summary = tool_args.get("summary", "Goal Achieved.")
