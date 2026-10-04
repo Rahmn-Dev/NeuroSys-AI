@@ -722,12 +722,17 @@
                   <div id="mode-picker-panel" class="model-picker-panel"
                     style="width: min(330px, 92vw);"></div>
                 </div>
-                <button type="button" id="permission-picker-btn" class="composer-pill"
-                  onclick="toggleAgentPermission()" title="Agent authorization: click to switch">
-                  <i class="fa-solid fa-shield-halved" id="permission-picker-icon" style="font-size: 11px;"></i>
-                  <span id="permission-picker-label">Need Approval</span>
-                </button>
-                <button type="button" class="composer-pill" onclick="openModelManagerModal(); closeModelPicker(); closeModePicker();"
+                <div style="position: relative;">
+                  <button type="button" id="permission-picker-btn" class="composer-pill"
+                    onclick="togglePermissionPicker(event)" title="Agent authorization">
+                    <i class="fa-solid fa-shield-halved" id="permission-picker-icon" style="font-size: 11px;"></i>
+                    <span id="permission-picker-label">Need Approval</span>
+                    <i class="fa-solid fa-chevron-up" style="font-size: 9px; opacity: 0.7;"></i>
+                  </button>
+                  <div id="permission-picker-panel" class="model-picker-panel"
+                    style="width: min(320px, 92vw);"></div>
+                </div>
+                <button type="button" class="composer-pill" onclick="openModelManagerModal(); closeModelPicker(); closeModePicker(); closePermissionPicker();"
                   title="Model Manager: endpoint, provider, API key, status">
                   <i class="fa-solid fa-sliders"></i>
                   <span>Models</span>
@@ -950,6 +955,19 @@
     if (typeof updatePermissionPickerLabel === 'function') updatePermissionPickerLabel();
   }
 
+  // Never let UI feedback throw inside the save path.
+  function notifyPermission(message) {
+    try {
+      if (typeof window.addSystemMsg === 'function') {
+        window.addSystemMsg(message, 'shield');
+      } else {
+        console.info('[permission] ' + message);
+      }
+    } catch (error) {
+      console.info('[permission] ' + message);
+    }
+  }
+
   async function loadAgentPermission() {
     const selector = document.getElementById('permission-selector');
     if (!selector) return;
@@ -987,15 +1005,16 @@
       // A newer PUT already went out; its response owns the final state.
       if (seq !== permissionSaveSeq) return;
       applyPermissionValue(payload.mode);
-      addSystemMsg(payload.mode === 'full_access'
-        ? 'Full Access enabled for in-goal actions. Hard security boundaries remain enforced.'
-        : 'Need Approval enabled. Mutating actions require Allow Once.', 'shield');
+      notifyPermission(
+        payload.mode === 'full_access'
+          ? 'Full Access enabled for in-goal actions. Hard security boundaries remain enforced.'
+          : 'Need Approval enabled. Mutating actions require Allow Once.');
     } catch (error) {
       if (seq !== permissionSaveSeq) return;
       // Fail closed, and make the UI say so instead of keeping a stale label.
       applyPermissionValue('need_approval');
       console.warn('Permission update rejected; using Need Approval.', error);
-      addSystemMsg('Permission update rejected; falling back to Need Approval.', 'shield');
+      notifyPermission('Permission update rejected; falling back to Need Approval.');
     } finally {
       if (seq === permissionSaveSeq) {
         permissionSaving = false;
@@ -1021,34 +1040,72 @@
   }
 
   const PERMISSION_MODES = [
-    { value: 'need_approval', label: 'Need Approval', icon: 'fa-shield-halved' },
-    { value: 'full_access', label: 'Full Access', icon: 'fa-unlock-keyhole' }
+    { value: 'need_approval', label: 'Need Approval', icon: 'fa-shield-halved',
+      hint: 'Risky or mutating actions wait for your approval' },
+    { value: 'full_access', label: 'Full Access', icon: 'fa-unlock-keyhole',
+      hint: 'Auto-approve inside the goal; hard blocks still apply' }
   ];
 
-  // Direct toggle instead of a two-row popover. With the popover it was
-  // possible to activate the wrong row: the server audit recorded
-  // full_access -> need_approval requests seconds after the operator had asked
-  // for Full Access, and the popover was a second place where the label and
-  // the real state could drift apart.
-  function toggleAgentPermission() {
+  function closePermissionPicker() {
+    const panel = document.getElementById('permission-picker-panel');
+    if (panel) panel.classList.remove('open');
+  }
+
+  function togglePermissionPicker(ev) {
+    if (ev) ev.stopPropagation();
+    const panel = document.getElementById('permission-picker-panel');
+    if (!panel) return;
+    const willOpen = !panel.classList.contains('open');
+    if (willOpen) {
+      closeModelPicker();
+      closeModePicker();
+      renderPermissionPickerPanel();
+      panel.classList.add('open');
+    } else {
+      panel.classList.remove('open');
+    }
+  }
+
+  function renderPermissionPickerPanel() {
+    const panel = document.getElementById('permission-picker-panel');
+    const hidden = document.getElementById('permission-selector');
+    if (!panel) return;
+    const current = hidden ? hidden.value : 'need_approval';
+    panel.innerHTML = PERMISSION_MODES.map(p => `
+      <button type="button" class="model-picker-item ${p.value === current ? 'selected' : ''}"
+        onclick="selectPermissionFromPicker('${p.value}')">
+        <i class="fa-solid ${p.icon}" style="font-size: 12px; width: 16px; color: var(--accent);"></i>
+        <span style="flex: 1; min-width: 0;">
+          <span class="mp-name">${p.label}</span>
+          <span class="mp-sub" style="font-family: inherit;">${p.hint}</span>
+        </span>
+        ${p.value === current ? '<i class="fa-solid fa-check" style="color: var(--success-text); font-size: 11px;"></i>' : ''}
+      </button>`).join('');
+  }
+
+  // Explicit choice, identical interaction to the agent-mode picker: the row
+  // you click is the mode you get, no blind toggling.
+  function selectPermissionFromPicker(value) {
     const hidden = document.getElementById('permission-selector');
     if (!hidden) return;
     if (hidden.disabled) {
       alert('Agent authorization cannot be changed: the server preference could not be read. Reload the page.');
       return;
     }
-    const current = hidden.value === 'full_access' ? 'full_access' : 'need_approval';
-    const next = current === 'full_access' ? 'need_approval' : 'full_access';
-    // Reflect the click immediately, then persist. Last click always wins.
-    hidden.value = next;
-    updatePermissionPickerLabel();
+    console.info('[permission] requested=' + value + ' (was ' + hidden.value + ')');
+    closePermissionPicker();
     permissionUserPicked = true;
-    console.info('[permission] requested=' + next + ' (was ' + current + ')');
-    if (permissionSaving) {
-      permissionQueuedMode = next;
+    if (hidden.value === value && !permissionSaving) {
+      updatePermissionPickerLabel();
       return;
     }
-    saveAgentPermission(next);
+    hidden.value = value;
+    updatePermissionPickerLabel();
+    if (permissionSaving) {
+      permissionQueuedMode = value;
+      return;
+    }
+    saveAgentPermission(value);
   }
 
   function updatePermissionPickerLabel() {
@@ -2016,6 +2073,13 @@
       }
       if (window.lucide) window.lucide.createIcons();
     }
+
+    // Exposed for the helper blocks that live outside this IIFE (agent
+    // permission, model picker, ...). Without this, a successful permission
+    // PUT raised "ReferenceError: addSystemMsg is not defined", which the
+    // catch block then reported as "Permission update rejected" and silently
+    // reverted the operator's choice back to Need Approval.
+    window.addSystemMsg = addSystemMsg;
 
     function addSystemMsg(text, iconName = 'info') {
       if (text.includes('Connected to NeuroSysAI') || text.includes('🚀')) {
@@ -4874,6 +4938,7 @@
     const willOpen = !panel.classList.contains('open');
     if (willOpen) {
       closeModelPicker();
+      closePermissionPicker();
       renderModePickerPanel();
       panel.classList.add('open');
     } else {
@@ -4944,12 +5009,20 @@
         modePanel.classList.remove('open');
       }
     }
+    const permPanel = document.getElementById('permission-picker-panel');
+    if (permPanel && permPanel.classList.contains('open')) {
+      const permBtn = document.getElementById('permission-picker-btn');
+      if (!permPanel.contains(ev.target) && !(permBtn && permBtn.contains(ev.target))) {
+        permPanel.classList.remove('open');
+      }
+    }
   });
 
   document.addEventListener('keydown', function (ev) {
     if (ev.key === 'Escape') {
       closeModelPicker();
       closeModePicker();
+      closePermissionPicker();
     }
   });
 
