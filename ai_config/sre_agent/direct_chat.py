@@ -146,6 +146,8 @@ def is_case_question(message: str) -> bool:
         return False
     if _OPS_WORDS.search(text) or _RESUME.search(text):
         return False
+    if _COMMANDS.search(text):
+        return False
     # Either it points back at the previous case/answer and reads as a
     # question, or it explicitly asks to explain/restate what was reported.
     if _REFERENCE.search(text) and _QUESTION.search(text):
@@ -167,14 +169,16 @@ def is_direct_conversation(message: str) -> bool:
     if len(text) > _MAX_LEN:
         return False
     # "test the service" or "install docker" are work, not small talk.
-    if _OPS_WORDS.search(text) or _NEEDS_TOOL.search(text):
-        return False
-    if _COMMANDS.search(text):
-        return False
+    # "who am I" / "siapa saya" asks about the operator, not the system.
     if _IDENTITY.match(text):
         return True
+    if _OPS_WORDS.search(text) or _NEEDS_TOOL.search(text) or _COMMANDS.search(text):
+        return False
     if _GREETING.match(text):
         return True
+    if _RESUME.search(text):
+        # A bare "continue" / "lanjut" must resume the previous run.
+        return False
     # Nothing operational in it: everyday talk. Operational work in this
     # domain always names a service, a file, a command or a symptom, so the
     # absence of that vocabulary is a safe signal.
