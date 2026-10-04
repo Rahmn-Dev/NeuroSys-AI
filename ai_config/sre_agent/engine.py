@@ -588,6 +588,16 @@ class SREAgentEngine:
             active_case = resumable_case if resume_request and resumable_case else (matched_case or latest_case)
             relation_type = "semantic_continuation" if matched_case and matched_case != latest_case else "continuation"
         else:
+            # At most one resumable case per chat: anything still 'active' from
+            # an earlier turn is closed out rather than left dangling.
+            try:
+                from chatbot.models import Investigation as _Inv
+                await sync_to_async(
+                    lambda: _Inv.objects.filter(session_id=db_session_id, status="active")
+                    .update(status="superseded")
+                )()
+            except Exception:
+                pass
             memory_features = extract_features(user_message)
             active_case = await sync_to_async(Investigation.objects.create)(
                 id="inv_" + str(uuid.uuid4())[:8], session_id=db_session_id,
@@ -1707,6 +1717,11 @@ Output strictly the category name."""
                 await self._log_event(error_event)
                 yield error_event
             return
+        except asyncio.CancelledError:
+            # Operator pressed Cancel (or the socket asked us to stop): record it
+            # so the case is not left resumable forever.
+            await self._close_active_case("cancelled")
+            raise
         finally:
             cancellation_monitor.cancel()
             await asyncio.gather(cancellation_monitor, return_exceptions=True)
@@ -1730,6 +1745,24 @@ Output strictly the category name."""
             "switches": list(self._model_switches[-10:]),
             "scope": "same_provider_and_endpoint",
         }
+
+    async def _close_active_case(self, status: str):
+        """Close the active investigation with a terminal status.
+
+        A cancelled or crashed run must never leave the case 'active', or the
+        chat keeps reporting an unfinished investigation every time it is
+        opened.
+        """
+        case_id = getattr(self, "_active_case_id", "") or ""
+        if not case_id:
+            return
+        try:
+            from chatbot.models import Investigation
+            await sync_to_async(
+                lambda: Investigation.objects.filter(id=case_id).exclude(status="completed").update(status=status)
+            )()
+        except Exception:
+            pass
 
     async def _get_or_create_session(self):
         from chatbot.models import ChatSession

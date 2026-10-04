@@ -1972,17 +1972,9 @@
           finalizeRunWrap('failed');
           addAgentStep('Error', data.content, 'var(--error)', 'x-circle', null, true);
           {
-            const retryDiv = document.createElement('div');
-            retryDiv.style.cssText = 'margin: 8px 0;';
             window.continueSessionId = sessionId;
-            retryDiv.innerHTML =
-              `<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">` +
-              `<button onclick="window.continueRun()" style="background: rgba(88,166,255,0.12); color: var(--text-strong); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 14px; font-size: 12px; cursor: pointer; font-weight: 600;">` +
-              `<i class="fa-solid fa-rotate-right" style="font-size:11px;"></i> Retry</button>` +
-              `<button onclick="window.cancelRunForSession(window.continueSessionId || sessionId)" style="background: transparent; color: var(--text-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 12px; font-size: 12px; cursor: pointer; font-weight: 600;">` +
-              `<i class="fa-solid fa-xmark" style="font-size:11px;"></i> Cancel</button>` +
-              `<span style="font-size: 11px; color: var(--text-secondary);">the run stopped; retry continues the active case with re-verification</span></div>`;
-            messagesDiv.appendChild(retryDiv);
+            messagesDiv.appendChild(window.renderRunFailureActions(sessionId));
+            window.renderActiveRuns && window.renderActiveRuns();
             scrollToBottom();
           }
           window.sessionStartTime = null;
@@ -2667,9 +2659,11 @@
 
     window.cancelRunForSession = function (sid) {
       if (!sid) return;
-      try {
-        if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'cancel', session_id: String(sid) }));
-      } catch (err) { /* socket closing */ }
+      if (window.runsBySession && window.runsBySession[String(sid)]) {
+        try {
+          if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'cancel', session_id: String(sid) }));
+        } catch (err) { /* socket closing */ }
+      }
       if (String(sid) === String(sessionId)) {
         isProcessing = false;
         if (sendBtn) { sendBtn.disabled = false; sendBtn.style.opacity = ''; }
@@ -2884,7 +2878,7 @@
               if (evts.length > 0) evts.unshift({ type: '_note', content: 'Sesi lama' });
             }
           });
-          const known = evts.filter(ev => ['exploring','discovering_tools','planning','thinking','tool_start','tool_end','resolution_plan','worker_activity','completed','error','failed','cancelled','blocked','denied','security_blocked'].includes(String(ev.type)));
+          const known = evts.filter(ev => ['exploring','discovering_tools','planning','thinking','tool_start','tool_end','resolution_plan','worker_activity','completed','error','failed','cancelled','blocked','denied','denied_timeout','security_blocked','status','verifying','hypothesis'].includes(String(ev.type)));
           const shown = known.length ? known : evts.filter(ev => ev && ev.type !== '_note');
           const hasOldSessionNote = evts.some(ev => ev && ev.type === '_note');
           if (shown.length > 0 || hasOldSessionNote) {
@@ -3835,6 +3829,14 @@
                   case 'denied_timeout':
                   case 'security_blocked':
                     updateRunStateCard(evt.run_id || `history-${msg.id || 'current'}`, evt.type);
+                    addAgentStep(
+                      String(evt.type) === 'cancelled' ? 'Cancelled' : 'Error',
+                      escapeHtml(evt.content || String(evt.type)),
+                      'var(--error)', 'x-circle', null, true,
+                    );
+                    // Same affordances as the live run, bound to this chat.
+                    messagesDiv.appendChild(window.renderRunFailureActions(sessionId));
+                    scrollToBottom();
                     break;
 
                   case 'investigation_started':
@@ -4105,6 +4107,23 @@
       }
     };
 
+    // Failure actions are rendered from one place and bound to the chat that
+    // owns the run, so a replayed run offers exactly what a live one did.
+    window.renderRunFailureActions = function (sid) {
+      const host = document.createElement('div');
+      host.className = 'sre-run-actions';
+      host.dataset.sessionId = String(sid || sessionId || '');
+      host.style.cssText = 'margin: 8px 0;';
+      host.innerHTML =
+        `<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">` +
+        `<button onclick="window.continueRun('${escapeHtml(host.dataset.sessionId)}')" style="background: rgba(88,166,255,0.12); color: var(--text-strong); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 14px; font-size: 12px; cursor: pointer; font-weight: 600;">` +
+        `<i class="fa-solid fa-rotate-right" style="font-size:11px;"></i> Retry</button>` +
+        `<button onclick="window.cancelRunForSession('${escapeHtml(host.dataset.sessionId)}')" style="background: transparent; color: var(--text-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 12px; font-size: 12px; cursor: pointer; font-weight: 600;">` +
+        `<i class="fa-solid fa-xmark" style="font-size:11px;"></i> Cancel</button>` +
+        `<span style="font-size: 11px; color: var(--text-secondary);">the run stopped; retry continues the active case with re-verification</span></div>`;
+      return host;
+    };
+
     async function loadArtifacts() {
       try {
         if (!sessionId) {
@@ -4280,12 +4299,13 @@
 
     window.artifactContents = window.artifactContents || {};
 
-    window.continueRun = function () {
+    window.continueRun = function (forSessionId) {
       try {
         if (typeof isProcessing !== 'undefined' && isProcessing) return;
+        const owner = forSessionId || window.continueSessionId || sessionId;
         // Refuse to continue a case that belongs to a chat the operator has
         // since navigated away from.
-        if (window.continueSessionId && String(window.continueSessionId) !== String(sessionId)) {
+        if (owner && String(owner) !== String(sessionId)) {
           addSystemMsg('That case belongs to another chat. Open it there to continue.', 'alert-triangle');
           return;
         }
