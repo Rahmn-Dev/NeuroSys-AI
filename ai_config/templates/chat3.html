@@ -1814,13 +1814,13 @@
           break;
 
         case 'direct_chat':
-          // Plain conversation: the answer was produced without any tool, so
-          // there is no run to show. Close the card and let the answer speak.
+          // Plain conversation: no tool ran, but the turn still belongs to a
+          // run. The card is marked completed and stays in place, and the
+          // container is deliberately kept live so trailing run-state events
+          // land inside the card instead of loose at the bottom.
           if (window.activeRunWrap) {
             paintRunWrap(window.activeRunWrap.dataset.wrapId, 'answered');
-            if (window.activeRunOrb) window.applyOrbTo(window.activeRunOrb, 'done');
             window.activeRunOrb = null;
-            window.activeRunWrap = null;
           }
           setBeamRunning(false);
           break;
@@ -2590,14 +2590,18 @@
     // column with the run card on top and the response panel below it. The
     // card is seated inside the bubble's column so the turn reads as one unit
     // and the header keeps its full clickable width.
+    // A chat runs one turn at a time, so the packaged skeleton is a single
+    // slot rather than a map keyed by session id: on a brand new chat the id
+    // is still unknown when the skeleton is born, and a keyed lookup simply
+    // missed it and built a second bubble with a second avatar.
     window.liveBubbles = window.liveBubbles || {};
     // A packaged turn skeleton: bot avatar on the left, one column on the
     // right holding the run card now and the answer panel later.
     window.ensureLiveBubble = function (sid, wrap) {
       try {
         if (!wrap) return null;
-        const prev = window.liveBubbles[sid];
-        if (prev && document.contains(prev.bubble)) {
+        const prev = window.liveBubbleCurrent;
+        if (prev && !prev.claimed && document.contains(prev.bubble)) {
           const hasPanel = !!prev.column.querySelector(':scope > .sre-panel');
           if (!prev.claimed && !hasPanel) {
             if (wrap.parentElement !== prev.column) prev.column.appendChild(wrap);
@@ -2615,8 +2619,9 @@
         messagesDiv.insertBefore(bubble, wrap);
         const column = bubble.querySelector(':scope > .agent-msg-body');
         column.appendChild(wrap);
-        const entry = { bubble: bubble, column: column, claimed: false };
+        const entry = { bubble: bubble, column: column, claimed: false, sid: sid };
         window.liveBubbles[sid] = entry;
+        window.liveBubbleCurrent = entry;
         scrollToBottom();
         return entry;
       } catch (err) { return null; }
@@ -2624,9 +2629,13 @@
 
     window.discardLiveBubble = function (sid) {
       try {
-        const skel = window.liveBubbles && window.liveBubbles[sid];
-        if (skel && !skel.claimed && document.contains(skel.bubble)) skel.bubble.remove();
-        if (window.liveBubbles) delete window.liveBubbles[sid];
+        const skel = window.liveBubbleCurrent;
+        if (skel && !skel.claimed && document.contains(skel.bubble)
+            && (!sid || !skel.sid || String(skel.sid) === String(sid))) {
+          skel.bubble.remove();
+        }
+        window.liveBubbleCurrent = null;
+        if (window.liveBubbles && sid) delete window.liveBubbles[sid];
       } catch (err) { /* best-effort */ }
     };
 
@@ -2688,19 +2697,26 @@
             </div>
             </div>
         `;
-      const _sid = String(sessionId || '');
-      const _skel = window.liveBubbles && window.liveBubbles[_sid];
-      if (_skel && !_skel.claimed && document.contains(_skel.bubble) && !window.replayingOlder) {
-        _skel.claimed = true;
+      // The live turn already has a packaged skeleton (avatar + run card).
+      // The first answer to arrive takes its column over instead of stacking a
+      // second bubble, which used to leave two bot avatars on screen.
+      const _skel = window.liveBubbleCurrent;
+      if (_skel && !window.replayingOlder && document.contains(_skel.bubble)
+          && !_skel.column.querySelector(':scope > .sre-panel')) {
         const _panel = div.querySelector(':scope > .agent-msg-body > .sre-panel') || div.querySelector('.sre-panel');
-        if (_panel) _skel.column.appendChild(_panel);
-        window.seatRunCardAbove(_skel.bubble);
-        const _aiTime = document.createElement('div');
-        _aiTime.style.cssText = 'font-size: 10px; color: var(--text-secondary); opacity: 0.7; margin-bottom: 8px; padding-left: 4px; margin-left: 68px;';
-        _aiTime.textContent = chatTimeLabel(ts);
-        _skel.bubble.after(_aiTime);
-        scrollToBottom();
-        return _skel.bubble;
+        if (_panel) {
+          _skel.column.appendChild(_panel);
+          const _sid = String(sessionId || '');
+          if (_skel.sid !== _sid) { _skel.sid = _sid; window.liveBubbles[_sid] = _skel; }
+          window.seatRunCardAbove(_skel.bubble);
+          const _aiTime = document.createElement('div');
+          _aiTime.style.cssText = 'font-size: 10px; color: var(--text-secondary); opacity: 0.7; margin-bottom: 8px; padding-left: 4px; margin-left: 68px;';
+          _aiTime.textContent = chatTimeLabel(ts);
+          _skel.bubble.after(_aiTime);
+          window.liveBubbleCurrent = null;
+          scrollToBottom();
+          return _skel.bubble;
+        }
       }
       messagesDiv.appendChild(div);
       window.seatRunCardAbove(div);
@@ -2916,11 +2932,10 @@
     };
 
     function paintRunWrap(wrapId, status, duration) {
-      if (status === 'answered') {
-        const answered = document.getElementById(wrapId);
-        if (answered) answered.style.display = 'none';
-        return;
-      }
+      // A plain conversation reply still ran: the card stays, marked
+      // completed. Hiding it used to orphan the run state and leave the turn
+      // without its trace.
+      if (status === 'answered') status = 'completed';
       const pill = document.getElementById(wrapId + '-pill');
       const dur = document.getElementById(wrapId + '-dur');
       const spin = document.getElementById(wrapId + '-spin');
@@ -3122,8 +3137,19 @@
         // Stream into the active run container (roadmap rail); fall back to
         // the bare timeline for ungrouped contexts. A container owned by another
         // chat is never a valid target, even if a stale reference survived.
+        // Steps belong to the run card of this turn. A live card is used even
+        // before the session id is known (first turn of a new chat); falling
+        // back to the bare timeline is what left run states stranded at the
+        // bottom of the chat.
         let stepParent = messagesDiv;
-        if (window.activeRunWrap && window.activeRunWrap.dataset.sessionId === String(sessionId || '')) {
+        const _liveWrap = (window.liveBubbleCurrent && document.contains(window.liveBubbleCurrent.bubble))
+          ? window.activeRunWrap
+          : null;
+        if (_liveWrap && document.contains(_liveWrap) && window.activeRunWrap === _liveWrap) {
+          stepParent = _liveWrap;
+        } else if (window.activeRunWrap && window.activeRunWrap.dataset.sessionId === String(sessionId || '')) {
+          stepParent = window.activeRunWrap;
+        } else if (window.activeRunWrap && !window.activeRunWrap.dataset.sessionId && window.liveBubbleCurrent) {
           stepParent = window.activeRunWrap;
         }
         if (window.isLoadingHistory) {
