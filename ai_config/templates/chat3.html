@@ -289,13 +289,15 @@
   }
 
   .sre-timer {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-secondary);
     font-family: monospace;
-    background: var(--bg-main);
-    padding: 2px 6px;
-    border-radius: 10px;
-    border: 1px solid var(--border-color);
+    background: transparent;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    opacity: .85;
+    white-space: nowrap;
   }
 
   .sre-history-item {
@@ -2792,8 +2794,8 @@
       }
       const icon = document.getElementById('icon-' + stepId);
       if (icon) {
-        if (status === 'success') icon.innerHTML = window.sreCheckSvg(13);
-        else if (status === 'error') icon.innerHTML = window.sreXSvg(13);
+        if (status === 'success') icon.innerHTML = window.sreCheckSvg(14);
+        else if (status === 'error') icon.innerHTML = window.sreXSvg(14);
         else if (status === 'active') icon.innerHTML = '<div class="spinner-border spinner-border-sm" role="status" style="width: 12px; height: 12px; border-width: 2px;"></div>';
         icon.style.color = pal[1];
       }
@@ -2926,7 +2928,9 @@
       const terminal = ['completed', 'failed', 'cancelled', 'blocked', 'denied', 'denied_timeout', 'security_blocked', 'error', 'finalized'].includes(String(status || '').toLowerCase());
       if (pill && (terminal || status)) {
         pill.textContent = status || (ok ? 'completed' : 'failed');
-        pill.style.backgroundColor = ok ? 'rgba(63,185,80,0.15)' : (terminal ? 'rgba(248,81,73,0.15)' : 'rgba(88,166,255,0.15)');
+        pill.style.backgroundColor = '';
+        pill.style.padding = '';
+        pill.style.borderRadius = '';
         pill.style.color = ok ? 'var(--success-text)' : (terminal ? 'var(--error)' : 'var(--text-strong)');
       }
       if (dur && duration != null) dur.textContent = `✓ ${Number(duration).toFixed(1)}s`;
@@ -3057,9 +3061,9 @@
       if (tlStatus === 'active') {
         iconHtml = `<div class="spinner-border spinner-border-sm" role="status" style="width: 12px; height: 12px; border-width: 2px;"></div>`;
       } else {
-        iconHtml = tlStatus === 'error' ? window.sreXSvg(13) : window.sreCheckSvg(13);
+        iconHtml = tlStatus === 'error' ? window.sreXSvg(14) : window.sreCheckSvg(14);
       }
-      const tlTimerStyle = 'min-width: 45px; text-align: right; font-size: 11px; font-family: monospace; color: var(--text-secondary); opacity: .85;';
+      const tlTimerStyle = 'min-width: 45px; text-align: right; font-size: 12px; font-family: monospace; color: var(--text-secondary); opacity: .85; white-space: nowrap;';
       let initialTimer;
       if (customTimer) {
         initialTimer = `<span id="timer-${stepId}" class="sre-timer" style="${tlTimerStyle}">${customTimer}</span>`;
@@ -3090,17 +3094,17 @@
         stepDiv.className = 'sre-agent-step';
         stepDiv.dataset.status = tlStatus;
         stepDiv.dataset.open = tlOpen ? '1' : '0';
-        stepDiv.style.cssText = 'position: relative; display: flex; gap: 12px;';
+        stepDiv.style.cssText = 'position: relative; display: flex; gap: 16px;';
         stepDiv.innerHTML = `
-                <div class="sre-tl-line" style="position: absolute; left: 12px; top: 30px; bottom: 0; width: 2px; background: var(--border-color); opacity: .55; display: none;"></div>
-                <div class="sre-tl-dot" style="position: relative; z-index: 1; flex: none; width: 26px; height: 26px; margin-top: 0; border-radius: 50%; overflow: visible; display: flex; align-items: center; justify-content: center; background: ${tlPal[0]}; color: ${tlPal[1]}; box-shadow: 0 0 0 3px ${tlPal[2]};">
+                <div class="sre-tl-line" style="position: absolute; left: 14px; top: 34px; bottom: 0; width: 2px; background: var(--border-color); opacity: .55; display: none;"></div>
+                <div class="sre-tl-dot" style="position: relative; z-index: 1; flex: none; width: 30px; height: 30px; margin-top: 0; border-radius: 50%; overflow: visible; display: flex; align-items: center; justify-content: center; background: ${tlPal[0]}; color: ${tlPal[1]}; box-shadow: 0 0 0 3px ${tlPal[2]};">
                     <span id="icon-${stepId}" style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">
                         ${iconHtml}
                     </span>
                 </div>
-                <div style="flex: 1; min-width: 0; padding-bottom: 22px;">
+                <div style="flex: 1; min-width: 0; padding-bottom: 24px;">
                     <div onclick="toggleStep('${stepId}', event)" onmouseover="this.style.background='rgba(127,140,160,.08)'" onmouseout="this.style.background='transparent'" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 1px 6px; margin: 0 -6px; border-radius: 6px; cursor: pointer; user-select: none;">
-                        <span style="font-size: 14px; font-weight: ${tlStatus === 'active' ? '600' : '500'}; color: ${tlStatus === 'error' ? 'var(--error)' : (tlStatus === 'active' ? 'var(--text-strong)' : color)};">${label}</span>
+                        <span style="font-size: 15px; font-weight: ${tlStatus === 'active' ? '600' : '500'}; color: ${tlStatus === 'error' ? 'var(--error)' : (tlStatus === 'active' ? 'var(--text-strong)' : color)};">${label}</span>
                         <span style="display: flex; align-items: center; gap: 8px; flex: none;">
                             ${initialTimer}
                             <span class="sre-tl-chev" style="display: flex; color: var(--text-secondary); opacity: .6; transition: transform .2s; transform: rotate(${tlOpen ? '0deg' : '-90deg'});">${window.sreChevSvg(14)}</span>
@@ -5592,13 +5596,15 @@
   }
 
   .sre-timer {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-secondary);
     font-family: monospace;
-    background: var(--bg-main);
-    padding: 2px 6px;
-    border-radius: 10px;
-    border: 1px solid var(--border-color);
+    background: transparent;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    opacity: .85;
+    white-space: nowrap;
   }
 
   .sre-history-item {
