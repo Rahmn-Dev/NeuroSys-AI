@@ -1621,14 +1621,23 @@
           const payload = JSON.parse(e.data);
           if (payload.type === 'session_id') {
             window.liveRunSessionId = String(payload.content || '');
-          } else if (!window.eventBelongsHere(payload)) {
-            // Either a foreign run (update its presence) or an orphan its
-            // session cannot be proven for (drop it, never render it here).
-            if (window.liveRunSessionId) {
-              window.noteForeignRunEvent(payload);
+          } else {
+            // Strongest signal first: the authoritative session stamped by the
+            // server on every event. It does not depend on event ordering, so
+            // it also covers reloads, reconnects and late stragglers.
+            const claimed = payload.session_id ? String(payload.session_id) : '';
+            if (claimed && sessionId && claimed !== String(sessionId)) {
+              window.noteForeignRunEvent(payload, claimed);
               window.updateForeignRunBadge && window.updateForeignRunBadge(payload);
+              return;
             }
-            return;
+            if (!window.eventBelongsHere(payload)) {
+              if (window.liveRunSessionId) {
+                window.noteForeignRunEvent(payload);
+                window.updateForeignRunBadge && window.updateForeignRunBadge(payload);
+              }
+              return;
+            }
           }
           handleEvent(payload);
         }
@@ -1671,7 +1680,15 @@
 
         case 'session_id':
           const oldSessionId = sessionId;
-          sessionId = data.content;
+          // Adopt the id only when this chat asked for a run and is still
+          // waiting for its session. A straggler from another chat must never
+          // repoint the open chat at itself.
+          if (window.expectingSession && data.content) {
+            window.expectingSession = false;
+            sessionId = data.content;
+          } else if (!sessionId && data.content) {
+            sessionId = data.content;
+          }
           if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({type: 'subscribe', session_id: sessionId}));
           bootstrapActiveRun();
           startSnapshotPolling();
@@ -2007,10 +2024,10 @@
           break;
 
         case 'message_chunk':
+          if (currentAIMsg && currentAIMsg.dataset.sessionId !== String(sessionId || '')) break;
           if (!currentAIMsg) {
             currentAIMsg = addAIMessage('');
           }
-          if (currentAIMsg.dataset.sessionId !== String(sessionId || '')) break;
           // Reply is streaming: the bubble keeps the bot avatar, the header
           // orb steps aside until the next agent phase.
           window.setProgressOrb('composing');
@@ -3083,8 +3100,8 @@
       return '';
     };
 
-    window.noteForeignRunEvent = function (payload) {
-      const sid = window.liveRunSessionId;
+    window.noteForeignRunEvent = function (payload, explicitSid) {
+      const sid = explicitSid || window.liveRunSessionId;
       if (!sid) return;
       const label = window.phaseLabelForEvent(payload);
       const entry = window.runsBySession[String(sid)] || { id: String(sid), label: 'Agent run', startedAt: Date.now() };
@@ -3731,6 +3748,7 @@
 
       window.lastSubmittedMessage = msg;
       window.liveRunSessionId = String(sessionId || '');
+      window.expectingSession = true;
       window.setAgentDotState('running');
       sendBtn.classList.remove('sre-press');
       // Force a reflow so the press animation replays on every send.
@@ -4056,6 +4074,7 @@
     window.startNewChat = function () {
 
       window.liveRunSessionId = null;
+      window.expectingSession = false;
       window.continueSessionId = null;
       stopSnapshotPolling();
       stopAllAgentStepTimers();
@@ -4100,6 +4119,7 @@
         setBeamRunning(false);
       }
       window.liveRunSessionId = null;
+      window.expectingSession = false;
       window.continueSessionId = null;
       window.continueCaseId = null;
       window.pendingResumeCaseId = '';

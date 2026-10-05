@@ -1534,6 +1534,13 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
                 await engine._lifecycle.atransition("approval", approval_states[event["type"]], event["type"], {"approval_id": event.get("approval_id")})
                 event["run_id"] = str(engine._lifecycle.run.pk)
                 event["event_id"] = f"{event['run_id']}:approval:{event.get('approval_id')}:{event['type']}"
+            # Session affinity travels with every event, so a client showing a
+            # different chat can attribute (never render) foreign run content
+            # without depending on event ordering.
+            try:
+                event.setdefault("session_id", str(getattr(engine, "session_id", "") or ""))
+            except Exception:
+                pass
             try:
                 if self.run_group:
                     await self.channel_layer.group_send(self.run_group, {"type": "agent.event", "payload": event})
