@@ -68,21 +68,21 @@ def _ensure_tools_registered():
     if registry.count() > 0:
         return  # already registered
 
+    # Only the six powerful tools the agent actually uses. Everything they can
+    # do is reachable through terminal_execute / read_file, so thin shell
+    # wrappers were removed instead of being advertised to the model.
     from .tools.filesystem import register_filesystem_tools
-    from .tools.docker import register_docker_tools
-    from .tools.network import register_network_tools
-    from .tools.shell import register_shell_tools
-    from .tools.monitoring import register_monitoring_tools
-    from .tools.security import register_security_tools
     from .tools.terminal import register_terminal_tools
+    from .tools.shell import register_shell_tools
+    from .tools.delegation import register_delegation_tools
 
     register_filesystem_tools()
-    register_docker_tools()
-    register_network_tools()
-    register_shell_tools()
-    register_monitoring_tools()
-    register_security_tools()
     register_terminal_tools()
+    register_shell_tools()
+    # Without this the orchestrator mode has no way to delegate: spawn_subagent
+    # was never registered, so Autonomous Multi bound 3 tools and could do
+    # nothing at all.
+    register_delegation_tools()
 
 
 # ---------------------------------------------------------------------------

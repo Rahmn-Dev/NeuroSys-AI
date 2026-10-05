@@ -130,14 +130,10 @@ class ToolDiscoveryAgent:
             from .tools.terminal import register_terminal_tools
             from .tools.shell import register_shell_tools
             from .tools.delegation import register_delegation_tools
-            from .tools.linux import register_linux_tools
-            from .tools.monitoring import register_monitoring_tools
             register_filesystem_tools()
             register_terminal_tools()
             register_shell_tools()
             register_delegation_tools()
-            register_linux_tools()
-            register_monitoring_tools()
         self.registry = registry
 
     def classify_intent(self, user_message: str) -> str:

@@ -293,3 +293,43 @@ def test_unknown_domain_has_no_checklist():
     assert checklist_for("halo") == {}
     assert next_objective("halo", set()) is None
     assert render_coverage_report("halo", set()) == ""
+
+
+# --- the six-tool architecture ----------------------------------------------
+
+from sre_agent.engine import _ensure_tools_registered  # noqa: E402
+from sre_agent.tools import ToolRegistry  # noqa: E402
+
+
+def test_registry_only_exposes_the_six_powerful_tools():
+    _ensure_tools_registered()
+    names = {m.name for m in ToolRegistry().list_all()}
+    assert names == {
+        "get_current_directory", "read_file", "write_file", "edit_file",
+        "terminal_execute", "spawn_subagent",
+    }
+
+
+def test_spawn_subagent_is_registered_so_multi_agent_can_delegate():
+    _ensure_tools_registered()
+    registry = ToolRegistry()
+    assert registry.get_tool("spawn_subagent") is not None
+    assert registry.get_metadata("spawn_subagent") is not None
+
+
+def test_orchestrator_mode_can_delegate_but_cannot_execute_directly():
+    from sre_agent.discovery import ToolDiscoveryAgent
+    from sre_agent.react_engine import ReactEngine
+
+    class _LLM:
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+    tools = ToolDiscoveryAgent().discover_single_agent_tools("cek dua service sekaligus").tools
+    multi = [t.name for t in ReactEngine(_LLM(), tools, "sys", "sid", mode="autonomous_multi").tools]
+    assert "spawn_subagent" in multi
+    assert not {"terminal_execute", "write_file", "edit_file"} & set(multi)
+
+    guided = [t.name for t in ReactEngine(_LLM(), tools, "sys", "sid", mode="guided").tools]
+    # Guided withholds execution from the model, including via delegation.
+    assert not {"terminal_execute", "write_file", "edit_file", "spawn_subagent"} & set(guided)

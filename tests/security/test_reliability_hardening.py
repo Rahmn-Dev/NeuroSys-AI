@@ -77,11 +77,12 @@ def test_unbounded_root_search_needs_scope_but_targeted_search_is_read_only():
     assert evaluate(meta, {'path': '/etc/nginx', 'pattern': 'server_name'})[0] == 'approved'
 
 
-def test_service_discovery_routes_logs_and_config_without_workspace_reader():
+def test_service_discovery_uses_the_shell_not_deleted_wrappers():
     from sre_agent.discovery import ToolDiscoveryAgent
     result = ToolDiscoveryAgent().discover('cek nginx error log dan validasi config')
-    assert 'log_reader' in result.tool_names
-    assert 'service_config_check' in result.tool_names
+    # log_reader / service_config_check were thin journalctl+systemctl wrappers.
+    assert 'terminal_execute' in result.tool_names
+    assert not {'log_reader', 'service_config_check'} & set(result.tool_names)
 
 
 @pytest.mark.parametrize('service', ['nginx;id', '--root=/tmp', '$(id)', 'nginx\nreboot'])
@@ -90,14 +91,15 @@ def test_service_arguments_cannot_inject_shell(service):
     assert evaluate(meta, {'action': 'status', 'service_name': service})[0] == 'blocked'
 
 
-def test_health_collects_full_coverage_and_explicit_failures():
-    class Registry:
-        def get_tool(self, name):
-            return SimpleNamespace(ainvoke=AsyncMock(side_effect=RuntimeError('fixture'))) if name == 'get_cpu_usage' else SimpleNamespace(ainvoke=AsyncMock(return_value='collected'))
-    evidence = asyncio.run(collect_health_evidence(Registry()))
-    assert {e['aspect'] for e in evidence} >= {'cpu', 'memory', 'disk', 'uptime_load', 'failed_units', 'service_states', 'service:nginx'}
-    assert evidence[0]['status'] == 'collection_failed'
+def test_health_collects_full_coverage_as_internal_probes():
+    # Health coverage is server-side probing, not model-facing tools, so it
+    # costs no prompt tokens and cannot be mis-selected. The registry argument
+    # is accepted for call-site compatibility and ignored.
+    evidence = asyncio.run(collect_health_evidence(object()))
+    assert {e['aspect'] for e in evidence} >= {'cpu', 'memory', 'disk', 'uptime_load',
+                                               'failed_units', 'service_states', 'service:nginx'}
     assert all(e['source'] and e['collected_at'] for e in evidence)
+    assert all(e['status'] in {'collected', 'collection_failed'} for e in evidence)
 
 
 def test_disk_only_does_not_expand_to_system_health():

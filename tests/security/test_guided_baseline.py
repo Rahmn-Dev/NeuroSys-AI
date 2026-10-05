@@ -5,13 +5,13 @@ def test_indonesian_server_health_baseline_is_broad_read_only():
         'cek kondisi server saya, termasuk resource utama dan service yang bermasalah'
     )
     assert result.intent == 'system_health'
-    assert {'system_info', 'service_manager'}.issubset(set(result.tool_names))
+    # The thin shell wrappers (system_info, service_manager, log_reader) were
+    # removed: terminal_execute reaches all of them, so advertising them only
+    # cost prompt tokens and invited tool mis-selection.
     assert 'terminal_execute' in result.tool_names
     assert not {'write_file', 'edit_file', 'spawn_subagent', 'safe_execute'} & set(result.tool_names)
-    service = next(tool for tool in result.tools if tool.name == 'service_manager')
-    import inspect
-    source = inspect.getsource(getattr(service.func, '__wrapped__', service.func))
-    assert 'systemctl list-units --failed' in source
+    assert set(result.tool_names) <= {'terminal_execute', 'read_file', 'get_current_directory',
+                                       'write_file', 'edit_file', 'spawn_subagent'}
 
 
 def test_guided_mode_routes_to_single_agent_core_toolkit():

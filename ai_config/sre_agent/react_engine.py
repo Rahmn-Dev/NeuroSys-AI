@@ -111,6 +111,13 @@ class ReactEngine:
             # Single Agent owns the request; delegation is available only for
             # bounded independent work and does not replace direct execution.
             self.tools = list(tools)
+        elif self.mode == "guided":
+            # Guided means the operator runs the commands, so the agent keeps
+            # read-only tools only - and no delegation either, because a
+            # subagent could execute what guided deliberately withholds.
+            self.tools = [t for t in tools
+                          if t.name not in {"write_file", "edit_file", "terminal_execute",
+                                            "spawn_subagent"}]
         else:
             # Multi-agent Mode: Orchestrator MUST delegate all execution to subagents via spawn_subagent
             direct_execution_tools = [
