@@ -2574,33 +2574,56 @@
     };
 
     // The run card is the trace of the work that produced this answer, so it
-    // always reads directly above the answer it explains. Appending in arrival
-    // order is not enough: a resumed run can open its card after the answer
-    // bubble already exists, so the position is enforced here instead.
+    // always reads directly above the response panel, beside the bot avatar.
+    // Appending in arrival order is not enough: a resumed run can open its
+    // card after the bubble already exists, so the position is enforced here.
     window.seatRunCardAbove = function (card) {
       if (!card) return;
       const body = window.activeRunWrap;
       if (!body) return;
-      const wrap = body.parentElement;
-      if (!wrap || wrap === card || wrap.contains(card)) return;
-      if (String(wrap.dataset.sessionId || '') !== String(card.dataset.sessionId || '')) return;
-      messagesDiv.insertBefore(wrap, card);
+      window.seatWrapAbove(body.parentElement, card);
     };
 
-    // A run card is a sibling of the answer it explains, never a child of
-    // the bubble: nested inside the flex row it squeezes into a broken column
-    // and its header stops receiving clicks. This lifts out any card that a
-    // stale render left nested, then enforces sibling order everywhere.
+    // One bubble, one column: avatar on the left, and on the right a single
+    // column with the run card on top and the response panel below it. The
+    // card is seated inside the bubble's column so the turn reads as one unit
+    // and the header keeps its full clickable width.
+    window.seatWrapAbove = function (wrap, card) {
+      if (!wrap || !card || wrap === card || wrap.contains(card)) return;
+      if (String(wrap.dataset.sessionId || '') !== String(card.dataset.sessionId || '')) return;
+      try {
+        let column = null;
+        for (const child of card.children) {
+          if (child.classList && child.classList.contains('agent-msg-body')) { column = child; break; }
+        }
+        if (!column) {
+          // Heal bubbles built before the column existed: gather the panel.
+          const panels = Array.from(card.children).filter((el) => el.classList && el.classList.contains('sre-panel'));
+          if (!panels.length) return;
+          column = document.createElement('div');
+          column.className = 'agent-msg-body';
+          column.style.cssText = 'flex:1; min-width:0; display:flex; flex-direction:column;';
+          card.insertBefore(column, panels[0]);
+          panels.forEach((panel) => column.appendChild(panel));
+        }
+        if (column.contains(wrap)) {
+          const panel = column.querySelector(':scope > .sre-panel');
+          if (panel && wrap.nextElementSibling !== panel && wrap !== panel) column.insertBefore(wrap, panel);
+          return;
+        }
+        const panel = column.querySelector(':scope > .sre-panel');
+        if (panel) column.insertBefore(wrap, panel);
+        else column.appendChild(wrap);
+      } catch (err) { /* best-effort */ }
+    };
+
+    // A run card always lives inside its answer's column, above the response
+    // panel. Anything left elsewhere (stale-tree artifact) is pulled in.
     window.normalizeRunCards = function () {
       try {
         document.querySelectorAll('[id^="runwrap-"]').forEach((wrap) => {
-          if (wrap.parentElement === messagesDiv) return;
           const bubble = wrap.closest('.agent-msg.sre-msg-ai');
-          if (bubble && bubble.parentElement === messagesDiv) {
-            messagesDiv.insertBefore(wrap, bubble);
-          } else if (wrap.parentElement) {
-            messagesDiv.appendChild(wrap);
-          }
+          if (bubble) window.seatWrapAbove(wrap, bubble);
         });
       } catch (err) { /* best-effort */ }
     };
@@ -2614,11 +2637,13 @@
             <div data-avatar="agent" data-orb-size="42" style="flex-shrink:0; width:56px; height:56px; border-radius:50%; background:rgba(31, 111, 235, 0.12); border:1px solid var(--border-color); display:flex; align-items:center; justify-content:center; box-shadow: 0 4px 12px rgba(0,0,0,0.08); flex-wrap: nowrap; overflow: hidden;">
                 ${window.neuroBotAvatar(42)}
             </div>
-            <div class="sre-panel p-3 my-2" style="background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 14px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); flex:1; min-width: 0;">
+            <div class="agent-msg-body" style="flex:1; min-width: 0; display:flex; flex-direction:column;">
+            <div class="sre-panel p-3 my-2" style="background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 14px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); min-width: 0;">
                 <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
                     <strong style="font-size: 13px;"><span class="theme-gradient">NeuroSysAI</span><i class="sre-agent-dot" data-state="idle" title="Agent idle"></i></strong>
                 </div>
                 <div class="ai-content sre-text-primary" style="font-size: 13px; color: var(--text-primary); line-height: 1.6;">${marked.parse(content || '')}</div>
+            </div>
             </div>
         `;
       messagesDiv.appendChild(div);
