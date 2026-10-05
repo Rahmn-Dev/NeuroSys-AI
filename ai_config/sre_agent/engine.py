@@ -813,6 +813,10 @@ User message: {effective_goal}
 Output strictly the category name."""
         from .provider_runtime import invoke_with_retry
         from .direct_chat import is_lookup_turn as _is_lookup_turn
+        if resume_request and resumable_case:
+            # Fresh retry: the failed notice(s) of this case are dropped from
+            # the chat so errors never accumulate across retries.
+            await self._drop_failed_terminals(db_session_id, resumable_case.id)
         if generic_continuation and not resumable_case:
             # Nothing to resume in this chat: say so instead of starting an
             # investigation with an empty goal, which is what used to make the
@@ -1855,6 +1859,49 @@ Output strictly the category name."""
             )()
         except Exception:
             pass
+
+    async def _drop_failed_terminals(self, db_session_id, case_id):
+        """Delete the failed terminal AI message(s) of a case being retried.
+
+        A retry starts fresh: the previous error notice must not pile up in the
+        chat. Only messages whose recorded timeline ends in a failing terminal
+        state (or a known pause notice) are removed; completed answers and all
+        user messages are never touched.
+        """
+        if not case_id:
+            return 0
+        try:
+            return await sync_to_async(self._drop_failed_terminals_sync)(
+                str(db_session_id), str(case_id))
+        except Exception:
+            return 0
+
+    @staticmethod
+    def _drop_failed_terminals_sync(db_session_id, case_id):
+        """Synchronous core of the retry cleanup (kept separate so it is
+        directly testable without crossing threads)."""
+        from chatbot.models import ChatMessage
+        removed = 0
+        failing = {"error", "failed", "cancelled", "blocked", "denied",
+                   "denied_timeout", "security_blocked"}
+        notices = ("Agent execution failed", "The case is not finished",
+                   "Investigation paused", "Step budget reached")
+        for msg in ChatMessage.objects.filter(
+            session_id=db_session_id, sender="ai",
+            metadata__case_id=str(case_id),
+        ):
+            meta = msg.metadata or {}
+            events = meta.get("events") or []
+            terminal = next(
+                (e for e in reversed(events)
+                 if isinstance(e, dict) and e.get("type") in failing),
+                None,
+            )
+            text = str(msg.message or "")
+            if terminal is not None or text.startswith(notices):
+                msg.delete()
+                removed += 1
+        return removed
 
     async def _get_or_create_session(self):
         from chatbot.models import ChatSession

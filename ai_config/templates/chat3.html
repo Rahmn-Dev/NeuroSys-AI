@@ -3583,6 +3583,8 @@
       e.preventDefault();
       let msg = input.value.trim();
       if (!msg) return;
+      const silent = window.silentSubmit === true;
+      window.silentSubmit = false;
       if (isProcessing) {
         // The send button is Stop while a run is live; submitting text then is
         // a mistake, so say so instead of silently dropping the message.
@@ -3599,7 +3601,8 @@
         msg = msg + `\n\n[Context Attached: file://${attachedFile}]`;
       }
 
-      addUserMessage(msg);
+      // A retry resends the failed goal without stacking another user bubble.
+      if (!silent) addUserMessage(msg);
       input.value = '';
       input.style.height = 'auto';
       stopAllAgentStepTimers();
@@ -4686,6 +4689,34 @@
 
     window.artifactContents = window.artifactContents || {};
 
+    // Remove the visible traces of a failed run so a retry starts clean:
+    // consumed action blocks, Error/Cancelled step cards and the error bubble.
+    window.clearRunFailureUI = function (sid) {
+      const owner = String(sid || sessionId || '');
+      document.querySelectorAll('.sre-run-actions').forEach((block) => {
+        if (String(block.dataset.sessionId || '') !== owner) return;
+        if (block.dataset.consumed === '1') return;
+        block.innerHTML = '<span style="font-size:11px; color:var(--text-secondary);">' +
+          '<i class="fa-solid fa-circle-notch spin-anim" style="font-size:9px;"></i> Resuming…</span>';
+        block.dataset.consumed = '1';
+      });
+      const wrap = window.activeRunWrap;
+      if (wrap) {
+        wrap.querySelectorAll('.sre-agent-step').forEach((step) => {
+          const label = (step.textContent || '').trim().slice(0, 60);
+          if (/^(Error|Cancelled|Failed)/i.test(label)) step.remove();
+        });
+      }
+      const prefixes = ['Agent execution failed', 'The case is not finished',
+        'Investigation paused', 'Step budget reached'];
+      const bubbles = Array.from(messagesDiv.querySelectorAll('.agent-msg.sre-msg-ai'));
+      for (let i = bubbles.length - 1; i >= 0; i--) {
+        const text = (bubbles[i].innerText || '').trim();
+        if (prefixes.some((p) => text.startsWith(p))) bubbles[i].remove();
+        else break;
+      }
+    };
+
     window.continueRun = function (forSessionId) {
       try {
         if (typeof isProcessing !== 'undefined' && isProcessing) return;
@@ -4699,15 +4730,10 @@
         const inputEl = document.getElementById('chat-input') || (typeof input !== 'undefined' ? input : null);
         const formEl = (typeof form !== 'undefined' && form) ? form : (inputEl ? inputEl.form : null);
         if (!inputEl || !formEl) return;
-        // Consume the affordance: once pressed, Retry/Cancel must not linger.
-        // (owner already resolved above)
-        document.querySelectorAll('.sre-run-actions').forEach((block) => {
-          if (String(block.dataset.sessionId) === String(owner)) {
-            block.innerHTML = '<span style="font-size:11px; color:var(--text-secondary);">' +
-              '<i class="fa-solid fa-circle-notch spin-anim" style="font-size:9px;"></i> Resuming…</span>';
-            block.dataset.consumed = '1';
-          }
-        });
+        // A retry is a refresh, not a new turn: clear the old error traces,
+        // then resend without adding another user bubble.
+        window.clearRunFailureUI(owner);
+        window.silentSubmit = true;
         inputEl.value = 'continue';
         if (formEl.requestSubmit) formEl.requestSubmit();
         else formEl.dispatchEvent(new Event('submit', { cancelable: true }));

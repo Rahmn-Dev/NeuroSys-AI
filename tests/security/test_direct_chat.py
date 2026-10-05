@@ -447,3 +447,58 @@ def test_pure_single_fact_questions_stay_deterministic(message):
 ])
 def test_comparative_or_analytical_turns_reach_tools(message):
     assert is_lookup_turn(message) is False
+
+
+# --- retry drops failed terminals, keeps everything else ---------------------
+
+import asyncio  # noqa: E402 (already imported above, kept for clarity)
+
+
+@pytest.fixture
+def chat_tables():
+    from django.db import connection
+    from chatbot.models import ChatMessage, ChatSession, WorkspaceInfo
+    with connection.schema_editor() as editor:
+        for model in (WorkspaceInfo, ChatSession, ChatMessage):
+            try:
+                editor.create_model(model)
+            except Exception:
+                pass
+    yield
+
+
+def test_retry_removes_failed_terminals_but_keeps_answers(chat_tables):
+    import uuid as _uuid
+
+    from chatbot.models import ChatMessage, ChatSession
+    from sre_agent.engine import SREAgentEngine
+
+    session = ChatSession.objects.create()
+    case_id = "inv_" + _uuid.uuid4().hex[:8]
+    failed = ChatMessage.objects.create(
+        session_id=session.id, sender="ai",
+        message="Agent execution failed; no successful completion was recorded.",
+        metadata={"case_id": case_id, "events": [{"type": "error", "content": "boom"}]},
+    )
+    answered = ChatMessage.objects.create(
+        session_id=session.id, sender="ai",
+        message="Nginx is alive and running.",
+        metadata={"case_id": case_id, "events": [{"type": "completed", "content": "done"}]},
+    )
+    asked = ChatMessage.objects.create(
+        session_id=session.id, sender="user",
+        message="coba ingatan kamu",
+        metadata={"case_id": case_id},
+    )
+
+    # Call the synchronous core directly: the async wrapper only adds
+    # thread-hopping, which in-memory SQLite test databases do not survive.
+    from sre_agent.engine import SREAgentEngine
+    removed = SREAgentEngine._drop_failed_terminals_sync(str(session.id), case_id)
+    assert removed == 1
+    remaining = set(
+        ChatMessage.objects.filter(session_id=session.id).values_list("id", flat=True)
+    )
+    assert failed.id not in remaining
+    assert answered.id in remaining
+    assert asked.id in remaining
