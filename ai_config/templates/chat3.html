@@ -1639,6 +1639,14 @@
               return;
             }
           }
+          // Events timestamped before this chat's cancel are stragglers from
+          // the killed run, not news: drop them instead of rendering ghosts.
+          const cancelHorizon = (window.cancelledAt || {})[String(sessionId || '')];
+          const eventMs = payload.timestamp ? Number(payload.timestamp) * 1000 : 0;
+          if (cancelHorizon && eventMs && eventMs < cancelHorizon - 5000 &&
+              window.RUN_CONTENT_EVENTS.has(String(payload.type || ''))) {
+            return;
+          }
           handleEvent(payload);
         }
         catch (error) { badge.textContent = 'Message error'; console.warn('Invalid Agent event', error); }
@@ -1945,6 +1953,10 @@
           break;
 
         case 'investigation_started':
+          if (data.investigation_id && window.activeRunWrap) {
+            const slot = document.getElementById(window.activeRunWrap.dataset.wrapId + '-case');
+            if (slot) slot.textContent = data.investigation_id;
+          }
           if (!window.isLoadingHistory && activeInvestigationId && investigations[activeInvestigationId]) {
             investigations[activeInvestigationId].status = 'completed';
             window.setProgressOrb('done');
@@ -2658,6 +2670,7 @@
           <span id="${wrapId}-spin" style="color: var(--accent); display: flex; align-items: center; width: 14px;"></span>
           <span id="${wrapId}-pill" class="sre-run-phase" style="font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.6px;">observing</span>
           <span id="${wrapId}-dur" style="font-size: 11px; color: var(--text-secondary);"></span>
+          <span id="${wrapId}-case" style="font-size: 10px; font-family: monospace; color: var(--text-secondary); opacity: 0.8;"></span>
           <i class="fa-solid fa-chevron-down" id="${wrapId}-chev" style="margin-left: auto; font-size: 10px; color: var(--text-secondary); transition: transform 0.2s; transform: rotate(0deg);"></i>
         </div>
         <div id="${wrapId}-body" class="sre-run-body" style="padding: 10px 10px 10px 18px; border-left: 2px solid var(--accent); margin: 4px 0 4px 20px; display: flex; flex-direction: column; gap: 8px; max-height: 420px; overflow-y: auto;"></div>
@@ -2953,21 +2966,13 @@
     };
 
     window.stopCurrentRun = function () {
-      const sids = Object.keys(window.runsBySession || {});
-      if (!sids.length && !isProcessing) return;
-      const targets = sids.length ? sids : [String(sessionId || '')];
-      addSystemMsg(targets.length > 1 ? ('Stopping ' + targets.length + ' runs...') : 'Stopping the run...', 'circle-notch');
-      targets.forEach((sid) => {
-        try {
-          if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'cancel', session_id: String(sid) }));
-        } catch (err) { /* socket closing */ }
-        window.markRunFinished(String(sid), false);
-      });
-      if (window.activeRunOrb) window.applyOrbTo(window.activeRunOrb, 'done');
-      window.activeRunOrb = null;
-      window.activeRunWrap = null;
-      setBeamRunning(false);
-      stopAllAgentStepTimers();
+      // One button, one run: only this chat's run stops. Background runs in
+      // other chats are cancelled from their own row in History.
+      const sid = String(sessionId || '');
+      const tracked = !!((window.runsBySession || {})[sid]);
+      if (!tracked && !(isProcessing && String(window.processingSid || '') === sid)) return;
+      addSystemMsg('Stopping the run...', 'circle-notch');
+      window.cancelRunForSession(sid);
       addAgentStep('Cancelled', 'Stopped by the operator before it finished.', 'var(--warning)', 'circle-xmark', null, true);
       isProcessing = false;
       window.setSendButtonState('idle');
@@ -3040,13 +3045,24 @@
       }
       if (String(sid) === String(sessionId)) {
         isProcessing = false;
+        if (String(window.processingSid || '') === String(sid)) window.processingSid = '';
         window.setSendButtonState && window.setSendButtonState('idle');
         if (window.activeRunOrb) window.applyOrbTo(window.activeRunOrb, 'done');
         window.activeRunOrb = null;
+        // The cancelled card leaves with the run: error UI, steps and orb.
+        try {
+          const body = window.activeRunWrap;
+          if (body && String(body.dataset.sessionId || '') === String(sid) && body.parentElement) {
+            body.parentElement.remove();
+          }
+        } catch (err) { /* best-effort */ }
+        window.activeRunWrap = null;
         setBeamRunning(false);
         stopAllAgentStepTimers();
         addSystemMsg('Run cancelled.', 'circle-xmark');
       }
+      window.cancelledAt = window.cancelledAt || {};
+      window.cancelledAt[String(sid)] = Date.now();
       delete window.runsBySession[String(sid)];
       window.renderActiveRuns();
     };
@@ -3760,7 +3776,11 @@
       if (!msg) return;
       const silent = window.silentSubmit === true;
       window.silentSubmit = false;
-      if (isProcessing || Object.keys(window.runsBySession || {}).length) {
+      // Multitasking: only this chat's own live run blocks a new message here.
+      // Runs in other chats keep going and are tracked in History.
+      const ownRunActive = !!(window.runsBySession || {})[String(sessionId || '')] ||
+        (isProcessing && String(window.processingSid || '') === String(sessionId || ''));
+      if (ownRunActive) {
         // Single flight per socket: a background run elsewhere blocks a new one
         // here, so name it instead of failing silently.
         const others = Object.keys(window.runsBySession || {}).filter((sid) => String(sid) !== String(sessionId));
@@ -3793,6 +3813,9 @@
       startRunWrap();
       window.sessionStartTime = new Date();
       isProcessing = true;
+      window.processingSid = String(sessionId || '');
+      // A fresh attempt invalidates any cancel horizon for this chat.
+      if (window.cancelledAt) delete window.cancelledAt[String(sessionId || '')];
       currentAIMsg = null;
       window.setSendButtonState('running');
 
@@ -3816,9 +3839,11 @@
         model: document.getElementById('model-selector').value,
         auto_model_rotation: localStorage.getItem('sre_auto_models') === 'true',
         mode: document.getElementById('mode-selector').value,
-        resume_case_id: window.pendingResumeCaseId || ''
+        resume_case_id: window.pendingResumeCaseId || '',
+        resume_mode: window.pendingResumeMode || ''
       }));
       window.pendingResumeCaseId = '';
+      window.pendingResumeMode = '';
       if (attachedFile) window.clearSelectedFile();
     });
 
@@ -4737,7 +4762,7 @@
       host.style.cssText = 'margin: 8px 0;';
       host.innerHTML =
         `<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">` +
-        `<button onclick="window.continueRun('${escapeHtml(host.dataset.sessionId)}', '${escapeHtml(host.dataset.caseId)}')" style="background: rgba(88,166,255,0.12); color: var(--text-strong); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 14px; font-size: 12px; cursor: pointer; font-weight: 600;">` +
+        `<button onclick="window.continueRun('${escapeHtml(host.dataset.sessionId)}', '${escapeHtml(host.dataset.caseId)}', true)" style="background: rgba(88,166,255,0.12); color: var(--text-strong); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 14px; font-size: 12px; cursor: pointer; font-weight: 600;">` +
         `<i class="fa-solid fa-rotate-right" style="font-size:11px;"></i> Retry</button>` +
         `<button onclick="window.cancelRunForSession('${escapeHtml(host.dataset.sessionId)}')" style="background: transparent; color: var(--text-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 12px; font-size: 12px; cursor: pointer; font-weight: 600;">` +
         `<i class="fa-solid fa-xmark" style="font-size:11px;"></i> Cancel</button>` +
@@ -4948,11 +4973,12 @@
       }
     };
 
-    window.continueRun = function (forSessionId, forCaseId) {
+    window.continueRun = function (forSessionId, forCaseId, fresh) {
       try {
         if (typeof isProcessing !== 'undefined' && isProcessing) return;
         const owner = forSessionId || window.continueSessionId || sessionId;
         window.pendingResumeCaseId = forCaseId || window.continueCaseId || '';
+        window.pendingResumeMode = fresh === false ? '' : 'fresh';
         // Refuse to continue a case that belongs to a chat the operator has
         // since navigated away from.
         if (owner && String(owner) !== String(sessionId)) {
@@ -4965,6 +4991,16 @@
         // A retry is a refresh, not a new turn: clear the old error traces,
         // then resend without adding another user bubble.
         window.clearRunFailureUI(owner);
+        // The failed card goes away with the retry: the fresh attempt builds
+        // its own card under its own investigation id.
+        try {
+          const body = window.activeRunWrap;
+          if (body && String(body.dataset.sessionId || '') === String(owner) && body.parentElement) {
+            body.parentElement.remove();
+          }
+        } catch (err) { /* best-effort */ }
+        window.activeRunWrap = null;
+        window.activeRunOrb = null;
         window.silentSubmit = true;
         inputEl.value = 'continue';
         if (formEl.requestSubmit) formEl.requestSubmit();

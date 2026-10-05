@@ -551,7 +551,7 @@ class SREAgentEngine:
         from .thread_memory import maybe_refresh_digest
         asyncio.create_task(maybe_refresh_digest(db_session_id, llm))
 
-    async def _run_internal(self, user_message: str, terminal_cwd: Optional[str] = None, active_workspace: Optional[str] = None, selected_file: Optional[str] = None, selected_file_name: Optional[str] = None, mode: str = "guided", permission_mode: str = "need_approval", resume_case_id: str = "") -> AsyncGenerator[AgentEvent, None]:
+    async def _run_internal(self, user_message: str, terminal_cwd: Optional[str] = None, active_workspace: Optional[str] = None, selected_file: Optional[str] = None, selected_file_name: Optional[str] = None, mode: str = "guided", permission_mode: str = "need_approval", resume_case_id: str = "", resume_mode: str = "") -> AsyncGenerator[AgentEvent, None]:
         """
         Internal loop — runs the full agent loop and yields events.
         """
@@ -670,6 +670,39 @@ class SREAgentEngine:
         if is_continuation:
             active_case = resumable_case if resume_request and resumable_case else (matched_case or latest_case)
             relation_type = "semantic_continuation" if matched_case and matched_case != latest_case else "continuation"
+            if (resume_mode or "") == "fresh" and resume_request and resumable_case:
+                # Retry means a fresh attempt, not the same case id: the new
+                # case links back to the failed one and inherits its evidence,
+                # so every user request keeps its own investigation number.
+                prior_refs = dict(resumable_case.context_refs or {})
+                prior_evidence = list(getattr(resumable_case, "evidence_digest", "") or [])
+                prior_summary = (getattr(resumable_case, "context_summary", "") or "").strip()
+                memory_features = extract_features(user_message)
+                active_case = await sync_to_async(Investigation.objects.create)(
+                    id="inv_" + str(uuid.uuid4())[:8], session_id=db_session_id,
+                    title=(prior_refs.get("goal") or user_message)[:80], parent=resumable_case,
+                    relation_type="retry", case_kind=case_info["kind"],
+                    goal_signature=case_info["signature"], entities=memory_features["entities"],
+                    keywords=memory_features["keywords"], context_refs={
+                        "goal": prior_refs.get("goal") or user_message[:2000],
+                        "selected_file": selected_file or prior_refs.get("selected_file", ""),
+                        "selected_file_name": selected_file_name or prior_refs.get("selected_file_name", ""),
+                        "terminal_cwd": terminal_cwd or prior_refs.get("terminal_cwd", ""),
+                        "active_workspace": active_workspace or prior_refs.get("active_workspace", ""),
+                        "mode": mode, "retried_from": resumable_case.id,
+                    },
+                )
+                await sync_to_async(refresh_relations)(active_case.pk)
+                if prior_evidence or prior_summary:
+                    prior_note = (
+                        "Previous attempt " + str(resumable_case.id) + " failed. "
+                        + ("Its summary: " + prior_summary[:600] + " " if prior_summary else "")
+                        + "Evidence it already gathered (do not repeat unless stale): "
+                        + "; ".join(str(item)[:220] for item in prior_evidence[:6])
+                    )
+                    # Kept on the engine (not short_memory, which the loop never
+                    # reads) so it can be injected into the prompt below.
+                    self._prior_attempt_note = prior_note
         else:
             # At most one resumable case per chat: anything still 'active' from
             # an earlier turn is closed out rather than left dangling.
@@ -1047,6 +1080,13 @@ Output strictly the category name."""
         thread_ctx = build_thread_context(await get_session_memory(db_session_id))
         if thread_ctx:
             system_prompt += "\n" + thread_ctx
+
+        # A fresh retry starts from the previous attempt's evidence instead of
+        # from zero, while keeping its own case id.
+        _prior_note = getattr(self, "_prior_attempt_note", "")
+        if _prior_note:
+            system_prompt += "\n## Previous failed attempt (do not repeat its read-only steps)\n" + _prior_note[:1500]
+            self._prior_attempt_note = ""
 
         # Resuming a paused case: hand the model what the earlier attempt already
         # proved, so it spends its budget on new work instead of repeating the
@@ -1658,7 +1698,7 @@ Output strictly the category name."""
         except Exception:
             pass
 
-    async def run(self, user_message: str, terminal_cwd: Optional[str] = None, active_workspace: Optional[str] = None, selected_file: Optional[str] = None, selected_file_name: Optional[str] = None, mode: str = "guided", permission_mode: str = "need_approval", resume_case_id: str = "") -> AsyncGenerator[AgentEvent, None]:
+    async def run(self, user_message: str, terminal_cwd: Optional[str] = None, active_workspace: Optional[str] = None, selected_file: Optional[str] = None, selected_file_name: Optional[str] = None, mode: str = "guided", permission_mode: str = "need_approval", resume_case_id: str = "", resume_mode: str = "") -> AsyncGenerator[AgentEvent, None]:
         """Main entry point — wraps internal loop to persist events and tool logs."""
         tool_start_times = {}
         tool_args = {}
@@ -1700,7 +1740,7 @@ Output strictly the category name."""
             run_timeout = int(_timeout_default)
         try:
             async with asyncio.timeout(run_timeout):
-                async for event in self._run_internal(user_message, terminal_cwd, active_workspace, selected_file, selected_file_name, mode, permission_mode, resume_case_id=resume_case_id or ""):
+                async for event in self._run_internal(user_message, terminal_cwd, active_workspace, selected_file, selected_file_name, mode, permission_mode, resume_case_id=resume_case_id or "", resume_mode=resume_mode or ""):
                     lifecycle = getattr(self, "_lifecycle", None)
                     while model_switch_cursor < len(self._model_switches):
                         switch = self._model_switches[model_switch_cursor]

@@ -1290,6 +1290,11 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.agent_task = None
         self.lifecycle = None
+        # Multitasking: one live run per chat session, all on this socket.
+        # The singular attributes above remain as compat pointers to the latest.
+        self.agent_tasks = {}
+        self.engines = {}
+        self.lifecycles = {}
         self.run_group = None
         await self.accept()
         
@@ -1385,26 +1390,27 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
             from asgiref.sync import sync_to_async
             from sre_agent.canonical_lifecycle import request_run_cancellation
             await sync_to_async(request_run_cancellation)(data.get("session_id", ""), str(getattr(self.scope.get("user"), "pk", None) or "anonymous"))
-            if self.agent_task and not self.agent_task.done():
+            # A cancel names its chat: only that session's task is stopped, so
+            # cancelling one run never kills an unrelated background run.
+            target = self.agent_tasks.get(str(data.get("session_id") or ""))
+            if target is not None and not target.done():
+                target.cancel()
+            elif self.agent_task is not None and not self.agent_task.done():
                 self.agent_task.cancel()
             return
         if msg_type == "message":
-            if self.agent_task and not self.agent_task.done():
+            sid = str(data.get("session_id") or "")
+            live = self.agent_tasks.get(sid)
+            if live is not None and not live.done():
                 from sre_agent.canonical_lifecycle import is_terminal
-                previous = getattr(getattr(self, "engine", None), "_lifecycle", None)
+                previous = getattr(self.engines.get(sid), "_lifecycle", None)
                 if previous is None or not is_terminal(previous.run.status):
-                    # Single flight per socket: say so out loud instead of
-                    # dropping the message silently.
-                    try:
-                        other = str(getattr(getattr(self, "engine", None), "session_id", "") or "")
-                        mine = str(data.get("session_id") or "")
-                        if other and mine and other != mine:
-                            hint = "A run is still active in another chat. Stop it there (or wait) before starting this one."
-                        else:
-                            hint = "A run is still going. Stop it before sending a new message."
-                        await self.send(text_data=json.dumps({"type": "status", "content": hint}))
-                    except Exception:
-                        pass
+                    await self.send(text_data=json.dumps({
+                        "type": "lifecycle", "status": previous.run.status if previous else "running",
+                        "run_id": str(previous.run.pk) if previous else "",
+                        "checkpoint_version": previous.run.checkpoint_version if previous else 0,
+                        "content": "Existing durable run is active; rehydrate instead of starting a duplicate.",
+                    }))
                     return
             session_id = data.get("session_id", "")
             if session_id:
@@ -1423,7 +1429,18 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
                         "content": "Existing durable run is active; rehydrate instead of starting a duplicate.",
                     }))
                     return
-            self.agent_task = asyncio.create_task(self._handle_message(data))
+            _task = asyncio.create_task(self._handle_message(data))
+            if sid:
+                self.agent_tasks[sid] = _task
+
+                def _forget(t, _sid=sid, _self=self):
+                    try:
+                        if _self.agent_tasks.get(_sid) is t:
+                            _self.agent_tasks.pop(_sid, None)
+                    except Exception:
+                        pass
+                _task.add_done_callback(_forget)
+            self.agent_task = _task
         elif msg_type == "approval":
             await self._handle_approval(data)
         elif msg_type == "set_sudo_pwd":
@@ -1561,6 +1578,11 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
             except Exception:
                 pass  # disconnected clients cannot prevent server-side expiry
         self.lifecycle = ApprovalLifecycle(send_event)
+        try:
+            if session_id:
+                self.lifecycles[str(session_id)] = self.lifecycle
+        except Exception:
+            pass
         lifecycle_token = active_lifecycle.set(self.lifecycle)
         try:
             from sre_agent.engine import SREAgentEngine
@@ -1577,6 +1599,11 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
             )
 
             self.engine = engine
+            try:
+                if session_id:
+                    self.engines[str(session_id)] = engine
+            except Exception:
+                pass
             async for event in engine.run(
                 user_message,
                 terminal_cwd=terminal_cwd,
@@ -1586,6 +1613,7 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
                 mode=mode,
                 permission_mode=permission_mode,
                 resume_case_id=str(data.get("resume_case_id") or ""),
+                resume_mode=str(data.get("resume_mode") or ""),
             ):
                 if not self.run_group and getattr(engine, "_lifecycle", None):
                     await self.subscribe(str(engine.session_id))
@@ -1606,10 +1634,23 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
 
         finally:
             active_lifecycle.reset(lifecycle_token)
+            try:
+                sid = str(session_id)
+                if sid and self.agent_tasks.get(sid) is asyncio.current_task():
+                    self.agent_tasks.pop(sid, None)
+                if self.agent_task is asyncio.current_task():
+                    self.agent_task = None
+            except Exception:
+                pass
 
     async def _handle_approval(self, data):
         user_id = getattr(self.scope.get("user"), "pk", "anonymous")
-        if not self.lifecycle or not self.lifecycle.pending:
+        lifecycle = None
+        try:
+            lifecycle = (self.lifecycles or {}).get(str(data.get("session_id") or "")) or self.lifecycle
+        except Exception:
+            lifecycle = self.lifecycle
+        if not lifecycle or not lifecycle.pending:
             from asgiref.sync import sync_to_async
             from sre_agent.approvals import approve, deny
             try:
@@ -1619,7 +1660,7 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
             except Exception:
                 await self.send(text_data=json.dumps({"type": "status", "content": "Approval decision rejected."}))
                 return
-        if not self.lifecycle.decide(data, user_id):
+        if not lifecycle.decide(data, user_id):
             await self.send(text_data=json.dumps({"type":"status", "content":"Approval decision rejected."}))
 
 class ArchitectureConsumer(AsyncWebsocketConsumer):
