@@ -2660,6 +2660,23 @@
       }
       window.lastRunBody = null;
       const wrapId = 'runwrap-' + Math.random().toString(36).substr(2, 9);
+      // Agent presence first: the living bot avatar plus the name lead the
+      // turn, then the run wrap, then the answer card below it. Same shape
+      // live and on replay.
+      const presenceId = 'runpresence-' + wrapId;
+      if (!document.getElementById(presenceId)) {
+        const presence = document.createElement('div');
+        presence.id = presenceId;
+        presence.dataset.sessionId = String(sessionId || '');
+        presence.className = 'sre-run-presence';
+        presence.style.cssText = 'display:flex; align-items:center; gap:12px; max-width:85%; margin-bottom:2px;';
+        presence.innerHTML =
+          '<div style="flex-shrink:0; width:42px; height:42px; border-radius:50%; background:rgba(31, 111, 235, 0.12); border:1px solid var(--border-color); display:flex; align-items:center; justify-content:center; box-shadow: 0 4px 12px rgba(0,0,0,0.08); overflow:hidden;">' +
+          window.neuroBotAvatar(30) + '</div>' +
+          '<div style="font-size:13px; font-weight:700;"><span class="theme-gradient">NeuroSysAI</span>' +
+          '<i class="sre-agent-dot" data-state="idle" title="Agent idle"></i></div>';
+        messagesDiv.appendChild(presence);
+      }
       const wrap = document.createElement('div');
       wrap.id = wrapId;
       wrap.dataset.sessionId = String(sessionId || '');
@@ -2712,6 +2729,8 @@
       if (status === 'answered') {
         const answered = document.getElementById(wrapId);
         if (answered) answered.style.display = 'none';
+        const presence = document.getElementById('runpresence-' + wrapId);
+        if (presence) presence.style.display = 'none';
         return;
       }
       const pill = document.getElementById(wrapId + '-pill');
@@ -3050,12 +3069,9 @@
         if (window.activeRunOrb) window.applyOrbTo(window.activeRunOrb, 'done');
         window.activeRunOrb = null;
         // The cancelled card leaves with the run: error UI, steps and orb.
-        try {
-          const body = window.activeRunWrap;
-          if (body && String(body.dataset.sessionId || '') === String(sid) && body.parentElement) {
-            body.parentElement.remove();
-          }
-        } catch (err) { /* best-effort */ }
+        if (window.activeRunWrap && String(window.activeRunWrap.dataset.sessionId || '') === String(sid)) {
+          window.removeRunCard(window.activeRunWrap);
+        }
         window.activeRunWrap = null;
         setBeamRunning(false);
         stopAllAgentStepTimers();
@@ -4948,6 +4964,18 @@
 
     window.artifactContents = window.artifactContents || {};
 
+    // A run card and its presence row always leave together, so neither can
+    // orphan the other on retry or cancel.
+    window.removeRunCard = function (body) {
+      if (!body) return;
+      try {
+        const wrapId = body.dataset.wrapId;
+        const presence = wrapId && document.getElementById('runpresence-' + wrapId);
+        if (presence) presence.remove();
+        if (body.parentElement) body.parentElement.remove();
+      } catch (err) { /* best-effort */ }
+    };
+
     // Remove the visible traces of a failed run so a retry starts clean:
     // consumed action blocks, Error/Cancelled step cards and the error bubble.
     window.clearRunFailureUI = function (sid) {
@@ -4996,12 +5024,9 @@
         window.clearRunFailureUI(owner);
         // The failed card goes away with the retry: the fresh attempt builds
         // its own card under its own investigation id.
-        try {
-          const body = window.activeRunWrap;
-          if (body && String(body.dataset.sessionId || '') === String(owner) && body.parentElement) {
-            body.parentElement.remove();
-          }
-        } catch (err) { /* best-effort */ }
+        if (window.activeRunWrap && String(window.activeRunWrap.dataset.sessionId || '') === String(owner)) {
+          window.removeRunCard(window.activeRunWrap);
+        }
         window.activeRunWrap = null;
         window.activeRunOrb = null;
         window.silentSubmit = true;
