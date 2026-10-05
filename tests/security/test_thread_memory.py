@@ -139,3 +139,87 @@ def test_stemmer_maps_inflections_to_the_same_root():
 def test_new_subject_words_ignores_verbs_and_function_words():
     assert new_subject_words("dipakai buat luka bisa engga", ["madu"]) == []
     assert "sepatu" in new_subject_words("kasih tau cara pilih sepatu roda", ["nginx"])
+
+
+# --- recap intent + activity record ------------------------------------------
+
+import pytest  # noqa: E402
+
+from sre_agent.thread_memory import build_activity_context, is_recap_request  # noqa: E402
+
+
+@pytest.mark.parametrize("message", [
+    "aku mau tanya jadi yg sudah kamu kerjakan dari tadi apa saja dongg pengen tahu",
+    "coba ingatan kamu apa ajaa yang sudah saya lakukan sebelum sebelumnyaa",
+    "apa saja yang sudah dibahas",
+    "what have you done so far in this chat",
+    "ringkas pekerjaan tadi",
+])
+def test_recap_questions_are_recognised(message):
+    assert is_recap_request(message) is True
+
+
+@pytest.mark.parametrize("message", [
+    "cek disk sekarang",
+    "halo",
+    "bandingkan config nginx lama dan baru",
+    "tolong cek error nginx sekarang juga",
+    "jam berapa sekarang",
+    "sepatu roda",
+])
+def test_ordinary_turns_are_not_recaps(message):
+    assert is_recap_request(message) is False
+
+
+@pytest.fixture
+def activity_tables():
+    from django.db import connection
+    from chatbot.models import ChatSession, Investigation, ToolExecutionLog, WorkspaceInfo
+    with connection.schema_editor() as editor:
+        for model in (WorkspaceInfo, ChatSession, Investigation, ToolExecutionLog):
+            try:
+                editor.create_model(model)
+            except Exception:
+                pass
+    yield
+
+
+def test_activity_context_lists_cases_and_tool_usage(activity_tables):
+    import asyncio
+    import uuid as _uuid
+
+    from chatbot.models import ChatSession, Investigation, ToolExecutionLog
+
+    session = ChatSession.objects.create()
+    Investigation.objects.create(
+        id="inv_" + _uuid.uuid4().hex[:8], session_id=session.id,
+        title="cek nginx apakah hidup", status="completed",
+    )
+    Investigation.objects.create(
+        id="inv_" + _uuid.uuid4().hex[:8], session_id=session.id,
+        title="disk root tersisa 17 gb", status="completed",
+    )
+    ToolExecutionLog.objects.create(
+        conversation=session, tool_name="terminal_execute", status="success")
+    ToolExecutionLog.objects.create(
+        conversation=session, tool_name="terminal_execute", status="success")
+    ToolExecutionLog.objects.create(
+        conversation=session, tool_name="read_file", status="success")
+
+    from sre_agent.thread_memory import _activity_rows, render_activity
+    cases, logs = _activity_rows(str(session.id))
+    text = render_activity(cases, logs)
+    assert "cek nginx apakah hidup" in text
+    assert "disk root tersisa" in text
+    assert "completed" in text
+    assert "terminal_execute x2" in text
+    assert "read_file x1" in text
+
+
+def test_activity_context_is_empty_for_a_fresh_chat(activity_tables):
+    import asyncio
+
+    from chatbot.models import ChatSession
+
+    session = ChatSession.objects.create()
+    assert asyncio.run(build_activity_context(str(session.id))) == ""

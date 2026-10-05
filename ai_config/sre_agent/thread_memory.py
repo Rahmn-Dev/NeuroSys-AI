@@ -15,9 +15,28 @@ All persistence lives in SessionMemory (one row per chat session).
 """
 from __future__ import annotations
 
+import re
+
 DIGEST_EVERY_TURNS = 8
 DIGEST_MAX_LINES = 5
 RECENT_TURNS_KEPT = 4
+
+# "What have you done so far" - answerable only from the recorded activity,
+# never from similarity-filtered chat turns (generic wording scores ~0 and the
+# model then invents "nothing much happened").
+_RECAP = re.compile(
+    r"("
+    r"apa(\s+saja|\s+aja+)?\s+(yang|yg)\s+(sudah|telah|udah|udh).{0,50}"
+    r"(kerjakan|lakukan|eksekusi|bahas|dibahas|bicara|obrol|pekerjaan|aktivitas|activity|tadi|sebelum)|"
+    r"apa(\s+saja|\s+aja+)?\s+(yang|yg)\s+(dibahas|dibicarakan)|"
+    r"coba\s+(ingatan|ingat).{0,20}apa.{0,50}(lakukan|kerjakan|sebelum|dibahas)|"
+    r"what\s+(have|did)\s+you\s+(done|do|accomplish)|"
+    r"(ringkas|rangkum|rekap|recap|summari[sz]e).{0,30}(pekerjaan|aktivitas|activity|tadi|sebelum|dibahas)|"
+    r"(kerjakan|lakukan|eksekusi|pekerjaan|aktivitas).{0,40}apa\s+(saja|aja+)"
+    r")",
+    re.I,
+)
+
 
 DIGEST_SYSTEM_PROMPT = (
     "Summarize a chat excerpt for thread memory. Output at most {lines} short "
@@ -187,6 +206,74 @@ def update_topic(state: dict, message: str, min_score: float = 0.30) -> dict:
         "keywords": features["keywords"][:16],
         "history": history[-6:],
     }
+
+
+def is_recap_request(message: str) -> bool:
+    """True when the operator asks what was done so far in this chat."""
+    text = str(message or "").strip()
+    if len(text) > 300:
+        return False
+    return bool(_RECAP.search(text))
+
+
+def _activity_rows(session_id: str):
+    """Synchronous core: plain ORM, directly testable without thread hops."""
+    from chatbot.models import Investigation, ToolExecutionLog
+
+    cases = list(
+        Investigation.objects.filter(session_id=session_id)
+        .order_by("updated_at")[:12]
+    )
+    logs = list(
+        ToolExecutionLog.objects.filter(conversation_id=session_id)
+        .order_by("-id")[:15]
+    )
+    return cases, logs
+
+
+async def build_activity_context(session_id, max_chars: int = 1500) -> str:
+    """Compact, factual record of the work done in this chat.
+
+    Investigations (what was asked, what state it is in) plus the tools that
+    actually executed. Used for "what have you done" questions, where
+    similarity-filtered chat turns score near zero and the model would
+    otherwise invent an answer.
+    """
+    from asgiref.sync import sync_to_async
+    try:
+        cases, logs = await sync_to_async(_activity_rows)(str(session_id))
+    except Exception:
+        return ""
+    return render_activity(cases, logs, max_chars)
+
+
+def render_activity(cases, logs, max_chars: int = 1500) -> str:
+    """Pure formatter for the activity record. No I/O, fully testable."""
+    lines = []
+    for case in cases:
+        title = (case.title or "").strip()[:90]
+        if not title:
+            continue
+        when = ""
+        try:
+            when = case.updated_at.strftime("%H:%M")
+        except Exception:
+            pass
+        lines.append(f"- {title} [{case.status}]{' @' + when if when else ''}")
+    if logs:
+        by_tool = {}
+        for log in logs:
+            name = (log.tool_name or "tool").strip()
+            entry = by_tool.setdefault(name, {"n": 0, "ok": 0})
+            entry["n"] += 1
+            if str(log.status or "").lower() in {"success", "completed"}:
+                entry["ok"] += 1
+        summary = ", ".join(f"{name} x{info['n']}" for name, info in list(by_tool.items())[:8])
+        lines.append(f"Tools executed: {summary}")
+    if not lines:
+        return ""
+    text = "## Work done so far in this chat\n" + "\n".join(lines)
+    return text[:max_chars]
 
 
 def digest_prompt(turns: list[str]) -> str:

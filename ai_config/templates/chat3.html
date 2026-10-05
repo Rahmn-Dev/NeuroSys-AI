@@ -3197,7 +3197,11 @@
       const list = document.getElementById('active-runs-list');
       const count = document.getElementById('active-runs-count');
       if (!bar || !list) return;
-      const runs = Object.values(window.runsBySession || {});
+      // Only runs in OTHER chats appear here. The open chat shows its own run
+      // card with orb and phase, so listing it again is noise - and it was the
+      // source of the flickering bar.
+      const runs = Object.values(window.runsBySession || {})
+        .filter((run) => String(run.id) !== String(sessionId));
       if (!runs.length) { bar.style.display = 'none'; list.innerHTML = ''; return; }
       bar.style.display = 'flex';
       if (count) {
@@ -3207,11 +3211,10 @@
       runs.forEach((run) => {
         const row = document.createElement('div');
         row.style.cssText = 'display:flex; align-items:center; gap:8px; font-size:11px; color:var(--text-secondary);';
-        const mine = String(run.id) === String(sessionId);
         row.innerHTML =
           '<i class="fa-solid fa-spinner spin-anim" style="color:var(--accent); font-size:10px;"></i>' +
           '<span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' +
-          (mine ? 'This chat' : 'Another chat') + ' · ' +
+          'Another chat · ' +
           (run.phase ? escapeHtml(run.phase) + ' · ' : '') + escapeHtml(run.label) + '</span>';
         const btn = document.createElement('button');
         btn.textContent = 'Cancel';

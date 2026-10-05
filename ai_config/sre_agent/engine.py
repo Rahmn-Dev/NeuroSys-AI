@@ -495,7 +495,8 @@ class SREAgentEngine:
         # Fetched before the new turn is stored so it is not duplicated.
         from .direct_chat import direct_chat_prompt
         from .memory_graph import relevant_prior_turns
-        from .thread_memory import build_thread_context, get_session_memory, record_turn
+        from .thread_memory import (build_activity_context, build_thread_context,
+                                    get_session_memory, is_recap_request, record_turn)
         raw_history = await self._fetch_history(db_session_id, limit=24)
         history = await sync_to_async(relevant_prior_turns)(user_message, raw_history)
         await self._save_message(db_session_id, "user", user_message)
@@ -508,6 +509,13 @@ class SREAgentEngine:
         prompt_text = direct_chat_prompt(terminal_cwd, active_workspace, selected_file)
         if thread_ctx:
             prompt_text += "\n\n" + thread_ctx
+        # A "what have you done" question is answered from the recorded
+        # activity, never from similarity-filtered turns (which score ~0 for
+        # generic wording and invite invention).
+        if is_recap_request(user_message):
+            activity = await build_activity_context(db_session_id)
+            if activity:
+                prompt_text += "\n\n" + activity
         messages = [SystemMessage(content=prompt_text)]
         for entry in history:
             text = (getattr(entry, "message", "") or "").strip()
@@ -916,7 +924,8 @@ Output strictly the category name."""
             raw_history = await self._fetch_history(db_session_id, limit=24)
             history = await sync_to_async(relevant_prior_turns)(effective_goal, raw_history)
             from .direct_chat import SRE_DOMAIN_CLAMP
-            from .thread_memory import build_thread_context, get_session_memory, record_turn
+            from .thread_memory import (build_activity_context, build_thread_context,
+                                        get_session_memory, is_recap_request, record_turn)
             await record_turn(db_session_id, effective_goal,
                                 topic_hint=getattr(self, "_router_topic", ""),
                                 switched_hint=getattr(self, "_router_switched", None))
@@ -937,6 +946,10 @@ Output strictly the category name."""
 
             if thread_ctx:
                 conv_sys_prompt += "\n\n" + thread_ctx
+            if is_recap_request(effective_goal):
+                activity = await build_activity_context(db_session_id)
+                if activity:
+                    conv_sys_prompt += "\n\n" + activity
             messages = [SystemMessage(content=conv_sys_prompt)]
             for entry in history:
                 text = (getattr(entry, "message", "") or "").strip()
