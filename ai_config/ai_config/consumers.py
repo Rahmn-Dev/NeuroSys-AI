@@ -1556,7 +1556,8 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
                 "content": "Full Access mode: server-side operational scope is enforced; unscoped and hard-blocked actions still require/receive denial."
             }))
 
-        from sre_agent.approval_lifecycle import ApprovalLifecycle, ApprovalStopped, active_lifecycle
+        from sre_agent.approval_lifecycle import (ApprovalLifecycle, ApprovalStopped,
+            active_lifecycle, register_session_lifecycle, unregister_session_lifecycle)
         async def send_event(event):
             approval_states = {"approval_required": "awaiting_approval", "approval_approved": "running", "denied": "denied", "denied_timeout": "denied_timeout"}
             if event.get("type") in approval_states and getattr(engine, "_lifecycle", None):
@@ -1581,6 +1582,9 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
         try:
             if session_id:
                 self.lifecycles[str(session_id)] = self.lifecycle
+                # Sync tools run in worker threads where the contextvar is
+                # empty; this registry is what keeps their approval prompt alive.
+                register_session_lifecycle(session_id, self.lifecycle)
         except Exception:
             pass
         lifecycle_token = active_lifecycle.set(self.lifecycle)
@@ -1634,6 +1638,10 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
 
         finally:
             active_lifecycle.reset(lifecycle_token)
+            try:
+                unregister_session_lifecycle(session_id, self.lifecycle)
+            except Exception:
+                pass
             try:
                 sid = str(session_id)
                 if sid and self.agent_tasks.get(sid) is asyncio.current_task():

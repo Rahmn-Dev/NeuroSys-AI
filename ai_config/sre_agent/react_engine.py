@@ -99,6 +99,39 @@ def _looks_like_raw_tool_call(final_msg: str) -> bool:
     )
 
 
+def _invoke_with_approval_context(tool, tool_args):
+    """Run a sync tool with the authorization context and approval lifecycle bound.
+
+    Sync tool bodies execute in a worker thread. Context variables are not
+    inherited there, so without this the approval guard inside the tool finds no
+    lifecycle and an action that legitimately needs operator approval surfaces
+    as a bare denial instead of the Allow/Deny prompt.
+    """
+    from .approvals import current_context, bind_context, _CTX
+    from .approval_lifecycle import active_lifecycle, resolve_lifecycle
+    snapshot = dict(current_context() or {})
+    lifecycle = resolve_lifecycle()
+    token_ctx = bind_context(
+        snapshot.get("session_id", ""),
+        snapshot.get("user_id", "anonymous"),
+        mode=snapshot.get("mode", "controlled"),
+        scope=snapshot.get("scope", []),
+        goal=snapshot.get("goal", ""),
+    )
+    token_lifecycle = active_lifecycle.set(lifecycle)
+    try:
+        return tool.invoke(tool_args)
+    finally:
+        try:
+            active_lifecycle.reset(token_lifecycle)
+        except Exception:
+            pass
+        try:
+            _CTX.reset(token_ctx)
+        except Exception:
+            pass
+
+
 class ReactEngine:
     def __init__(self, llm, tools: list, system_prompt: str, session_id: str, mode: str = "autonomous_multi", goal: str = "", tool_choice: str = "any"):
         self.llm = llm
@@ -582,10 +615,20 @@ Do NOT stop calling tools until you are ready to call `finish_task`.
                             if ToolRegistry().get_metadata(tool_name) is None:
                                 raise PermissionError("Unregistered tool")
                             executed_signatures.add(call_signature)
-                            if hasattr(tool, "ainvoke"):
+                            # A sync tool body runs in a worker thread, and
+                            # neither the authorization context nor the approval
+                            # lifecycle follows a call into a thread. They are
+                            # re-bound there, otherwise a guarded sync tool
+                            # (terminal_execute, writes) could never raise the
+                            # approval prompt and the operator only saw
+                            # "action denied". asyncio.to_thread is used
+                            # precisely because it does propagate context.
+                            if getattr(tool, "coroutine", None) is not None:
                                 tool_result = await tool.ainvoke(tool_args)
                             else:
-                                tool_result = tool.invoke(tool_args)
+                                tool_result = await asyncio.to_thread(
+                                    _invoke_with_approval_context, tool, tool_args
+                                )
                             output_str = str(tool_result)[:4000]
                             # Retrieved content is evidence, never executable instruction.
                             # Stop this run after quarantine so the model cannot loop over
@@ -608,10 +651,27 @@ Do NOT stop calling tools until you are ready to call `finish_task`.
                                     yield evt_task_updated({"task": "Gather evidence with read-only tools",
                                                             "new_status": "completed"})
                                     await self._sync_single_plan_tasks(single_plan)
-                        except PermissionError:
+                        except PermissionError as denied_exc:
+                            # Say what actually happened. A hard block can never
+                            # be approved, so promising an authorization the
+                            # operator cannot give is what made this read like a
+                            # bug in the approval popup.
+                            reason = str(denied_exc)
                             audit("agent_stopped", tool_name, "authorization_required")
                             self.outcome = "blocked"
-                            yield evt_error("Action denied by security policy; operator authorization is required.")
+                            if reason.startswith("blocked:"):
+                                detail = reason.split(":", 1)[1].strip()
+                                yield evt_error(
+                                    f"Blocked by security policy and not approvable: {detail}."
+                                )
+                            elif reason.startswith("approval_required:"):
+                                yield evt_error(
+                                    "This action needs your approval, but the approval "
+                                    "prompt could not be opened for this run. Sign in again "
+                                    "and retry."
+                                )
+                            else:
+                                yield evt_error(f"Action denied by security policy: {reason}")
                             return
                         except Exception as e:
                             output_str = f"Error executing {tool_name}: {str(e)}"

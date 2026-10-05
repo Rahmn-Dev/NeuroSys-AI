@@ -7,6 +7,40 @@ from .approvals import request_approval, approve, deny, expire, current_context,
 
 active_lifecycle = ContextVar('active_approval_lifecycle', default=None)
 
+# Sync tools (terminal_execute, filesystem writes, ...) run in worker threads,
+# and a ContextVar does not follow a call into a thread. Without this registry a
+# guarded sync tool found no lifecycle, so an action that genuinely needed
+# operator approval raised a bare PermissionError instead of opening the prompt:
+# the operator saw "action denied" and no Allow/Deny dialog.
+_BY_SESSION: dict = {}
+
+
+def register_session_lifecycle(session_id, lifecycle):
+    if not session_id or lifecycle is None:
+        return
+    _BY_SESSION[str(session_id)] = lifecycle
+
+
+def unregister_session_lifecycle(session_id, lifecycle=None):
+    key = str(session_id or '')
+    if key and (lifecycle is None or _BY_SESSION.get(key) is lifecycle):
+        _BY_SESSION.pop(key, None)
+
+
+def resolve_lifecycle():
+    """The lifecycle for this call: the contextvar first, then the session."""
+    lifecycle = active_lifecycle.get()
+    if lifecycle is not None:
+        return lifecycle
+    try:
+        from .approvals import current_context
+        session_id = (current_context() or {}).get('session_id')
+    except Exception:
+        session_id = None
+    if not session_id:
+        return None
+    return _BY_SESSION.get(str(session_id))
+
 class ApprovalStopped(asyncio.CancelledError):
     pass
 
@@ -78,7 +112,7 @@ async def enforce_async(meta, args):
     try:
         return await sync_to_async(consume_for)(meta, args)
     except PermissionError as exc:
-        lifecycle = active_lifecycle.get()
+        lifecycle = resolve_lifecycle()
         if not str(exc).startswith('approval_required:') or lifecycle is None:
             raise
         approval_id = await lifecycle.authorize(meta, args)
@@ -87,7 +121,7 @@ async def enforce_async(meta, args):
 
 def enforce_sync(meta, args):
     from .approvals import consume_for
-    lifecycle = active_lifecycle.get()
+    lifecycle = resolve_lifecycle()
     if lifecycle is None:
         return consume_for(meta, args)
     if lifecycle.loop is asyncio._get_running_loop():
