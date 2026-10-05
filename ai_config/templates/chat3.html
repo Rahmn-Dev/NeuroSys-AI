@@ -2572,13 +2572,24 @@
       window.applyOrbTo(slot, state);
     };
 
+    // The run card is the trace of the work that produced this answer, so it
+    // always reads directly above the answer it explains. Appending in arrival
+    // order is not enough: a resumed run can open its card after the answer
+    // bubble already exists, so the position is enforced here instead.
+    window.seatRunCardAbove = function (card) {
+      if (!card) return;
+      const body = window.activeRunWrap;
+      if (!body) return;
+      const wrap = body.parentElement;
+      if (!wrap || wrap === card || wrap.contains(card)) return;
+      if (String(wrap.dataset.sessionId || '') !== String(card.dataset.sessionId || '')) return;
+      messagesDiv.insertBefore(wrap, card);
+    };
+
     function addAIMessage(content, ts) {
       const div = document.createElement('div');
       div.className = 'agent-msg sre-msg-ai';
       div.dataset.sessionId = String(sessionId || '');
-      // Every answer bubble is an anchor: anything belonging to its run goes
-      // above it, so the turn always reads avatar, run card, answer.
-      window.currentAIMsgAnchor = div;
       div.style.cssText = 'display:flex; align-items:flex-start; gap:12px; max-width: 85%; margin-bottom: 2px;';
       div.innerHTML = `
             <div data-avatar="agent" data-orb-size="42" style="flex-shrink:0; width:56px; height:56px; border-radius:50%; background:rgba(31, 111, 235, 0.12); border:1px solid var(--border-color); display:flex; align-items:center; justify-content:center; box-shadow: 0 4px 12px rgba(0,0,0,0.08); flex-wrap: nowrap; overflow: hidden;">
@@ -2592,6 +2603,7 @@
             </div>
         `;
       messagesDiv.appendChild(div);
+      window.seatRunCardAbove(div);
       const aiTime = document.createElement('div');
       aiTime.style.cssText = 'font-size: 10px; color: var(--text-secondary); opacity: 0.7; margin-bottom: 8px; padding-left: 4px; margin-left: 68px;';
       aiTime.textContent = chatTimeLabel(ts);
@@ -2663,27 +2675,9 @@
       }
       window.lastRunBody = null;
       const wrapId = 'runwrap-' + Math.random().toString(36).substr(2, 9);
-      // Agent presence first: the living bot avatar plus the name lead the
-      // turn, then the run wrap, then the answer card below it. Same shape
-      // live and on replay.
-      const presenceId = 'runpresence-' + wrapId;
-      if (!document.getElementById(presenceId)) {
-        const presence = document.createElement('div');
-        presence.id = presenceId;
-        presence.dataset.sessionId = String(sessionId || '');
-        presence.className = 'sre-run-presence';
-        presence.style.cssText = 'display:flex; align-items:center; gap:12px; max-width:85%; margin-bottom:2px;';
-        presence.innerHTML =
-          '<div style="flex-shrink:0; width:42px; height:42px; border-radius:50%; background:rgba(31, 111, 235, 0.12); border:1px solid var(--border-color); display:flex; align-items:center; justify-content:center; box-shadow: 0 4px 12px rgba(0,0,0,0.08); overflow:hidden;">' +
-          window.neuroBotAvatar(30) + '</div>' +
-          '<div style="font-size:13px; font-weight:700;"><span class="theme-gradient">NeuroSysAI</span>' +
-          '<i class="sre-agent-dot" data-state="idle" title="Agent idle"></i></div>';
-        if (window.currentAIMsgAnchor && messagesDiv.contains(window.currentAIMsgAnchor)) {
-          messagesDiv.insertBefore(presence, window.currentAIMsgAnchor);
-        } else {
-          messagesDiv.appendChild(presence);
-        }
-      }
+      // The bot avatar belongs to the answer card alone, so there is exactly
+      // one avatar per turn. The run card is seated directly above that card
+      // when the answer arrives (see seatRunCardAbove).
       const wrap = document.createElement('div');
       wrap.id = wrapId;
       wrap.dataset.sessionId = String(sessionId || '');
@@ -2699,14 +2693,7 @@
         </div>
         <div id="${wrapId}-body" class="sre-run-body" style="padding: 10px 10px 10px 18px; border-left: 2px solid var(--accent); margin: 4px 0 4px 20px; display: flex; flex-direction: column; gap: 8px; max-height: 420px; overflow-y: auto;"></div>
       `;
-      // The run card always sits above the answer card, never below it: if a
-      // response bubble already exists (late wrap, adopted run, stragglers),
-      // the wrap is inserted before it instead of appended at the bottom.
-      if (window.currentAIMsgAnchor && messagesDiv.contains(window.currentAIMsgAnchor)) {
-        messagesDiv.insertBefore(wrap, window.currentAIMsgAnchor);
-      } else {
-        messagesDiv.appendChild(wrap);
-      }
+      messagesDiv.appendChild(wrap);
       window.agentAutoScroll = window.isPinnedToBottom();
       setBeamRunning(true);
       const body = document.getElementById(wrapId + '-body');
@@ -2743,8 +2730,6 @@
       if (status === 'answered') {
         const answered = document.getElementById(wrapId);
         if (answered) answered.style.display = 'none';
-        const presence = document.getElementById('runpresence-' + wrapId);
-        if (presence) presence.style.display = 'none';
         return;
       }
       const pill = document.getElementById(wrapId + '-pill');
@@ -2927,16 +2912,10 @@
         // the bare timeline for ungrouped contexts. A container owned by another
         // chat is never a valid target, even if a stale reference survived.
         let stepParent = messagesDiv;
-        let appendAtEnd = true;
         if (window.activeRunWrap && window.activeRunWrap.dataset.sessionId === String(sessionId || '')) {
           stepParent = window.activeRunWrap;
-          appendAtEnd = false;
         }
-        if (appendAtEnd && window.currentAIMsgAnchor && messagesDiv.contains(window.currentAIMsgAnchor)) {
-          messagesDiv.insertBefore(stepDiv, window.currentAIMsgAnchor);
-        } else {
-          stepParent.appendChild(stepDiv);
-        }
+        stepParent.appendChild(stepDiv);
 
         if (!isEnd && !window.isLoadingHistory) {
           startAgentStepTimer(stepId);
@@ -4989,9 +4968,6 @@
     window.removeRunCard = function (body) {
       if (!body) return;
       try {
-        const wrapId = body.dataset.wrapId;
-        const presence = wrapId && document.getElementById('runpresence-' + wrapId);
-        if (presence) presence.remove();
         if (body.parentElement) body.parentElement.remove();
       } catch (err) { /* best-effort */ }
     };
