@@ -2667,6 +2667,9 @@
       setBeamRunning(true);
       const body = document.getElementById(wrapId + '-body');
       body.dataset.wrapId = wrapId;
+      // The ownership tag must live on the body itself: activeRunWrap points
+      // here, not at the outer wrap, and the render sites compare against it.
+      body.dataset.sessionId = String(sessionId || '');
       // Always folded: the run card is a summary until the operator opens it.
       body.dataset.open = '0';
       body.style.display = 'none';
