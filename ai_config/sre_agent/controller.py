@@ -130,6 +130,41 @@ class AutonomousController:
     # -----------------------------------------------------------------------
     # Robust JSON parser with LLM auto-repair
     # -----------------------------------------------------------------------
+    @staticmethod
+    def _extract_first_json(text: str):
+        """Return the first complete JSON object/array, ignoring prose around it.
+
+        Cheaper models (Nemotron Lightning, small Qwen) often answer with a
+        sentence, then JSON, then another sentence. A greedy regex then grabs
+        two objects at once and json.loads dies with "Extra data".
+        """
+        depth = 0
+        in_str = False
+        esc = False
+        start = None
+        for i, ch in enumerate(text):
+            if in_str:
+                if esc:
+                    esc = False
+                elif ch == "\\":
+                    esc = True
+                elif ch == '"':
+                    in_str = False
+                continue
+            if ch == '"':
+                in_str = True
+            elif ch in "{[":
+                if depth == 0:
+                    start = i
+                depth += 1
+            elif ch in "}]":
+                if depth == 0:
+                    continue
+                depth -= 1
+                if depth == 0 and start is not None:
+                    return text[start:i + 1]
+        return None
+
     def _robust_json_parse(self, sys_msg, tags, max_retries=4, fallback_response=None):
         from langchain_core.messages import HumanMessage
         messages = [sys_msg]
@@ -142,13 +177,9 @@ class AutonomousController:
                 if "```" in raw:
                     raw = re.sub(r"```(?:json)?\s*", "", raw).strip("` \n")
 
-                start_idx = raw.find('{')
-                start_array = raw.find('[')
-                if start_idx == -1 or (start_array != -1 and start_array < start_idx):
-                    start_idx = start_array
-                if start_idx != -1:
-                    raw = raw[start_idx:]
-                json_str = re.search(r'(\{.*\}|\[.*\])', raw, re.DOTALL).group(0)
+                json_str = self._extract_first_json(raw)
+                if json_str is None:
+                    raise ValueError("no JSON object or array found in model output")
                 return json.loads(json_str)
             except Exception as e:
                 if attempt == min(max_retries, 3) - 1:

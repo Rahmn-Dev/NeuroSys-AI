@@ -333,3 +333,31 @@ def test_orchestrator_mode_can_delegate_but_cannot_execute_directly():
     guided = [t.name for t in ReactEngine(_LLM(), tools, "sys", "sid", mode="guided").tools]
     # Guided withholds execution from the model, including via delegation.
     assert not {"terminal_execute", "write_file", "edit_file", "spawn_subagent"} & set(guided)
+
+
+# --- planner JSON extraction for weaker models ------------------------------
+
+from sre_agent.controller import AutonomousController  # noqa: E402
+
+
+def test_extracts_json_from_prose_around_it():
+    raw = (
+        'Here is the plan you asked for:\n'
+        '{"workers": [{"id": "A", "goal": "check nginx"}]}\n'
+        'Let me know if you want more checks.'
+    )
+    assert AutonomousController._extract_first_json(raw) == '{"workers": [{"id": "A", "goal": "check nginx"}]}'
+
+
+def test_ignores_a_second_object_after_the_first():
+    raw = '{"a": 1} some trailing note {"b": 2}'
+    assert AutonomousController._extract_first_json(raw) == '{"a": 1}'
+
+
+def test_ignores_braces_inside_strings():
+    raw = 'note {"workers": [{"goal": "check {nginx} ports"}]} end'
+    assert AutonomousController._extract_first_json(raw) == '{"workers": [{"goal": "check {nginx} ports"}]}'
+
+
+def test_returns_none_when_no_json_present():
+    assert AutonomousController._extract_first_json('no json here at all') is None

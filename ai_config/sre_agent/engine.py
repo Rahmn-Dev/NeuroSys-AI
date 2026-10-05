@@ -1597,8 +1597,16 @@ Output strictly the category name."""
                         owner_task.cancel()
                         return
         cancellation_monitor = asyncio.create_task(cancellation_watchdog())
+        # Multi-agent fans out workers that each run their own loop, so one
+        # wall-clock budget for every mode starves it. Env-overridable per mode.
+        _timeout_env = "SRE_RUN_TIMEOUT_MULTI" if mode == "autonomous_multi" else "SRE_RUN_TIMEOUT"
+        _timeout_default = "900" if mode == "autonomous_multi" else "300"
         try:
-            async with asyncio.timeout(300):
+            run_timeout = int(os.environ.get(_timeout_env, _timeout_default))
+        except ValueError:
+            run_timeout = int(_timeout_default)
+        try:
+            async with asyncio.timeout(run_timeout):
                 async for event in self._run_internal(user_message, terminal_cwd, active_workspace, selected_file, selected_file_name, mode, permission_mode):
                     lifecycle = getattr(self, "_lifecycle", None)
                     while model_switch_cursor < len(self._model_switches):
