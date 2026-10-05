@@ -746,7 +746,12 @@ class SREAgentEngine:
 
         # Deterministic one-step lookups do not need provider reasoning, workspace
         # exploration, or prior-case context.
-        if case_info["kind"] in {"time_lookup", "date_lookup", "host_lookup", "file_lookup"}:
+        from .direct_chat import is_lookup_turn as _is_simple_lookup
+        # Same bar as the router gate: a comparative or analytical question that
+        # merely mentions a lookup word must reach tools, not a canned answer.
+        if case_info["kind"] in {"time_lookup", "date_lookup", "host_lookup", "file_lookup"} and _is_simple_lookup(
+            user_message
+        ):
             from datetime import datetime
             from zoneinfo import ZoneInfo
             now = datetime.now(ZoneInfo(getattr(settings, "TIME_ZONE", "Asia/Jakarta")))

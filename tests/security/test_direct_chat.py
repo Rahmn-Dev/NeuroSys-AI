@@ -416,3 +416,34 @@ def test_react_engine_defaults_to_forcing_a_tool_call():
     rec = _BindRecorder()
     ReactEngine(rec, [], "sys", "sid", mode="autonomous_single")
     assert rec.calls == ["any"]
+
+
+# --- lookup gate must not swallow real work ----------------------------------
+
+import pytest  # noqa: E402
+
+from sre_agent.direct_chat import is_lookup_turn  # noqa: E402
+
+
+@pytest.mark.parametrize("message", [
+    "jam berapa sekarang",
+    "hostname",
+    "whoami",
+    "where am i",
+    "uptime",
+    "baca file /etc/hostname",
+])
+def test_pure_single_fact_questions_stay_deterministic(message):
+    assert is_lookup_turn(message) is True
+
+
+@pytest.mark.parametrize("message", [
+    "bandingkan isi file /etc/hostname dengan baris 127.0.0.1 di /etc/hosts, simpulkan satu kalimat",
+    "baca file /etc/hostname lalu jawab apa isinya dalam satu kalimat",
+    "cek apakah file /etc/hostname bisa dibaca, jawab singkat saja",
+    "bandingkan config nginx lama dan baru, apa bedanya",
+    "cek disk dan memory, jawab singkat",
+    "jelaskan isi /etc/hosts",
+])
+def test_comparative_or_analytical_turns_reach_tools(message):
+    assert is_lookup_turn(message) is False

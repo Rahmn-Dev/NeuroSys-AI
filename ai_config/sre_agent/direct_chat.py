@@ -54,10 +54,30 @@ ROUTER_SYSTEM_PROMPT = (
 )
 
 
+# A lookup-looking message that actually needs comparison, analysis or a
+# capability check is not a one-step lookup: "bandingkan X dengan Y" or
+# "apakah file ini bisa dibaca" must go through tools, or the answer is a
+# guess dressed as a fact.
+_NEEDS_WORK = re.compile(
+    r"\b(bandingkan|compare|analisa|analisis|jelaskan|rangkum|simpulkan|"
+    r"apakah|apakh|kenapa|mengapa|bagaimana|sebutkan|tampilkan|tunjukkan|"
+    r"hitung|review|audit|periksa|verifikasi|verifikasi|selain|kecuali|"
+    r"bedanya|perbedaan|lalu|kemudian|terus|dan)\b",
+    re.I,
+)
+
+
 def is_lookup_turn(message: str) -> bool:
-    """Deterministic one-step lookups must read real state, not be answered."""
+    """Deterministic one-step lookups must read real state, not be answered.
+
+    Only pure single-fact questions qualify. Anything comparative, analytical
+    or multi-step falls through to the router, which will send it to tools.
+    """
+    text = str(message or "")
+    if _NEEDS_WORK.search(text):
+        return False
     try:
-        return classify_case(message or "").get("kind") in _LOOKUP_KINDS
+        return classify_case(text).get("kind") in _LOOKUP_KINDS
     except Exception:
         return False
 
