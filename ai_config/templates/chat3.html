@@ -2986,9 +2986,10 @@
       const wrap = document.createElement('div');
       wrap.id = wrapId;
       wrap.dataset.sessionId = String(sessionId || '');
-      wrap.style.cssText = 'background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 1px 2px rgba(0,0,0,.06); overflow: hidden; margin-bottom: 10px;';
+      wrap.className = 'sre-run-card';
+      wrap.style.cssText = 'margin-bottom: 10px;';
       wrap.innerHTML = `
-        <div id="${wrapId}-head" onclick="toggleRunWrap('${wrapId}')" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; user-select: none; border-radius: 12px; background: rgba(127,140,160,.06); transition: background .2s;" onmouseover="this.style.background='rgba(127,140,160,.12)'" onmouseout="if(this.dataset.open!=='1')this.style.background='rgba(127,140,160,.06)'">
+        <div id="${wrapId}-head" class="sre-run-head" data-open="0" onclick="toggleRunWrap('${wrapId}')" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; user-select: none;" onmouseover="if(this.dataset.open!=='1')this.style.background='rgba(127,140,160,.12)'" onmouseout="if(this.dataset.open!=='1')this.style.background=''">
           <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
             <span id="${wrapId}-stat" style="width:20px; height:20px; display:flex; align-items:center; justify-content:center; flex:none; color:var(--accent);"><div class="spinner-border spinner-border-sm" role="status" style="width:14px; height:14px; border-width:2px;"></div></span>
             <span id="${wrapId}-pill" class="sre-run-phase" style="font-size: 15px; font-weight: 600; letter-spacing: -.01em; color: var(--text-strong); white-space: nowrap;">observing</span>
@@ -3036,12 +3037,9 @@
       body.style.display = open ? 'flex' : 'none';
       if (chev) chev.style.transform = open ? 'rotate(0deg)' : 'rotate(-90deg)';
       const head = document.getElementById(wrapId + '-head');
-      if (head) {
-        head.dataset.open = open ? '1' : '0';
-        head.style.background = open ? 'rgba(127,140,160,.12)' : 'rgba(127,140,160,.06)';
-        head.style.borderBottom = open ? '1px solid var(--border-color)' : '';
-        head.style.borderRadius = open ? '12px 12px 0 0' : '12px';
-      }
+      if (head) head.dataset.open = open ? '1' : '0';
+      const card = document.getElementById(wrapId);
+      if (card) card.dataset.open = open ? '1' : '0';
     };
 
     function paintRunWrap(wrapId, status, duration) {
@@ -5720,6 +5718,28 @@
     to { opacity: 1; transform: none; }
   }
   .sre-agent-step { animation: sreStepIn 0.35s ease both; border: 0 !important; background: transparent !important; box-shadow: none !important; border-radius: 0 !important; }
+  /* The run card is a real bordered box in live and in replay alike. Owned by
+     a class with !important so no inline or legacy rule can quietly drop the
+     edges when the body is expanded. */
+  #sre-agent-app .sre-run-card {
+    background: var(--bg-panel) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .06) !important;
+    overflow: hidden !important;
+    align-self: stretch !important;
+    width: 100% !important;
+    box-sizing: border-box;
+  }
+  #sre-agent-app .sre-run-card > .sre-run-head {
+    background: rgba(127, 140, 160, .06);
+    transition: background .2s;
+  }
+  #sre-agent-app .sre-run-card[data-open="1"] > .sre-run-head {
+    background: rgba(127, 140, 160, .12);
+    border-bottom: 1px solid var(--border-color);
+    border-radius: 12px 12px 0 0;
+  }
   .sre-tl-dot svg { display: block; }
   .sre-tl-chev svg { display: block; }
 
