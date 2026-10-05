@@ -2506,6 +2506,35 @@
 
     // A phase event must never be dropped because the run wrap is missing
     // (resumed socket, run started before the wrap existed, ...).
+    // Where does a step of the current turn belong? Answered in one place so a
+    // step can never escape the Agent Run card: the live card, else the card
+    // this turn just finished, else the packaged card of the live turn, else a
+    // freshly opened one. The bare timeline is only acceptable while replaying
+    // history that predates run grouping.
+    window.resolveStepParent = function () {
+      const sid = String(sessionId || '');
+      const wrap = window.activeRunWrap;
+      if (wrap && document.contains(wrap)) {
+        const owner = String(wrap.dataset.sessionId || '');
+        if (!owner || owner === sid) return wrap;
+      }
+      const last = window.lastRunBody;
+      if (last && document.contains(last) && !window.isLoadingHistory) {
+        const owner = String(last.dataset.sessionId || '');
+        if (!owner || owner === sid) return last;
+      }
+      const skel = window.liveBubbleCurrent;
+      if (skel && document.contains(skel.bubble)) {
+        const card = skel.column.querySelector(':scope > [id^="runwrap-"] > .sre-run-body');
+        if (card) return card;
+      }
+      if (!window.isLoadingHistory && window.ensureRunWrap) {
+        const fresh = window.ensureRunWrap();
+        if (fresh && document.contains(fresh)) return fresh;
+      }
+      return null;
+    };
+
     window.ensureRunWrap = function () {
       if (window.isLoadingHistory) return null;
       if (!window.activeRunWrap) startRunWrap();
@@ -3137,21 +3166,7 @@
         // Stream into the active run container (roadmap rail); fall back to
         // the bare timeline for ungrouped contexts. A container owned by another
         // chat is never a valid target, even if a stale reference survived.
-        // Steps belong to the run card of this turn. A live card is used even
-        // before the session id is known (first turn of a new chat); falling
-        // back to the bare timeline is what left run states stranded at the
-        // bottom of the chat.
-        let stepParent = messagesDiv;
-        const _liveWrap = (window.liveBubbleCurrent && document.contains(window.liveBubbleCurrent.bubble))
-          ? window.activeRunWrap
-          : null;
-        if (_liveWrap && document.contains(_liveWrap) && window.activeRunWrap === _liveWrap) {
-          stepParent = _liveWrap;
-        } else if (window.activeRunWrap && window.activeRunWrap.dataset.sessionId === String(sessionId || '')) {
-          stepParent = window.activeRunWrap;
-        } else if (window.activeRunWrap && !window.activeRunWrap.dataset.sessionId && window.liveBubbleCurrent) {
-          stepParent = window.activeRunWrap;
-        }
+        const stepParent = window.resolveStepParent() || messagesDiv;
         if (window.isLoadingHistory) {
           const _tlCount = stepParent.querySelectorAll(':scope > .sre-agent-step').length;
           stepDiv.style.animationDelay = Math.min(_tlCount * 60, 480) + 'ms';
