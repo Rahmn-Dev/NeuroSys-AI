@@ -94,10 +94,13 @@ def _save_subagent_artifact(agent_type: str, params: dict, result: str):
     try:
         import os, time, json
         from sre_agent.artifacts import ArtifactManager
-        from sre_agent.context import current_session_id
+        from sre_agent.context import current_session_context
         from asgiref.sync import async_to_sync
 
-        session_id = current_session_id.get() or "default"
+        try:
+            session_id = getattr(current_session_context.get(), "session_id", "") or "default"
+        except Exception:
+            session_id = "default"
         mgr = ArtifactManager(workspace_path=os.getcwd(), session_id=session_id)
         
         timestamp = int(time.time())
