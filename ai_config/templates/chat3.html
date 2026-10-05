@@ -2557,9 +2557,9 @@
       if (state !== 'done') window.setAgentDotState('running');
       // History replay must never mutate stored avatars.
       if (window.isLoadingHistory) return;
+      window.setRunPhaseLabel(state, label);
       var slot = window.activeRunOrb;
       if (!slot) return;
-      window.setRunPhaseLabel(state, label);
       // The Agent Run header owns the orb for the whole run. While the reply is
       // streaming the bubble shows the bot avatar instead, so the header orb
       // steps aside; the next agent phase brings it back.
@@ -2588,6 +2588,46 @@
     // column with the run card on top and the response panel below it. The
     // card is seated inside the bubble's column so the turn reads as one unit
     // and the header keeps its full clickable width.
+    window.liveBubbles = window.liveBubbles || {};
+    // A packaged turn skeleton: bot avatar on the left, one column on the
+    // right holding the run card now and the answer panel later.
+    window.ensureLiveBubble = function (sid, wrap) {
+      try {
+        if (!wrap) return null;
+        const prev = window.liveBubbles[sid];
+        if (prev && document.contains(prev.bubble)) {
+          const hasPanel = !!prev.column.querySelector(':scope > .sre-panel');
+          if (!prev.claimed && !hasPanel) {
+            if (wrap.parentElement !== prev.column) prev.column.appendChild(wrap);
+            return prev;
+          }
+        }
+        const bubble = document.createElement('div');
+        bubble.className = 'agent-msg sre-msg-ai';
+        bubble.dataset.sessionId = sid;
+        bubble.style.cssText = 'display:flex; align-items:flex-start; gap:12px; max-width: 85%; margin-bottom: 2px;';
+        bubble.innerHTML =
+          '<div data-avatar="agent" data-orb-size="42" style="flex-shrink:0; width:56px; height:56px; border-radius:50%; background:rgba(31, 111, 235, 0.12); border:1px solid var(--border-color); display:flex; align-items:center; justify-content:center; box-shadow: 0 4px 12px rgba(0,0,0,0.08); flex-wrap: nowrap; overflow: hidden;">'
+          + window.neuroBotAvatar(42) + '</div>'
+          + '<div class="agent-msg-body" style="flex:1; min-width: 0; display:flex; flex-direction:column;"></div>';
+        messagesDiv.insertBefore(bubble, wrap);
+        const column = bubble.querySelector(':scope > .agent-msg-body');
+        column.appendChild(wrap);
+        const entry = { bubble: bubble, column: column, claimed: false };
+        window.liveBubbles[sid] = entry;
+        scrollToBottom();
+        return entry;
+      } catch (err) { return null; }
+    };
+
+    window.discardLiveBubble = function (sid) {
+      try {
+        const skel = window.liveBubbles && window.liveBubbles[sid];
+        if (skel && !skel.claimed && document.contains(skel.bubble)) skel.bubble.remove();
+        if (window.liveBubbles) delete window.liveBubbles[sid];
+      } catch (err) { /* best-effort */ }
+    };
+
     window.seatWrapAbove = function (wrap, card) {
       if (!wrap || !card || wrap === card || wrap.contains(card)) return;
       if (String(wrap.dataset.sessionId || '') !== String(card.dataset.sessionId || '')) return;
@@ -2646,6 +2686,20 @@
             </div>
             </div>
         `;
+      const _sid = String(sessionId || '');
+      const _skel = window.liveBubbles && window.liveBubbles[_sid];
+      if (_skel && !_skel.claimed && document.contains(_skel.bubble)) {
+        _skel.claimed = true;
+        const _panel = div.querySelector(':scope > .agent-msg-body > .sre-panel') || div.querySelector('.sre-panel');
+        if (_panel) _skel.column.appendChild(_panel);
+        window.seatRunCardAbove(_skel.bubble);
+        const _aiTime = document.createElement('div');
+        _aiTime.style.cssText = 'font-size: 10px; color: var(--text-secondary); opacity: 0.7; margin-bottom: 8px; padding-left: 4px; margin-left: 68px;';
+        _aiTime.textContent = chatTimeLabel(ts);
+        _skel.bubble.after(_aiTime);
+        scrollToBottom();
+        return _skel.bubble;
+      }
       messagesDiv.appendChild(div);
       window.seatRunCardAbove(div);
       const aiTime = document.createElement('div');
@@ -2805,7 +2859,7 @@
       wrap.innerHTML = `
         <div id="${wrapId}-head" onclick="toggleRunWrap('${wrapId}')" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; user-select: none; border-radius: 12px; background: rgba(127,140,160,.06); transition: background .2s;" onmouseover="this.style.background='rgba(127,140,160,.12)'" onmouseout="if(this.dataset.open!=='1')this.style.background='rgba(127,140,160,.06)'">
           <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
-            <span id="${wrapId}-orb" data-orb-size="24" data-orb-only="1" aria-label="Agent progress" style="width:24px; height:24px; border-radius:50%; background: rgba(148, 163, 184, 0.34); border: 1px solid rgba(203, 213, 225, 0.45); box-shadow: inset 0 0 6px rgba(15, 23, 42, 0.55), 0 0 0 1px rgba(15, 23, 42, 0.35); display:flex; align-items:center; justify-content:center; flex:none;">${window.neuroOrbAvatar('exploring', 24)}</span>
+            <span id="${wrapId}-stat" style="width:20px; height:20px; display:flex; align-items:center; justify-content:center; flex:none; color:var(--accent);"><div class="spinner-border spinner-border-sm" role="status" style="width:14px; height:14px; border-width:2px;"></div></span>
             <span id="${wrapId}-pill" class="sre-run-phase" style="font-size: 15px; font-weight: 600; letter-spacing: -.01em; color: var(--text-strong); white-space: nowrap;">observing</span>
             <span id="${wrapId}-dur" style="font-size: 11px; font-family: monospace; color: var(--text-secondary);"></span>
             <span id="${wrapId}-case" style="font-size: 10px; font-family: monospace; color: var(--text-secondary); opacity: .7;"></span>
@@ -2828,9 +2882,12 @@
       body.dataset.open = '0';
       body.style.display = 'none';
       window.activeRunWrap = body;
-      window.activeRunOrb = document.getElementById(wrapId + '-orb');
-      window.orbInRun = true;
-      window.activeRunOrb.style.display = '';
+      window.activeRunOrb = null;
+      window.orbInRun = false;
+      // Live runs are born packaged: avatar + run card together from the first
+      // moment, exactly as the finished turn reads. The answer panel joins the
+      // same column when it arrives (addAIMessage claims the skeleton).
+      if (!window.isLoadingHistory) window.ensureLiveBubble(String(sessionId || ''), wrap);
       const startPill = document.getElementById(wrapId + '-pill');
       if (startPill) {
         startPill.textContent = 'starting';
@@ -2875,6 +2932,11 @@
       if (dur && duration != null) dur.textContent = `✓ ${Number(duration).toFixed(1)}s`;
       if (pill && terminal) pill.classList.remove('sre-run-phase');
       if (spin && terminal) spin.innerHTML = `<i class="fa-solid ${ok ? 'fa-circle-check' : 'fa-circle-exclamation'}" style="color: ${ok ? 'var(--success-text)' : 'var(--error)'};"></i>`;
+      const stat = document.getElementById(wrapId + '-stat');
+      if (stat && terminal) {
+        stat.innerHTML = ok ? window.sreCheckSvg(14) : window.sreXSvg(14);
+        stat.style.color = ok ? 'var(--success-text)' : 'var(--error)';
+      }
     }
 
     function finalizeRunWrap(status, duration) {
@@ -3229,6 +3291,7 @@
           window.removeRunCard(window.activeRunWrap);
         }
         window.activeRunWrap = null;
+        window.discardLiveBubble(String(sid || ''));
         setBeamRunning(false);
         stopAllAgentStepTimers();
         addSystemMsg('Run cancelled.', 'circle-xmark');
