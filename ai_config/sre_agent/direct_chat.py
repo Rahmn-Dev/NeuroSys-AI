@@ -28,8 +28,8 @@ _NEVER_DIRECT = re.compile(
 
 ROUTER_SYSTEM_PROMPT = (
     "You are the request router for NeuroSysAI, an SRE assistant. Decide how the "
-    "operator's message must be handled. Reply with one line of JSON only, no "
-    "markdown.\n\n"
+    "operator's message must be handled and what thread it belongs to. Reply with "
+    "one line of JSON only, no markdown.\n\n"
     '{"route": "direct", "reason": "<= 15 words"}   when the message is ordinary '
     "conversation that needs no access to the system, for example: greetings, "
     "thanks, feelings, jokes, small talk, general knowledge, questions about the "
@@ -43,7 +43,14 @@ ROUTER_SYSTEM_PROMPT = (
     "they ask where something is or what the current time, host, directory or "
     "user is, or when you are unsure.\n\n"
     "When a message mixes both (small talk plus a real task), choose agent. "
-    "Never choose direct for anything that reads or mutates state."
+    "Never choose direct for anything that reads or mutates state.\n\n"
+    "Thread tracking (same call, no extra cost): compare the message against "
+    "CURRENT THREAD below. \"topic\" is a short label for what this message is "
+    "about, in the operator's own language. \"topic_switched\" is true only when "
+    "the message clearly starts a different subject; an elliptical follow-up, a "
+    "question about what was just said, an acknowledgement or a bare continue "
+    "word never counts as a switch. When there is no current thread, "
+    "topic_switched is false."
 )
 
 
@@ -60,11 +67,15 @@ def is_secret_or_destructive(message: str) -> bool:
     return bool(_NEVER_DIRECT.search(message or ""))
 
 
-def parse_route(raw: str) -> tuple[str, str]:
-    """Read the router's verdict. Anything unexpected means 'agent'."""
+def parse_route(raw: str) -> tuple[str, str, str, bool]:
+    """Read the router's verdict. Anything unexpected means 'agent'.
+
+    Returns (route, reason, topic, topic_switched). The thread fields default
+    to empty/False so older prompts keep working.
+    """
     text = str(raw or "").strip()
     if not text:
-        return "agent", "empty router response"
+        return "agent", "empty router response", "", False
     match = re.search(r"\{.*\}", text, re.S)
     if match:
         try:
@@ -72,29 +83,41 @@ def parse_route(raw: str) -> tuple[str, str]:
             payload = json.loads(match.group(0))
             route = str(payload.get("route", "")).strip().lower()
             reason = str(payload.get("reason", "")).strip()[:120]
+            topic = str(payload.get("topic", "") or "").strip()[:140]
+            switched = payload.get("topic_switched", False)
+            switched = bool(switched) if isinstance(switched, bool) else str(switched).strip().lower() in {
+                "true", "yes", "1",
+            }
             if route in ("direct", "agent"):
-                return route, reason
+                return route, reason, topic, switched
         except Exception:
             pass
     lowered = text.lower()
     if "direct" in lowered:
-        return "direct", "router keyword"
-    return "agent", "unparsable router response"
+        return "direct", "router keyword", "", False
+    return "agent", "unparsable router response", "", False
 
 
-async def route_turn(llm, message: str) -> tuple[str, str]:
-    """Ask the model itself. Returns (route, reason)."""
+async def route_turn(llm, message: str, thread: str = "") -> tuple[str, str, str, bool]:
+    """Ask the model itself. Returns (route, reason, topic, topic_switched).
+
+    `thread` is the current thread label (may be empty). Thread tracking rides
+    on this call, so it never costs an extra provider round-trip.
+    """
     from langchain_core.messages import HumanMessage, SystemMessage
 
+    human = str(message or "")[:4000]
+    if (thread or "").strip():
+        human = f"CURRENT THREAD: {(thread or '').strip()[:200]}\nMESSAGE: {human}"
     messages = [
         SystemMessage(content=ROUTER_SYSTEM_PROMPT),
-        HumanMessage(content=str(message or "")[:4000]),
+        HumanMessage(content=human),
     ]
     try:
         response = await llm.ainvoke(messages)
         return parse_route(getattr(response, "content", response))
     except Exception as exc:  # a router failure must never block the operator
-        return "agent", f"router unavailable: {exc}"[:120]
+        return "agent", f"router unavailable: {exc}"[:120], "", False
 
 
 # Domain clamp shared by every conversation path. Staying in role must not mean

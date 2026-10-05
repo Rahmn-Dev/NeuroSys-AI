@@ -18,8 +18,19 @@ from sre_agent.direct_chat import (  # noqa: E402
 
 
 def test_router_verdict_is_read_from_json():
-    assert parse_route('{"route": "direct", "reason": "greeting"}') == ("direct", "greeting")
+    assert parse_route('{"route": "direct", "reason": "greeting"}')[:2] == ("direct", "greeting")
     assert parse_route('{"route":"agent","reason":"needs log read"}')[0] == "agent"
+
+
+def test_router_verdict_carries_the_thread_fields():
+    route, reason, topic, switched = parse_route(
+        '{"route": "direct", "reason": "follow-up", "topic": "madu untuk luka", "topic_switched": false}'
+    )
+    assert (route, topic, switched) == ("direct", "madu untuk luka", False)
+    route, _, topic, switched = parse_route(
+        '{"route": "agent", "reason": "new task", "topic": "cek disk", "topic_switched": true}'
+    )
+    assert (route, topic, switched) == ("agent", "cek disk", True)
 
 
 def test_router_verdict_from_plain_keyword():
@@ -28,9 +39,10 @@ def test_router_verdict_from_plain_keyword():
 
 @pytest.mark.parametrize("raw", ["", "   ", "garbage", '{"route":"weird"}', "{}"])
 def test_unusable_router_output_falls_back_to_the_agent(raw):
-    route, reason = parse_route(raw)
+    route, reason, topic, switched = parse_route(raw)
     assert route == "agent"
     assert reason
+    assert topic == "" and switched is False
 
 
 @pytest.mark.parametrize("message", [
@@ -74,20 +86,37 @@ def test_normal_turns_are_not_secret_requests(message):
 
 def test_router_uses_the_model_verdict():
     class _Chunk:
-        content = '{"route": "direct", "reason": "small talk"}'
+        content = '{"route": "direct", "reason": "small talk", "topic": "sapa", "topic_switched": false}'
 
     class _LLM:
         def __init__(self):
             self.calls = 0
+            self.seen = []
 
         async def ainvoke(self, messages):
             self.calls += 1
+            self.seen = [getattr(m, "content", "") for m in messages]
             return _Chunk()
 
     llm = _LLM()
-    route, reason = asyncio.run(route_turn(llm, "halo"))
-    assert (route, reason) == ("direct", "small talk")
+    route, reason, topic, switched = asyncio.run(route_turn(llm, "halo", thread=""))
+    assert (route, reason, topic, switched) == ("direct", "small talk", "sapa", False)
     assert llm.calls == 1
+
+
+def test_router_sends_the_current_thread_for_comparison():
+    class _Chunk:
+        content = '{"route": "agent", "reason": "new", "topic": "disk", "topic_switched": true}'
+
+    class _LLM:
+        async def ainvoke(self, messages):
+            self.human = [m for m in messages if m.__class__.__name__ == "HumanMessage"][0]
+            return _Chunk()
+
+    llm = _LLM()
+    route, _, topic, switched = asyncio.run(route_turn(llm, "cek disk", thread="nginx 502"))
+    assert (route, topic, switched) == ("agent", "disk", True)
+    assert "CURRENT THREAD: nginx 502" in llm.human.content
 
 
 def test_router_failure_routes_to_the_agent():
@@ -95,7 +124,7 @@ def test_router_failure_routes_to_the_agent():
         async def ainvoke(self, messages):
             raise RuntimeError("provider down")
 
-    route, reason = asyncio.run(route_turn(_LLM(), "halo"))
+    route, reason, _, _ = asyncio.run(route_turn(_LLM(), "halo"))
     assert route == "agent"
     assert "unavailable" in reason
 

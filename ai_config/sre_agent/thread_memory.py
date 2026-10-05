@@ -230,7 +230,8 @@ async def get_session_memory(session_id):
     return await _db()
 
 
-async def record_turn(session_id, message: str):
+async def record_turn(session_id, message: str, topic_hint: str = "",
+                    switched_hint=None):
     """Fold one user turn into topic state and session entities."""
     from asgiref.sync import sync_to_async
     from .memory_graph import extract_features
@@ -250,7 +251,26 @@ async def record_turn(session_id, message: str):
             "keywords": row.topic_keywords,
             "history": row.topic_history,
         }
-        updated = update_topic(state, message or "")
+        if switched_hint is True:
+            # The model read the turn in the operator's own language and says
+            # this starts a different subject: believe it, keep the label it gave.
+            if state.get("label"):
+                state["history"] = (state.get("history") or [])[-5:] + [state["label"]]
+            updated = {
+                "label": (topic_hint or "").strip()[:140] or topic_label_for(message, [], []),
+                "entities": [],
+                "keywords": [],
+                "history": state.get("history") or [],
+            }
+            from .memory_graph import extract_features
+            _features = extract_features(message or "")
+            updated["entities"] = _features["entities"][:12]
+            updated["keywords"] = _features["keywords"][:16]
+        elif (topic_hint or "").strip() and not state.get("label"):
+            updated = update_topic(state, message or "")
+            updated["label"] = (topic_hint or "").strip()[:140]
+        else:
+            updated = update_topic(state, message or "")
         row.topic_label = updated["label"]
         row.topic_entities = updated["entities"]
         row.topic_keywords = updated["keywords"]
