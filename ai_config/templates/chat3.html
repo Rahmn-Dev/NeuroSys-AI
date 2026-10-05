@@ -2576,6 +2576,9 @@
       const div = document.createElement('div');
       div.className = 'agent-msg sre-msg-ai';
       div.dataset.sessionId = String(sessionId || '');
+      // Every answer bubble is an anchor: anything belonging to its run goes
+      // above it, so the turn always reads avatar, run card, answer.
+      window.currentAIMsgAnchor = div;
       div.style.cssText = 'display:flex; align-items:flex-start; gap:12px; max-width: 85%; margin-bottom: 2px;';
       div.innerHTML = `
             <div data-avatar="agent" data-orb-size="42" style="flex-shrink:0; width:56px; height:56px; border-radius:50%; background:rgba(31, 111, 235, 0.12); border:1px solid var(--border-color); display:flex; align-items:center; justify-content:center; box-shadow: 0 4px 12px rgba(0,0,0,0.08); flex-wrap: nowrap; overflow: hidden;">
@@ -2675,7 +2678,11 @@
           window.neuroBotAvatar(30) + '</div>' +
           '<div style="font-size:13px; font-weight:700;"><span class="theme-gradient">NeuroSysAI</span>' +
           '<i class="sre-agent-dot" data-state="idle" title="Agent idle"></i></div>';
-        messagesDiv.appendChild(presence);
+        if (window.currentAIMsgAnchor && messagesDiv.contains(window.currentAIMsgAnchor)) {
+          messagesDiv.insertBefore(presence, window.currentAIMsgAnchor);
+        } else {
+          messagesDiv.appendChild(presence);
+        }
       }
       const wrap = document.createElement('div');
       wrap.id = wrapId;
@@ -2692,7 +2699,14 @@
         </div>
         <div id="${wrapId}-body" class="sre-run-body" style="padding: 10px 10px 10px 18px; border-left: 2px solid var(--accent); margin: 4px 0 4px 20px; display: flex; flex-direction: column; gap: 8px; max-height: 420px; overflow-y: auto;"></div>
       `;
-      messagesDiv.appendChild(wrap);
+      // The run card always sits above the answer card, never below it: if a
+      // response bubble already exists (late wrap, adopted run, stragglers),
+      // the wrap is inserted before it instead of appended at the bottom.
+      if (window.currentAIMsgAnchor && messagesDiv.contains(window.currentAIMsgAnchor)) {
+        messagesDiv.insertBefore(wrap, window.currentAIMsgAnchor);
+      } else {
+        messagesDiv.appendChild(wrap);
+      }
       window.agentAutoScroll = window.isPinnedToBottom();
       setBeamRunning(true);
       const body = document.getElementById(wrapId + '-body');
@@ -2913,10 +2927,16 @@
         // the bare timeline for ungrouped contexts. A container owned by another
         // chat is never a valid target, even if a stale reference survived.
         let stepParent = messagesDiv;
+        let appendAtEnd = true;
         if (window.activeRunWrap && window.activeRunWrap.dataset.sessionId === String(sessionId || '')) {
           stepParent = window.activeRunWrap;
+          appendAtEnd = false;
         }
-        stepParent.appendChild(stepDiv);
+        if (appendAtEnd && window.currentAIMsgAnchor && messagesDiv.contains(window.currentAIMsgAnchor)) {
+          messagesDiv.insertBefore(stepDiv, window.currentAIMsgAnchor);
+        } else {
+          stepParent.appendChild(stepDiv);
+        }
 
         if (!isEnd && !window.isLoadingHistory) {
           startAgentStepTimer(stepId);
