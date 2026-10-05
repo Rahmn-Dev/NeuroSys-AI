@@ -67,6 +67,7 @@ urlpatterns = [
     path('api/save-service-config/<str:service_name>/', views.save_service_config, name='save_service_config'),
     path('api/v1/system_status/', chatbot_views.system_status, name='system_status'),
     path('api/v1/agent-runs/snapshot/', chatbot_views.agent_run_snapshot, name='agent_run_snapshot'),
+    path('api/v1/agent-runs/active/', chatbot_views.agent_runs_active, name='agent_runs_active'),
     # path('fetch_geolocation/', chatbot_views.fetch_geolocation, name='fetch_geolocation'),
      path('run-analysis/', views.run_analysis, name='run_analysis'),
      path('logs-report/', views.logs_report, name='logs_report'),

@@ -1611,6 +1611,7 @@
           if (payload.type === 'session_id') {
             window.liveRunSessionId = String(payload.content || '');
           } else if (window.liveRunSessionId && sessionId && window.liveRunSessionId !== String(sessionId)) {
+            window.noteForeignRunEvent(payload);
             window.updateForeignRunBadge && window.updateForeignRunBadge(payload);
             return;
           }
@@ -2975,6 +2976,7 @@
       delete window.runsBySession[String(sid)];
       if (String(sid) !== String(sessionId)) window.unreadSessions[String(sid)] = { ok: !!ok, at: Date.now() };
       window.renderActiveRuns();
+      window.refreshHistoryRowState(String(sid));
     };
 
     window.cancelRunForSession = function (sid) {
@@ -3003,6 +3005,96 @@
       window.renderActiveRuns();
     };
 
+    // Live presence: the sidebar reflects what the server is actually doing,
+    // even for runs this page never saw start (reload mid-run, another tab).
+    window.refreshRunPresence = async function () {
+      try {
+        const res = await fetch('/api/v1/agent-runs/active/', { credentials: 'same-origin' });
+        if (!res.ok) return;
+        const data = await res.json();
+        (data.runs || []).forEach((run) => {
+          const sid = String(run.session_id || '');
+          if (!sid) return;
+          const local = window.runsBySession[String(sid)];
+          if (local) {
+            if (!local.phase && run.current_node) local.phase = run.current_node;
+            local.serverSeen = true;
+          } else {
+            window.runsBySession[String(sid)] = {
+              id: sid,
+              label: run.goal || 'Agent run',
+              phase: run.status === 'awaiting_approval' ? 'awaiting approval' : (run.current_node || run.status || 'running'),
+              startedAt: new Date(run.updated_at).getTime() || Date.now(),
+              serverSeen: true,
+            };
+          }
+          if (window.unreadSessions) delete window.unreadSessions[String(sid)];
+          window.refreshHistoryRowState(sid);
+        });
+        window.renderActiveRuns();
+      } catch (err) { /* presence is best-effort */ }
+    };
+
+    if (!window._runPresenceTimer && typeof setInterval === 'function') {
+      window._runPresenceTimer = setInterval(() => {
+        if (document.visibilityState === 'visible') window.refreshRunPresence();
+      }, 8000);
+    }
+
+    if (!window._runElapsedTimer && typeof setInterval === 'function') {
+      window._runElapsedTimer = setInterval(() => {
+        document.querySelectorAll('[data-run-elapsed]').forEach((el) => {
+          const since = parseInt(el.dataset.runElapsed || '0', 10);
+          if (since) el.textContent = ' · ' + Math.max(0, Math.round((Date.now() - since) / 1000)) + 's';
+        });
+      }, 2000);
+    }
+
+    window.phaseLabelForEvent = function (payload) {
+      const type = String(payload.type || '');
+      if (window.orbPhaseLabels && window.orbPhaseLabels[type]) return window.orbPhaseLabels[type];
+      if (type === 'tool_start' || type === 'tool_end') return 'executing';
+      if (type === 'message_chunk') return 'composing';
+      if (type === 'lifecycle') return payload.status || 'executing';
+      if (type === 'verifying') return 'verifying';
+      return '';
+    };
+
+    window.noteForeignRunEvent = function (payload) {
+      const sid = window.liveRunSessionId;
+      if (!sid) return;
+      const label = window.phaseLabelForEvent(payload);
+      const entry = window.runsBySession[String(sid)] || { id: String(sid), label: 'Agent run', startedAt: Date.now() };
+      if (label) entry.phase = label;
+      if (!entry.startedAt) entry.startedAt = Date.now();
+      window.runsBySession[String(sid)] = entry;
+      if (window.unreadSessions) delete window.unreadSessions[String(sid)];
+      window.refreshHistoryRowState(sid);
+      window.renderActiveRuns();
+    };
+
+    window.refreshHistoryRowState = function (sid) {
+      const row = document.getElementById('history-item-' + sid);
+      if (!row) return;
+      const slot = row.querySelector('[data-run-state]');
+      if (!slot) return;
+      const run = (window.runsBySession || {})[String(sid)];
+      const unread = !!(window.unreadSessions || {})[String(sid)];
+      if (run) {
+        const phase = run.phase || 'running';
+        slot.innerHTML =
+          '<i class="fa-solid fa-spinner spin-anim" title="Run in progress" style="color:var(--accent); font-size:11px; flex-shrink:0;"></i>' +
+          '<span style="font-size:10px; color:var(--accent); font-weight:700;">' + escapeHtml(phase) + '</span>' +
+          '<span data-run-elapsed="' + (run.startedAt || Date.now()) + '" style="font-size:10px; color:var(--text-secondary);"></span>';
+      } else if (unread && unread.ok === false) {
+        slot.innerHTML = '<i class="fa-solid fa-circle-dot" title="Finished with an error while you were away" style="color:var(--error); font-size:11px; flex-shrink:0;"></i>';
+      } else if (unread) {
+        slot.innerHTML = '<i class="fa-solid fa-circle-dot" title="Finished while you were in another chat" style="color:var(--warning); font-size:11px; flex-shrink:0;"></i>';
+      } else {
+        slot.innerHTML = '';
+      }
+    };
+
     window.renderActiveRuns = function () {
       const bar = document.getElementById('active-runs-bar');
       const list = document.getElementById('active-runs-list');
@@ -3022,7 +3114,8 @@
         row.innerHTML =
           '<i class="fa-solid fa-spinner spin-anim" style="color:var(--accent); font-size:10px;"></i>' +
           '<span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' +
-          (mine ? 'This chat' : 'Another chat') + ' · ' + escapeHtml(run.label) + '</span>';
+          (mine ? 'This chat' : 'Another chat') + ' · ' +
+          (run.phase ? escapeHtml(run.phase) + ' · ' : '') + escapeHtml(run.label) + '</span>';
         const btn = document.createElement('button');
         btn.textContent = 'Cancel';
         btn.style.cssText = 'background:transparent; border:1px solid var(--border-color); color:var(--text-strong);' +
@@ -3731,6 +3824,7 @@
           el.innerHTML = `
             <div style="display: flex; align-items: center; gap: 8px; width: 100%;">
               <input type="checkbox" class="history-checkbox" value="${sess.id}" style="display: ${isBulkEditMode ? 'inline-block' : 'none'}; appearance: auto; -webkit-appearance: auto; accent-color: var(--purple); width: 16px; height: 16px; cursor: pointer; flex-shrink: 0;">
+              <span data-run-state style="display:inline-flex; align-items:center; gap:4px; flex-shrink:0;"></span>
               <div style="flex: 1; min-width: 0;">
                 <div class="sre-history-title">${escapeHtml(sess.title || 'Chat Session')}</div>
                 <div class="sre-history-date">${dateStr}</div>
@@ -3772,6 +3866,9 @@
         });
 
         updateBulkSelectedCount();
+        Object.keys(window.runsBySession || {}).forEach((sid) => window.refreshHistoryRowState(sid));
+        Object.keys(window.unreadSessions || {}).forEach((sid) => window.refreshHistoryRowState(sid));
+        window.refreshRunPresence();
 
         window.__historyOffset = (window.__historyOffset || 0) + sessions.length;
         window.__historyAppend = false;

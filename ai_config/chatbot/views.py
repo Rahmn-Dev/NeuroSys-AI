@@ -28,6 +28,32 @@ def system_status(request):
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
+@api_view(['GET'])
+def agent_runs_active(request):
+    """Every still-running agent run of this user, for the live history sidebar.
+
+    Lets any chat see that another chat is executing right now, without having
+    witnessed its events. Terminal states are excluded; a finished run is
+    announced by its own events instead.
+    """
+    from .models import AgentRun
+    terminal = ['completed', 'failed', 'cancelled', 'denied', 'denied_timeout',
+                'security_blocked', 'blocked', 'error', 'finalized']
+    try:
+        user_id = str(request.user.pk)
+    except Exception:
+        user_id = 'anonymous'
+    runs = (AgentRun.objects.filter(user_id=user_id).exclude(status__in=terminal)
+            .order_by('-updated_at')[:20])
+    return Response({'runs': [{
+        'session_id': str(r.session_id),
+        'status': r.status,
+        'goal': (r.goal or '')[:120],
+        'current_node': r.current_node or '',
+        'updated_at': r.updated_at.isoformat(),
+    } for r in runs]})
+
+
 def agent_run_snapshot(request):
     """Return only the authenticated user's durable run state for rehydration."""
     from .models import AgentRun, AgentApproval, ChatMessage
