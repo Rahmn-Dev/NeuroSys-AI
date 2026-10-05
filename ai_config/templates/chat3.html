@@ -2690,7 +2690,7 @@
         `;
       const _sid = String(sessionId || '');
       const _skel = window.liveBubbles && window.liveBubbles[_sid];
-      if (_skel && !_skel.claimed && document.contains(_skel.bubble)) {
+      if (_skel && !_skel.claimed && document.contains(_skel.bubble) && !window.replayingOlder) {
         _skel.claimed = true;
         const _panel = div.querySelector(':scope > .agent-msg-body > .sre-panel') || div.querySelector('.sre-panel');
         if (_panel) _skel.column.appendChild(_panel);
@@ -3615,9 +3615,11 @@
       // --- A. timeline filtered by case_id from recorded message events ---
       let timelineHtml = '<div style="color:var(--text-secondary);font-size:12px;">No timeline recorded for this case yet.</div>';
       try {
-        const res = await fetch(`/api/v1/chat-sessions/${encodeURIComponent(sessionId)}/messages/`, { credentials: 'same-origin' });
+        const res = await fetch(`/api/v1/chat-sessions/${encodeURIComponent(sessionId)}/messages/?limit=100&order=asc`, { credentials: 'same-origin' });
         if (res.ok) {
-          const messages = await res.json();
+          const payload = await res.json();
+          // The endpoint is paged now; accept both shapes.
+          const messages = Array.isArray(payload) ? payload : (payload.results || []);
           const evts = [];
           (Array.isArray(messages) ? messages : []).forEach(m => {
             const evs = m && m.metadata && Array.isArray(m.metadata.events) ? m.metadata.events : [];
@@ -4421,6 +4423,8 @@
 
     window.startNewChat = function () {
 
+      window.msgPage = null;
+      window.clearHistoryPreloader && window.clearHistoryPreloader();
       window.liveRunSessionId = null;
       window.expectingSession = false;
       window.continueSessionId = null;
@@ -4448,6 +4452,342 @@
 
     };
 
+
+    window.SRE_PAGE_SIZE = 30;
+
+    // Scroll-up pagination. Opening a chat fetches only its newest page; older
+    // pages arrive when the operator scrolls back, so a session with thousands
+    // of messages neither blocks the first paint nor transfers megabytes.
+    window.historyPreloader = function (label) {
+      let el = document.getElementById('sre-history-preloader');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'sre-history-preloader';
+        el.style.cssText = 'display:flex; align-items:center; justify-content:center; gap:8px; padding:10px; font-size:12px; color:var(--text-secondary);';
+        messagesDiv.prepend(el);
+      }
+      el.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin" style="font-size:10px;"></i> ${label || 'Loading earlier messages...'}`;
+      el.style.display = 'flex';
+      return el;
+    };
+    window.clearHistoryPreloader = function () {
+      const el = document.getElementById('sre-history-preloader');
+      if (el) el.remove();
+    };
+    window.clearHistoryPreloaderText = function (text) {
+      const el = document.getElementById('sre-history-preloader');
+      if (!el) return;
+      el.innerHTML = `<i class="fa-solid fa-check" style="font-size:10px; color:var(--success-text);"></i> ${text}`;
+      setTimeout(() => { if (el && el.parentElement) el.remove(); }, 1200);
+    };
+
+    window.loadOlderMessages = async function () {
+      const page = window.msgPage;
+      if (!page || page.loading || !page.hasMore) return;
+      if (!page.sessionId || String(page.sessionId) !== String(sessionId || '')) return;
+      if (!page.oldest) { page.hasMore = false; return; }
+      page.loading = true;
+      window.historyPreloader();
+      const anchor = messagesDiv.scrollHeight;
+      try {
+        const res = await fetch(
+          `/api/v1/chat-sessions/${encodeURIComponent(page.sessionId)}/messages/?limit=${window.SRE_PAGE_SIZE}&before=${encodeURIComponent(page.oldest)}`
+        );
+        if (!res.ok) throw new Error('history page failed');
+        const data = await res.json();
+        const older = data.results || data || [];
+        if (!older.length) { page.hasMore = false; return; }
+        // New nodes land at the bottom, then move above what is already on
+        // screen. Scroll offset is restored so reading position never jumps.
+        const before = new Set(Array.from(messagesDiv.children));
+        window.isLoadingHistory = true;
+        window.replayingOlder = true;
+        window.renderHistoryMessages(older, window.historyReplaySet || new Set());
+        window.isLoadingHistory = false;
+        window.replayingOlder = false;
+        const fresh = Array.from(messagesDiv.children).filter((el) => !before.has(el) && el.id !== 'sre-history-preloader');
+        const preloader = document.getElementById('sre-history-preloader');
+        fresh.forEach((el) => messagesDiv.insertBefore(el, preloader || messagesDiv.firstChild));
+        window.normalizeRunCards();
+        page.oldest = older[0].created_at;
+        page.hasMore = (typeof data.count === 'number') ? older.length < data.count : false;
+        if (window.lucide) window.lucide.createIcons();
+        messagesDiv.scrollTop = messagesDiv.scrollHeight - anchor;
+        if (!page.hasMore) window.clearHistoryPreloaderText('Beginning of the conversation');
+      } catch (err) {
+        page.hasMore = false;
+      } finally {
+        page.loading = false;
+        const el = document.getElementById('sre-history-preloader');
+        if (el && !page.hasMore) el.remove();
+      }
+    };
+
+    window.installHistoryScrollLoader = function () {
+      const box = document.getElementById('chat-messages');
+      if (!box || box.dataset.scrollPaged === '1') return;
+      box.dataset.scrollPaged = '1';
+      box.addEventListener('scroll', () => {
+        if (box.scrollTop > 160) return;
+        const page = window.msgPage;
+        if (!page || !page.hasMore || page.loading) return;
+        window.loadOlderMessages();
+      }, { passive: true });
+    };
+
+    // Renders one page of recorded messages. Shared by the first page (built
+    // after the welcome bubble) and by the scroll-up loader (prepended above
+    // what is already on screen), so a long chat is never fetched in one go.
+    window.renderHistoryMessages = function (list, replayMessages) {
+      let sessionStartTimestamp = null;
+      let lastEventTimestamp = null;
+      const messages = (list || []).slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      messages.forEach(msg => {
+        if (msg.id && replayMessages.has(msg.id)) return;
+        if (msg.id) replayMessages.add(msg.id);
+        if (msg.sender === 'user') {
+          addUserMessage(msg.message, msg.created_at);
+        } else if (msg.sender === 'ai') {
+          if (msg.metadata && msg.metadata.events && Array.isArray(msg.metadata.events)) {
+
+            // Set start timestamp dari event pertama
+            if (!sessionStartTimestamp && msg.metadata.events.length > 0) {
+              sessionStartTimestamp = msg.metadata.events[0].timestamp;
+              if (!lastEventTimestamp) {
+                lastEventTimestamp = sessionStartTimestamp;
+              }
+            }
+
+            msg.metadata.events.forEach(evt => {
+              // Group replayed steps into the same collapsible run
+              // container the live view uses (collapsed by default).
+              if (evt.run_id) {
+                ensureHistoryWrap(evt.run_id);
+                if (['completed', 'error', 'failed', 'cancelled', 'blocked', 'denied', 'denied_timeout', 'security_blocked'].includes(evt.type)) {
+                  const wid = window.historyRunWraps[evt.run_id];
+                  if (wid) paintRunWrap(wid, evt.type === 'completed' ? 'completed' : (evt.status || evt.type), evt.duration);
+                }
+              }
+              if (evt.event_id && window.agentSeenEvents.has(evt.event_id)) return;
+              if (evt.event_id) window.agentSeenEvents.add(evt.event_id);
+              if (evt.type === 'completed' && evt.run_id) {
+                if (window.agentCompletedRuns.has(evt.run_id)) return;
+                window.agentCompletedRuns.add(evt.run_id);
+              }
+              // === HITUNG DURASI DARI EVENT SEBELUMNYA ===
+              const diff = lastEventTimestamp ? (evt.timestamp - lastEventTimestamp) : 0;
+              const time = '✓ ' + (diff >= 0 ? diff : 0).toFixed(1) + 's';
+
+              // Update lastEventTimestamp untuk event berikutnya
+              lastEventTimestamp = evt.timestamp;
+
+              switch (evt.type) {
+                case 'lifecycle':
+                case 'resuming':
+                case 'provider_fallback':
+                case 'verifying':
+                  updateRunStateCard(evt.run_id || `history-${msg.id || 'current'}`, evt.status || evt.content || evt.type);
+                  break;
+                case 'session_id':
+                  sessionStartTimestamp = evt.timestamp;
+                  break;
+
+                case 'session_title':
+                  break;
+
+                case 'exploring':
+                  addAgentStep('Exploring', evt.content, 'var(--accent)', 'search', null, false, time);
+                  break;
+
+                case 'task_plan':
+                  (function () {
+                    const planData = evt.plan;
+                    if (planData && planData.investigation_id) {
+                      if (!investigations[planData.investigation_id]) {
+                        investigations[planData.investigation_id] = {
+                          id: planData.investigation_id,
+                          title: planData.title || 'Investigation',
+                          status: 'active',
+                          plan: [],
+                          findings: []
+                        };
+                      }
+                      investigations[planData.investigation_id].plan = Array.isArray(planData) ? planData : (planData.tasks || []);
+                      renderInvestigationTimeline();
+                    }
+                  })();
+                  addAgentStep('Task Plan', 'Plan updated', '#dac654', 'list-todo', null, false, time);
+                  break;
+
+                case 'discovering_tools':
+                  let toolsHtml = evt.content;
+                  if (evt.tools && evt.tools.length) {
+                    toolsHtml += '<div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px;">';
+                    evt.tools.forEach(t => {
+                      toolsHtml += `<span style="font-size: 11px; background: #21262d; padding: 2px 8px; border-radius: 4px; color: #79c0ff;">${t}</span>`;
+                    });
+                    toolsHtml += '</div>';
+                  }
+                  addAgentStep('Discovering Tools', toolsHtml, 'var(--purple)', 'wrench', null, false, time);
+                  break;
+
+                case 'planning':
+                  addAgentStep('Planning', evt.content, '#dac654', 'list-todo', null, false, time);
+                  break;
+
+                case 'thinking':
+                  addAgentStep('Thinking', String(evt.content || '').slice(0, 600), '#ff69b4', 'brain', null, false, time);
+                  break;
+
+                case 'tool_start':
+                  addAgentStep('Executing', window.sreToolChip(escapeHtml(evt.tool || 'tool'), evt.command ? escapeHtml(evt.command) : ''), 'var(--warning)', 'zap', evt.step_id, false, time);
+                  break;
+
+                case 'tool_end':
+                  const resultTxt = (evt.result || evt.content || '').trim();
+                  const resultHtml = resultTxt
+                    ? escapeHtml(resultTxt.substring(0, 1000))
+                    : '(no output)';
+                  addAgentStep('Result', window.sreResultCard(resultHtml), 'var(--success)', 'check-circle', evt.step_id, true, time);
+                  break;
+
+                case 'message_chunk':
+                  break;
+
+                case 'worker_activity':
+                  if (evt.workers) {
+                    activeWorkers = evt.workers;
+                    renderWorkerActivity();
+                  }
+                  break;
+
+                case 'hypothesis':
+                  addAgentStep('Hypothesis', evt.content, '#a371f7', 'lightbulb', null, false, time);
+                  break;
+
+                case 'parallel_start':
+                  addAgentStep('Parallel', `⚡ ${evt.content || 'Executing tasks...'}`, '#00d4ff', 'layers', null, false, time);
+                  break;
+
+                case 'parallel_complete':
+                  addAgentStep('Parallel Done', `✅ ${evt.content || 'All tasks completed.'}`, 'var(--success)', 'check-circle', null, false, time);
+                  break;
+
+                case 'findings':
+                  (function () {
+                    const f = evt.findings;
+                    const invId = (f && f.investigation_id) || null;
+                    if (invId) {
+                      if (!investigations[invId]) {
+                        investigations[invId] = { id: invId, title: 'Investigation', status: 'active', plan: [], findings: [] };
+                      }
+                      investigations[invId].findings = Array.isArray(f) ? f : (f.findings || []);
+                      renderInvestigationTimeline();
+                    }
+                  })();
+                  addAgentStep('Findings', 'New findings recorded', 'var(--success)', 'check-square', null, false, time);
+                  break;
+
+                case 'completed':
+                  updateRunStateCard(evt.run_id || `history-${msg.id || 'current'}`, 'completed', evt.duration);
+                  const endTime = new Date(evt.timestamp * 1000);
+                  const startTime = new Date(endTime.getTime() - ((evt.duration || 0) * 1000));
+                  const dur = (evt.duration || 0).toFixed(1);
+
+                  const auditHtml = `
+                                <details class="sre-agent-step mb-3 mt-3" style="border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
+                                    <summary style="cursor: pointer; padding: 12px 16px; background: rgba(46,160,67,0.1); border: none; width: 100%; display: flex; align-items: center; user-select: none; list-style: none;">
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <span style="color: var(--success);">${getIcon('check-all')}</span>
+                                            <strong style="color: var(--success);">Task Execution Completed</strong>
+                                        </div>
+                                        <i class="fa-solid fa-chevron-down" style="margin-left: auto; color: var(--success); font-size: 10px; transition: transform 0.2s;"></i>
+                                    </summary>
+                                    <div style="padding: 16px; font-size: 13px; background: var(--bg-panel); border-top: 1px solid var(--border-color);">
+                                        <details style="margin-bottom: 12px;">
+                                            <summary style="cursor: pointer; font-size: 12px; color: var(--text-secondary);">View result summary (already shown in the message above)</summary>
+                                            <p style="margin: 8px 0 0 0;">${escapeHtml(evt.content || "")}</p>
+                                        </details>
+                                        <table style="width: 100%; border-collapse: collapse; font-size: 12px; border: 1px solid var(--border-color);">
+                                            <tr style="background: var(--bg-panel);"><th style="color: var(--success); padding: 6px; border: 1px solid var(--border-color); text-align: left;">Audit Trail</th><th style="color: var(--success); padding: 6px; border: 1px solid var(--border-color); text-align: left;">Details</th></tr>
+                                            <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Status</td><td style="padding: 6px; border: 1px solid var(--border-color); color: var(--success);"><strong>COMPLETED</strong></td></tr>
+                                            <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Start Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${startTime.toLocaleTimeString()}</td></tr>
+                                            <tr><td style="padding: 6px; border: 1px solid var(--border-color);">End Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${endTime.toLocaleTimeString()}</td></tr>
+                                            <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Total Execution Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${dur} seconds</td></tr>
+                                        </table>
+                                    </div>
+                                </details>
+                            `;
+                  messagesDiv.insertAdjacentHTML('beforeend', auditHtml);
+        window.normalizeRunCards();
+                  break;
+
+                case 'error':
+                case 'failed':
+                case 'cancelled':
+                case 'blocked':
+                case 'denied':
+                case 'denied_timeout':
+                case 'security_blocked':
+                  updateRunStateCard(evt.run_id || `history-${msg.id || 'current'}`, evt.type);
+                  addAgentStep(
+                    String(evt.type) === 'cancelled' ? 'Cancelled' : 'Error',
+                    escapeHtml(evt.content || String(evt.type)),
+                    'var(--error)', 'x-circle', null, true,
+                  );
+                  // Same affordances as the live run, bound to this chat and case.
+                  messagesDiv.appendChild(window.renderRunFailureActions(sessionId, evt.case_id));
+                  scrollToBottom();
+                  break;
+
+                case 'investigation_started':
+                  if (evt.investigation_id) {
+                    if (!investigations[evt.investigation_id]) {
+                      investigations[evt.investigation_id] = {
+                        id: evt.investigation_id,
+                        title: evt.content || 'Investigation',
+                        status: 'active',
+                        plan: [],
+                        findings: []
+                      };
+                    }
+                    activeInvestigationId = evt.investigation_id;
+                    renderInvestigationTimeline();
+                  }
+                  addAgentStep('Investigation Started', evt.content || 'Starting new investigation...', 'var(--accent)', 'search', null, false, time);
+                  break;
+
+                case 'task_updated':
+                  const taskData = evt.task;
+                  if (taskData && taskData.new_status === 'completed') {
+                    addAgentStep('Task Completed', taskData.task, 'var(--success)', 'check-circle', null, false, time);
+                  }
+                  break;
+
+                case 'resolution_plan': {
+                  const steps = evt.steps || [];
+                  const stepsHtml = Array.isArray(steps) && steps.length > 0
+                    ? '<ol style="margin: 6px 0 0 18px; padding: 0;">' + steps.map(s => `<li>${escapeHtml(String(s))}</li>`).join('') + '</ol>'
+                    : escapeHtml(evt.content || '');
+                  addAgentStep('Resolution Plan', stepsHtml, '#39c5cf', 'list-checks', null, false, time);
+                  break;
+                }
+
+                case 'status':
+                  addSystemMsg(evt.content, 'check');
+                  break;
+
+                default:
+                  console.log('Unknown event type in history:', evt.type);
+              }
+            });
+          }
+          if (msg.message && msg.message.trim() !== "") {
+            addAIMessage(msg.message, msg.created_at);
+          }
+        }
+      });
+    };
 
     async function loadSession(id) {
 
@@ -4489,7 +4829,7 @@
 
       window.showPanelSkeleton(messagesDiv, 6);
       try {
-        const res = await fetch(`/api/v1/chat-sessions/${id}/messages/`);
+        const res = await fetch(`/api/v1/chat-sessions/${id}/messages/?limit=${window.SRE_PAGE_SIZE}&order=desc`);
         const data = await res.json();
         messagesDiv.innerHTML = welcomeBubbleHtml();
         window.agentSeenEvents = new Set();
@@ -4518,258 +4858,20 @@
 
         window.isLoadingHistory = true;
         window.historyRunWraps = {};
+        window.historyRunOwners = {};
         window.activeRunWrap = null;
-        let sessionStartTimestamp = null;
-        let lastEventTimestamp = null;  // ← TAMBAHIN INI!
-        const messages = (data.results || data);
+        const messages = (data.results || data || []);
+        window.installHistoryScrollLoader();
+        window.msgPage = {
+          sessionId: id,
+          oldest: messages.length ? messages[0].created_at : null,
+          total: (typeof data.count === 'number') ? data.count : messages.length,
+          hasMore: (typeof data.count === 'number') ? messages.length < data.count : false,
+          loading: false
+        };
+        window.historyReplaySet = replayMessages;
 
-        messages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-
-        messages.forEach(msg => {
-          if (msg.id && replayMessages.has(msg.id)) return;
-          if (msg.id) replayMessages.add(msg.id);
-          if (msg.sender === 'user') {
-            addUserMessage(msg.message, msg.created_at);
-          } else if (msg.sender === 'ai') {
-            if (msg.metadata && msg.metadata.events && Array.isArray(msg.metadata.events)) {
-
-              // Set start timestamp dari event pertama
-              if (!sessionStartTimestamp && msg.metadata.events.length > 0) {
-                sessionStartTimestamp = msg.metadata.events[0].timestamp;
-                if (!lastEventTimestamp) {
-                  lastEventTimestamp = sessionStartTimestamp;
-                }
-              }
-
-              msg.metadata.events.forEach(evt => {
-                // Group replayed steps into the same collapsible run
-                // container the live view uses (collapsed by default).
-                if (evt.run_id) {
-                  ensureHistoryWrap(evt.run_id);
-                  if (['completed', 'error', 'failed', 'cancelled', 'blocked', 'denied', 'denied_timeout', 'security_blocked'].includes(evt.type)) {
-                    const wid = window.historyRunWraps[evt.run_id];
-                    if (wid) paintRunWrap(wid, evt.type === 'completed' ? 'completed' : (evt.status || evt.type), evt.duration);
-                  }
-                }
-                if (evt.event_id && window.agentSeenEvents.has(evt.event_id)) return;
-                if (evt.event_id) window.agentSeenEvents.add(evt.event_id);
-                if (evt.type === 'completed' && evt.run_id) {
-                  if (window.agentCompletedRuns.has(evt.run_id)) return;
-                  window.agentCompletedRuns.add(evt.run_id);
-                }
-                // === HITUNG DURASI DARI EVENT SEBELUMNYA ===
-                const diff = lastEventTimestamp ? (evt.timestamp - lastEventTimestamp) : 0;
-                const time = '✓ ' + (diff >= 0 ? diff : 0).toFixed(1) + 's';
-
-                // Update lastEventTimestamp untuk event berikutnya
-                lastEventTimestamp = evt.timestamp;
-
-                switch (evt.type) {
-                  case 'lifecycle':
-                  case 'resuming':
-                  case 'provider_fallback':
-                  case 'verifying':
-                    updateRunStateCard(evt.run_id || `history-${msg.id || 'current'}`, evt.status || evt.content || evt.type);
-                    break;
-                  case 'session_id':
-                    sessionStartTimestamp = evt.timestamp;
-                    break;
-
-                  case 'session_title':
-                    break;
-
-                  case 'exploring':
-                    addAgentStep('Exploring', evt.content, 'var(--accent)', 'search', null, false, time);
-                    break;
-
-                  case 'task_plan':
-                    (function () {
-                      const planData = evt.plan;
-                      if (planData && planData.investigation_id) {
-                        if (!investigations[planData.investigation_id]) {
-                          investigations[planData.investigation_id] = {
-                            id: planData.investigation_id,
-                            title: planData.title || 'Investigation',
-                            status: 'active',
-                            plan: [],
-                            findings: []
-                          };
-                        }
-                        investigations[planData.investigation_id].plan = Array.isArray(planData) ? planData : (planData.tasks || []);
-                        renderInvestigationTimeline();
-                      }
-                    })();
-                    addAgentStep('Task Plan', 'Plan updated', '#dac654', 'list-todo', null, false, time);
-                    break;
-
-                  case 'discovering_tools':
-                    let toolsHtml = evt.content;
-                    if (evt.tools && evt.tools.length) {
-                      toolsHtml += '<div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px;">';
-                      evt.tools.forEach(t => {
-                        toolsHtml += `<span style="font-size: 11px; background: #21262d; padding: 2px 8px; border-radius: 4px; color: #79c0ff;">${t}</span>`;
-                      });
-                      toolsHtml += '</div>';
-                    }
-                    addAgentStep('Discovering Tools', toolsHtml, 'var(--purple)', 'wrench', null, false, time);
-                    break;
-
-                  case 'planning':
-                    addAgentStep('Planning', evt.content, '#dac654', 'list-todo', null, false, time);
-                    break;
-
-                  case 'thinking':
-                    addAgentStep('Thinking', String(evt.content || '').slice(0, 600), '#ff69b4', 'brain', null, false, time);
-                    break;
-
-                  case 'tool_start':
-                    addAgentStep('Executing', window.sreToolChip(escapeHtml(evt.tool || 'tool'), evt.command ? escapeHtml(evt.command) : ''), 'var(--warning)', 'zap', evt.step_id, false, time);
-                    break;
-
-                  case 'tool_end':
-                    const resultTxt = (evt.result || evt.content || '').trim();
-                    const resultHtml = resultTxt
-                      ? escapeHtml(resultTxt.substring(0, 1000))
-                      : '(no output)';
-                    addAgentStep('Result', window.sreResultCard(resultHtml), 'var(--success)', 'check-circle', evt.step_id, true, time);
-                    break;
-
-                  case 'message_chunk':
-                    break;
-
-                  case 'worker_activity':
-                    if (evt.workers) {
-                      activeWorkers = evt.workers;
-                      renderWorkerActivity();
-                    }
-                    break;
-
-                  case 'hypothesis':
-                    addAgentStep('Hypothesis', evt.content, '#a371f7', 'lightbulb', null, false, time);
-                    break;
-
-                  case 'parallel_start':
-                    addAgentStep('Parallel', `⚡ ${evt.content || 'Executing tasks...'}`, '#00d4ff', 'layers', null, false, time);
-                    break;
-
-                  case 'parallel_complete':
-                    addAgentStep('Parallel Done', `✅ ${evt.content || 'All tasks completed.'}`, 'var(--success)', 'check-circle', null, false, time);
-                    break;
-
-                  case 'findings':
-                    (function () {
-                      const f = evt.findings;
-                      const invId = (f && f.investigation_id) || null;
-                      if (invId) {
-                        if (!investigations[invId]) {
-                          investigations[invId] = { id: invId, title: 'Investigation', status: 'active', plan: [], findings: [] };
-                        }
-                        investigations[invId].findings = Array.isArray(f) ? f : (f.findings || []);
-                        renderInvestigationTimeline();
-                      }
-                    })();
-                    addAgentStep('Findings', 'New findings recorded', 'var(--success)', 'check-square', null, false, time);
-                    break;
-
-                  case 'completed':
-                    updateRunStateCard(evt.run_id || `history-${msg.id || 'current'}`, 'completed', evt.duration);
-                    const endTime = new Date(evt.timestamp * 1000);
-                    const startTime = new Date(endTime.getTime() - ((evt.duration || 0) * 1000));
-                    const dur = (evt.duration || 0).toFixed(1);
-
-                    const auditHtml = `
-                                  <details class="sre-agent-step mb-3 mt-3" style="border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
-                                      <summary style="cursor: pointer; padding: 12px 16px; background: rgba(46,160,67,0.1); border: none; width: 100%; display: flex; align-items: center; user-select: none; list-style: none;">
-                                          <div style="display: flex; align-items: center; gap: 8px;">
-                                              <span style="color: var(--success);">${getIcon('check-all')}</span>
-                                              <strong style="color: var(--success);">Task Execution Completed</strong>
-                                          </div>
-                                          <i class="fa-solid fa-chevron-down" style="margin-left: auto; color: var(--success); font-size: 10px; transition: transform 0.2s;"></i>
-                                      </summary>
-                                      <div style="padding: 16px; font-size: 13px; background: var(--bg-panel); border-top: 1px solid var(--border-color);">
-                                          <details style="margin-bottom: 12px;">
-                                              <summary style="cursor: pointer; font-size: 12px; color: var(--text-secondary);">View result summary (already shown in the message above)</summary>
-                                              <p style="margin: 8px 0 0 0;">${escapeHtml(evt.content || "")}</p>
-                                          </details>
-                                          <table style="width: 100%; border-collapse: collapse; font-size: 12px; border: 1px solid var(--border-color);">
-                                              <tr style="background: var(--bg-panel);"><th style="color: var(--success); padding: 6px; border: 1px solid var(--border-color); text-align: left;">Audit Trail</th><th style="color: var(--success); padding: 6px; border: 1px solid var(--border-color); text-align: left;">Details</th></tr>
-                                              <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Status</td><td style="padding: 6px; border: 1px solid var(--border-color); color: var(--success);"><strong>COMPLETED</strong></td></tr>
-                                              <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Start Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${startTime.toLocaleTimeString()}</td></tr>
-                                              <tr><td style="padding: 6px; border: 1px solid var(--border-color);">End Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${endTime.toLocaleTimeString()}</td></tr>
-                                              <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Total Execution Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${dur} seconds</td></tr>
-                                          </table>
-                                      </div>
-                                  </details>
-                              `;
-                    messagesDiv.insertAdjacentHTML('beforeend', auditHtml);
-          window.normalizeRunCards();
-                    break;
-
-                  case 'error':
-                  case 'failed':
-                  case 'cancelled':
-                  case 'blocked':
-                  case 'denied':
-                  case 'denied_timeout':
-                  case 'security_blocked':
-                    updateRunStateCard(evt.run_id || `history-${msg.id || 'current'}`, evt.type);
-                    addAgentStep(
-                      String(evt.type) === 'cancelled' ? 'Cancelled' : 'Error',
-                      escapeHtml(evt.content || String(evt.type)),
-                      'var(--error)', 'x-circle', null, true,
-                    );
-                    // Same affordances as the live run, bound to this chat and case.
-                    messagesDiv.appendChild(window.renderRunFailureActions(sessionId, evt.case_id));
-                    scrollToBottom();
-                    break;
-
-                  case 'investigation_started':
-                    if (evt.investigation_id) {
-                      if (!investigations[evt.investigation_id]) {
-                        investigations[evt.investigation_id] = {
-                          id: evt.investigation_id,
-                          title: evt.content || 'Investigation',
-                          status: 'active',
-                          plan: [],
-                          findings: []
-                        };
-                      }
-                      activeInvestigationId = evt.investigation_id;
-                      renderInvestigationTimeline();
-                    }
-                    addAgentStep('Investigation Started', evt.content || 'Starting new investigation...', 'var(--accent)', 'search', null, false, time);
-                    break;
-
-                  case 'task_updated':
-                    const taskData = evt.task;
-                    if (taskData && taskData.new_status === 'completed') {
-                      addAgentStep('Task Completed', taskData.task, 'var(--success)', 'check-circle', null, false, time);
-                    }
-                    break;
-
-                  case 'resolution_plan': {
-                    const steps = evt.steps || [];
-                    const stepsHtml = Array.isArray(steps) && steps.length > 0
-                      ? '<ol style="margin: 6px 0 0 18px; padding: 0;">' + steps.map(s => `<li>${escapeHtml(String(s))}</li>`).join('') + '</ol>'
-                      : escapeHtml(evt.content || '');
-                    addAgentStep('Resolution Plan', stepsHtml, '#39c5cf', 'list-checks', null, false, time);
-                    break;
-                  }
-
-                  case 'status':
-                    addSystemMsg(evt.content, 'check');
-                    break;
-
-                  default:
-                    console.log('Unknown event type in history:', evt.type);
-                }
-              });
-            }
-            if (msg.message && msg.message.trim() !== "") {
-              addAIMessage(msg.message, msg.created_at);
-            }
-          }
-        });
+        window.renderHistoryMessages(messages, replayMessages);
         window.isLoadingHistory = false;
         window.normalizeRunCards();
         window.activeRunWrap = null;

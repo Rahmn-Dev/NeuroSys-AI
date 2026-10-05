@@ -112,17 +112,44 @@ class ChatSessionViewSet(viewsets.ModelViewSet):
         return Response({"nodes": nodes, "edges": edges})
 
 
+class ChatMessagePagination(LimitOffsetPagination):
+    """Chat history is paged. A session can hold thousands of messages and
+    every one of them carries its recorded event metadata, so returning the
+    whole session on open made the chat unusably heavy."""
+
+    default_limit = 30
+    max_limit = 100
+
+
 class ChatMessageViewSet(viewsets.ModelViewSet):
-    queryset = models.ChatMessage.objects.all()
+    queryset = models.ChatMessage.objects.all().order_by('created_at', 'id')
     serializer_class = ChatMessageSerializer
     permission_classes = [permissions.AllowAny]
+    pagination_class = ChatMessagePagination
 
     # Override get_queryset untuk filter pesan berdasarkan sesi
     def get_queryset(self):
         session_id = self.kwargs.get('session_id')
+        qs = models.ChatMessage.objects.all()
         if session_id:
-            return models.ChatMessage.objects.filter(session_id=session_id)
-        return models.ChatMessage.objects.all()
+            qs = qs.filter(session_id=session_id)
+        # Stable ordering is what makes limit/offset correct.
+        qs = qs.order_by('created_at', 'id')
+        # `before` walks backwards through history for the scroll-up loader.
+        before = self.request.query_params.get('before')
+        if before:
+            from django.utils.dateparse import parse_datetime
+            # A raw '+' in the offset may arrive as a space; a cursor we cannot
+            # read must yield nothing rather than silently repeat page one.
+            parsed = parse_datetime(before) or parse_datetime(before.replace(' ', '+'))
+            if parsed is None:
+                return qs.none()
+            qs = qs.filter(created_at__lt=parsed)
+        # `order=desc` serves the newest page first, which is what opening a
+        # chat needs; the client reverses it for rendering.
+        if str(self.request.query_params.get('order', '')).lower() == 'desc':
+            qs = qs.order_by('-created_at', '-id')
+        return qs
 
 
 class SuricataLogsViewSet(viewsets.ModelViewSet):
