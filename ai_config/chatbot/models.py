@@ -352,6 +352,28 @@ class Investigation(models.Model):
         return f"{self.title} - {self.status}"
 
 
+class SessionMemory(models.Model):
+    """Thread memory for one chat session: topic, digest, entities.
+
+    One row per session, updated as the conversation grows. The digest
+    compresses old turns into a few lines so the prompt stays small while the
+    horizon covers the whole session; the topic makes "what are we talking
+    about" explicit instead of re-guessed every turn.
+    """
+    session = models.OneToOneField(ChatSession, on_delete=models.CASCADE, related_name='thread_memory')
+    topic_label = models.CharField(max_length=255, blank=True, default='')
+    topic_entities = models.JSONField(default=list, blank=True)
+    topic_keywords = models.JSONField(default=list, blank=True)
+    topic_history = models.JSONField(default=list, blank=True)
+    digest = models.TextField(blank=True, default='')
+    digest_upto = models.IntegerField(default=0)
+    session_entities = models.JSONField(default=list, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Thread of {self.session_id}: {self.topic_label[:60]}"
+
+
 class InvestigationRelation(models.Model):
     source = models.ForeignKey(Investigation, on_delete=models.CASCADE, related_name='relations_from')
     target = models.ForeignKey(Investigation, on_delete=models.CASCADE, related_name='relations_to')
