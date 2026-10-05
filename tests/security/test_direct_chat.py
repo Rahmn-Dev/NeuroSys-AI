@@ -361,3 +361,29 @@ def test_ignores_braces_inside_strings():
 
 def test_returns_none_when_no_json_present():
     assert AutonomousController._extract_first_json('no json here at all') is None
+
+
+# --- per-model tool_choice (thinking models reject forced calls) ------------
+
+from sre_agent.react_engine import ReactEngine  # noqa: E402
+
+
+class _BindRecorder:
+    def __init__(self):
+        self.calls = []
+
+    def bind_tools(self, tools, **kwargs):
+        self.calls.append(kwargs.get("tool_choice"))
+        return self
+
+
+def test_react_engine_uses_the_configured_tool_choice():
+    rec = _BindRecorder()
+    ReactEngine(rec, [], "sys", "sid", mode="autonomous_single", tool_choice="auto")
+    assert rec.calls == ["auto"]
+
+
+def test_react_engine_defaults_to_forcing_a_tool_call():
+    rec = _BindRecorder()
+    ReactEngine(rec, [], "sys", "sid", mode="autonomous_single")
+    assert rec.calls == ["any"]

@@ -797,6 +797,7 @@ def ai_models_api(request):
                 # Never the secret itself, just enough for the composer to warn
                 # before a run fails with an opaque provider error.
                 'has_key': bool(m.api_key),
+                'tool_choice': getattr(m, 'tool_choice', 'any') or 'any',
                 'is_active': m.is_active,
                 'order': m.order,
                 'rotation_group': rotation_group(m),
@@ -817,6 +818,9 @@ def ai_models_api(request):
             base_url = payload.get('base_url', '').strip() or None
             api_key = payload.get('api_key', '').strip() or None
             is_active = payload.get('is_active', True)
+            tool_choice = (payload.get('tool_choice') or 'any').strip().lower()
+            if tool_choice not in ('any', 'required', 'auto'):
+                tool_choice = 'any'
             order = int(payload.get('order', 0))
 
             if not name or not model_id:
@@ -829,6 +833,7 @@ def ai_models_api(request):
                 endpoint_type=endpoint_type,
                 base_url=base_url,
                 api_key=api_key,
+                tool_choice=tool_choice,
                 is_active=is_active,
                 order=order
             )
@@ -889,6 +894,9 @@ def ai_model_detail_api(request, pk):
                 model_obj.api_key = payload['api_key'].strip() or None
             if 'is_active' in payload:
                 model_obj.is_active = bool(payload['is_active'])
+            if 'tool_choice' in payload:
+                tc = (payload.get('tool_choice') or 'any').strip().lower()
+                model_obj.tool_choice = tc if tc in ('any', 'required', 'auto') else 'any'
             if 'order' in payload:
                 model_obj.order = int(payload['order'])
             model_obj.save()

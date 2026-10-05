@@ -5448,6 +5448,17 @@
             </div>
             <div class="col-md-6">
               <label class="form-label mb-1"
+                style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">Tool Calling</label>
+              <div id="model-toolchoice-toggle" style="display: flex; background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 8px; padding: 3px; gap: 3px;">
+                <button type="button" data-toolchoice="any" onclick="setModelToolChoice('any')"
+                  style="flex: 1; border: none; border-radius: 6px; padding: 6px 4px; font-size: 11px; font-weight: 600; cursor: pointer;">Force call</button>
+                <button type="button" data-toolchoice="auto" onclick="setModelToolChoice('auto')"
+                  style="flex: 1; border: none; border-radius: 6px; padding: 6px 4px; font-size: 11px; font-weight: 600; cursor: pointer;">Let model decide</button>
+              </div>
+              <div id="model-toolchoice-hint" style="font-size: 11px; color: var(--text-secondary); margin-top: 4px; opacity: 0.85;"></div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label mb-1"
                 style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">Base URL / Endpoint <span
                   style="opacity: 0.7;">(Optional)</span></label>
               <input type="text" id="model-baseurl-input" placeholder="e.g. http://localhost:20128/v1" class="sre-input"
@@ -5694,6 +5705,33 @@
     'anthropic': { hint: 'Anthropic NATIVE Messages API (api.anthropic.com). Kosongkan Base URL. Wajib API key sk-ant-... Isi Base URL hanya bila pakai proxy OpenAI-compatible.', placeholder: '(kosongkan untuk native)' }
   };
 
+  // Per-model tool calling: thinking models (DeepSeek thinking mode) answer the
+  // tool-forcing headers with a 400, so they need the model to decide instead.
+  const MODEL_TOOLCHOICE_HINTS = {
+    any: 'Force a tool call every ReAct turn. Default; works for Anthropic and most OpenAI-compatible endpoints.',
+    auto: 'Let the model decide. Required for thinking/reasoning models that reject forced calls (DeepSeek thinking mode).',
+  };
+
+  function getModelToolChoice() {
+    const toggle = document.getElementById('model-toolchoice-toggle');
+    if (!toggle) return 'any';
+    const active = toggle.querySelector('[data-toolchoice].active-choice');
+    return active ? active.dataset.toolchoice : 'any';
+  }
+
+  function setModelToolChoice(val) {
+    const toggle = document.getElementById('model-toolchoice-toggle');
+    const hint = document.getElementById('model-toolchoice-hint');
+    if (!toggle) return;
+    toggle.querySelectorAll('[data-toolchoice]').forEach(b => {
+      const on = b.dataset.toolchoice === val;
+      b.classList.toggle('active-choice', on);
+      b.style.background = on ? 'var(--accent)' : 'transparent';
+      b.style.color = on ? '#fff' : 'var(--text-secondary)';
+    });
+    if (hint) hint.textContent = MODEL_TOOLCHOICE_HINTS[val] || '';
+  }
+
   function setModelEndpointType(val) {
     const toggle = document.getElementById('model-endpoint-toggle');
     const hint = document.getElementById('model-endpoint-hint');
@@ -5728,6 +5766,7 @@
     const providerInput = document.getElementById('model-provider-input');
     if (providerInput) providerInput.value = '9router';
     setModelEndpointType('openai');
+    setModelToolChoice('any');
     const baseUrlInput = document.getElementById('model-baseurl-input');
     if (baseUrlInput) baseUrlInput.value = '';
     const apiKeyInput = document.getElementById('model-apikey-input');
@@ -5748,6 +5787,7 @@
     document.getElementById('model-id-input').value = m.model_id;
     document.getElementById('model-provider-input').value = m.provider || '';
     setModelEndpointType(m.endpoint_type || 'openai');
+    setModelToolChoice(m.tool_choice || 'any');
     document.getElementById('model-baseurl-input').value = m.base_url || '';
     document.getElementById('model-apikey-input').value = m.api_key || '';
     document.getElementById('model-order-input').value = m.order;
@@ -5773,7 +5813,8 @@
       base_url: document.getElementById('model-baseurl-input').value,
       api_key: document.getElementById('model-apikey-input').value,
       order: parseInt(document.getElementById('model-order-input').value) || 0,
-      is_active: document.getElementById('model-active-input').checked
+      is_active: document.getElementById('model-active-input').checked,
+      tool_choice: getModelToolChoice()
     };
 
     const url = id ? `/api/v1/ai-models/${id}/` : '/api/v1/ai-models/';

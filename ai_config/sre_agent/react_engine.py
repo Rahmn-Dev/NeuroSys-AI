@@ -100,12 +100,16 @@ def _looks_like_raw_tool_call(final_msg: str) -> bool:
 
 
 class ReactEngine:
-    def __init__(self, llm, tools: list, system_prompt: str, session_id: str, mode: str = "autonomous_multi", goal: str = ""):
+    def __init__(self, llm, tools: list, system_prompt: str, session_id: str, mode: str = "autonomous_multi", goal: str = "", tool_choice: str = "any"):
         self.llm = llm
         self.mode = mode
         # The operator's goal selects the evidence checklist and drives the
         # objective rotation between budget slices.
         self.goal = goal
+        # How tools are offered. "any" forces a call every turn; some thinking
+        # models (DeepSeek thinking mode via OpenAI-compatible gateways) reject
+        # forced calls with a 400, so those rows use "auto" instead.
+        self.tool_choice = tool_choice or "any"
 
         if self.mode == "autonomous_single":
             # Single Agent owns the request; delegation is available only for
@@ -137,7 +141,7 @@ class ReactEngine:
         self.tool_map = {t.name: t for t in self.tools}
         if hasattr(self.llm, "bind_tools"):
             try:
-                self.llm_with_tools = self.llm.bind_tools(self.tools, tool_choice="any")
+                self.llm_with_tools = self.llm.bind_tools(self.tools, tool_choice=self.tool_choice)
             except Exception:
                 self.llm_with_tools = self.llm.bind_tools(self.tools)
         else:

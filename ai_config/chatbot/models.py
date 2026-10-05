@@ -411,6 +411,13 @@ class AIModel(models.Model):
                                      help_text="Wire protocol: OpenAI-compatible (default) or Anthropic native Messages API")
     base_url = models.CharField(max_length=255, blank=True, null=True, help_text="Optional custom Base URL (e.g. http://localhost:20128/v1)")
     api_key = models.CharField(max_length=255, blank=True, null=True, help_text="Optional API Key for custom provider")
+    TOOL_CHOICE_CHOICES = [
+        ('any', 'any (force a tool call; Anthropic or langchain-normalised OpenAI)'),
+        ('required', 'required (OpenAI standard forced tool call)'),
+        ('auto', 'auto (model decides; use for thinking/reasoning models that reject forced calls)'),
+    ]
+    tool_choice = models.CharField(max_length=16, choices=TOOL_CHOICE_CHOICES, default='any',
+                                   help_text="How tools are offered in the ReAct loop. DeepSeek thinking mode rejects 'any'/'required' - use 'auto' there.")
     is_active = models.BooleanField(default=True)
     order = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
