@@ -1162,8 +1162,14 @@
     } catch (e) { }
     console.error(`${what} failed: ${res.status}`, detail);
     if (res.status === 403) {
-      return 'CSRF rejected (403). This page was loaded before the service restart, '
-        + 'so its CSRF token no longer matches. Press Ctrl+Shift+R to hard refresh, then retry.';
+      // A fresh token was already tried automatically, so this is not staleness.
+      let reason = '';
+      try {
+        const text = detail.trim();
+        if (text.startsWith('{')) reason = (JSON.parse(text).detail || '').slice(0, 120);
+      } catch (e) { }
+      return `${what}: the server rejected the request (403). `
+        + (reason || 'The session may no longer be valid - reload the page and try again.');
     }
     if (res.status === 404) {
       return `${what}: the record no longer exists (404).`;
@@ -1172,13 +1178,51 @@
   }
 
   function getCSRFToken() {
-    // Prefer the server-rendered token (always in sync with this page load),
-    // fall back to the cookie for robustness.
+    // The cookie is what the server compares against, so it wins. The token
+    // rendered into this page can be stale (a restarted service rotates the
+    // secret) and preferring it is exactly what made every mutation fail with
+    // a 403 until the operator hard refreshed.
+    const cookie = getCookie('csrftoken');
+    if (cookie) return cookie;
     const dom = document.querySelector('input[name="csrfmiddlewaretoken"]');
-    if (dom && dom.value) return dom.value;
-    const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]*)/);
-    return match ? decodeURIComponent(match[1]) : '';
+    return dom && dom.value ? dom.value : '';
   }
+
+  // Ask Django for a current token by re-fetching the page shell. Cheap, and it
+  // removes the operator's hard-refresh reflex entirely.
+  async function refreshCSRFToken() {
+    try {
+      await fetch(window.location.pathname + (window.location.search || ''), {
+        credentials: 'same-origin', cache: 'no-store'
+      });
+    } catch (e) { }
+    return getCSRFToken();
+  }
+
+  // Every state-changing request goes through here: credentials always sent,
+  // a live CSRF token attached, and one automatic retry with a refreshed token
+  // if the first attempt is rejected.
+  async function sreFetch(url, options) {
+    const opts = Object.assign({}, options || {});
+    opts.credentials = opts.credentials || 'same-origin';
+    const method = String(opts.method || 'GET').toUpperCase();
+    const safe = (method === 'GET' || method === 'HEAD' || method === 'OPTIONS');
+    if (!safe) {
+      opts.headers = Object.assign({}, opts.headers || {}, {
+        'X-CSRFToken': getCSRFToken() || '', 'X-Requested-With': 'XMLHttpRequest'
+      });
+    }
+    let res = await fetch(url, opts);
+    if (res.status === 403 && !safe) {
+      const token = await refreshCSRFToken();
+      opts.headers = Object.assign({}, opts.headers || {}, { 'X-CSRFToken': token || '' });
+      res = await fetch(url, opts);
+    }
+    return res;
+  }
+  window.sreFetch = sreFetch;
+  window.getCSRFToken = getCSRFToken;
+  window.refreshCSRFToken = refreshCSRFToken;
 
   // Permission state has three writers: the initial GET, the PUTs triggered by
   // the composer picker, and rapid clicks from the operator. They used to race:
@@ -1239,9 +1283,8 @@
     permissionSaving = true;
     updatePermissionPickerLabel();
     try {
-      const response = await fetch('/api/v1/agent-permission/', {
+      const response = await sreFetch('/api/v1/agent-permission/', {
         method: 'PUT', credentials: 'same-origin',
-        headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() || ''},
         body: JSON.stringify({mode})
       });
       if (!response.ok) throw new Error(`permission update failed (${response.status})`);
@@ -1407,11 +1450,8 @@
     const animated = window.animateHistoryRowOut(id);
     if (animated) await new Promise((resolve) => setTimeout(resolve, 250));
     try {
-      const res = await fetch(`/api/v1/chat-sessions/${id}/`, {
-        method: 'DELETE',
-        headers: {
-          'X-CSRFToken': getCSRFToken() || ''
-        }
+      const res = await sreFetch(`/api/v1/chat-sessions/${id}/`, {
+        method: 'DELETE'
       });
       if (res.ok) {
         if (typeof window.onSessionDeleted === 'function') {
@@ -1440,11 +1480,10 @@
     if (!confirm(`Are you sure you want to delete ${sessionIds.length} selected chat session(s)?`)) return;
 
     try {
-      const res = await fetch('/api/v1/chat-sessions/bulk_delete/', {
+      const res = await sreFetch('/api/v1/chat-sessions/bulk_delete/', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': getCSRFToken() || ''
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({ session_ids: sessionIds })
       });
@@ -5311,9 +5350,8 @@
       const btn = document.querySelector(`[data-rollback-id="${id}"]`);
       if (btn) { btn.disabled = true; btn.textContent = 'Restoring...'; }
       try {
-        const res = await fetch(`/api/v1/workspace/artifacts/${id}/rollback/`, {
+        const res = await sreFetch(`/api/v1/workspace/artifacts/${id}/rollback/`, {
           method: 'POST',
-          headers: { 'X-CSRFToken': getCSRFToken() || '' }
         });
         if (res.ok) {
           addSystemMsg('File restored to its previous content.', 'rotate-left');
@@ -6545,9 +6583,8 @@
   async function deleteAIModel(id) {
     if (!confirm('Are you sure you want to delete this model configuration?')) return;
     try {
-      const res = await fetch(`/api/v1/ai-models/${id}/`, {
+      const res = await sreFetch(`/api/v1/ai-models/${id}/`, {
         method: 'DELETE',
-        headers: { 'X-CSRFToken': getCSRFToken() || '' }
       });
       const data = await res.json();
       if (data.status === 'success') {
@@ -6585,9 +6622,8 @@
     resultDiv.style.display = 'none';
 
     try {
-      const res = await fetch('/api/v1/ai-models/test/', {
+      const res = await sreFetch('/api/v1/ai-models/test/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() || '' },
         body: JSON.stringify(payload)
       });
       const data = await res.json();

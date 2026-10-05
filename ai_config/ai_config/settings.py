@@ -73,7 +73,15 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:8000",
     "http://127.0.0.1:8000",
 ]
-# SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+# The app is served over HTTPS through the tunnel/reverse proxy, so Django
+# sees plain http unless it is told to trust the forwarded scheme. Without this
+# the CSRF origin/referer comparison is built from http://host while the browser
+# sends https://host, and every unsafe request (delete, permission change) is
+# rejected with 403 - a hard refresh can never fix that, because nothing in the
+# page is stale.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
+CSRF_COOKIE_HTTPONLY = False
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
