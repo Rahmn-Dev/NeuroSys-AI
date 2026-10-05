@@ -2680,7 +2680,52 @@
       }
 
       delete stepTimers[stepId];
+      if (window.paintTimelineStep) window.paintTimelineStep(stepId, 'success');
     }
+
+    // Chain-of-thought status rings: blue while a step is working, emerald
+    // once it lands, rose when it fails. Translated from the AgentPlanning
+    // reference into CSS variables so both themes keep working.
+    window.sreTlPalette = function (status) {
+      return {
+        active: ['rgba(88,166,255,.16)', 'var(--accent)', 'rgba(88,166,255,.35)'],
+        success: ['rgba(63,185,80,.16)', 'var(--success-text)', 'rgba(63,185,80,.3)'],
+        error: ['rgba(248,81,73,.16)', 'var(--error)', 'rgba(248,81,73,.3)'],
+      }[status] || ['rgba(127,140,160,.14)', 'var(--text-secondary)', 'var(--border-color)'];
+    };
+
+    window.paintTimelineStep = function (stepId, status) {
+      const step = document.getElementById('step-' + stepId);
+      if (!step) return;
+      step.dataset.status = status;
+      const pal = window.sreTlPalette(status);
+      const dot = step.querySelector(':scope > .sre-tl-dot');
+      if (dot) {
+        dot.style.background = pal[0];
+        dot.style.color = pal[1];
+        dot.style.boxShadow = '0 0 0 3px ' + pal[2];
+      }
+      const icon = document.getElementById('icon-' + stepId);
+      if (icon) {
+        if (status === 'success') icon.innerHTML = getIcon('check-circle');
+        else if (status === 'error') icon.innerHTML = getIcon('x-circle');
+        else if (status === 'active') icon.innerHTML = '<div class="spinner-border spinner-border-sm" role="status" style="width: 12px; height: 12px; border-width: 2px;"></div>';
+        icon.style.color = pal[1];
+      }
+    };
+
+    window.toggleStep = function (stepId, ev) {
+      if (ev) ev.stopPropagation();
+      const step = document.getElementById('step-' + stepId);
+      const wrap = document.getElementById('collapse-' + stepId);
+      if (!step || !wrap) return;
+      const open = step.dataset.open !== '1';
+      step.dataset.open = open ? '1' : '0';
+      wrap.style.gridTemplateRows = open ? '1fr' : '0fr';
+      wrap.style.opacity = open ? '1' : '0';
+      const chev = step.querySelector(':scope .sre-tl-chev');
+      if (chev) chev.style.transform = open ? 'rotate(0deg)' : 'rotate(-90deg)';
+    };
 
     function stopAllAgentStepTimers() {
       Object.keys(stepTimers).forEach(stepId => stopStep(stepId));
@@ -2897,16 +2942,28 @@
           isGeneric = true;
         }
       }
-      let iconHtml = `<div class="spinner-border spinner-border-sm" role="status" style="width: 14px; height: 14px; border-width: 2px;"></div>`;
+      // Status first, looks second: a live step is active (blue ring +
+      // spinner), a finished one is success (emerald + check), a failed one is
+      // error (rose + cross) no matter which phase color it was born with.
+      let tlStatus = 'success';
+      if (/^(Error|Cancelled|Failed)/i.test(label) || iconName === 'x-circle') tlStatus = 'error';
+      else if (!window.isLoadingHistory && !isEnd && !customTimer) tlStatus = 'active';
+      const tlOpen = tlStatus === 'active' || !window.isLoadingHistory;
+      const tlPal = window.sreTlPalette(tlStatus);
+      let iconHtml;
+      if (tlStatus === 'active') {
+        iconHtml = `<div class="spinner-border spinner-border-sm" role="status" style="width: 12px; height: 12px; border-width: 2px;"></div>`;
+      } else {
+        iconHtml = getIcon(tlStatus === 'error' ? 'x-circle' : 'check-circle');
+      }
+      const tlTimerStyle = 'min-width: 45px; text-align: right; font-size: 11px; font-family: monospace; color: var(--text-secondary); opacity: .85;';
       let initialTimer;
       if (customTimer) {
-        iconHtml = getIcon(iconName || 'terminal');
-        initialTimer = `<span id="timer-${stepId}" class="sre-timer ms-2" style="min-width: 45px; text-align: right; color: var(--success-text);;">${customTimer}</span>`;
+        initialTimer = `<span id="timer-${stepId}" class="sre-timer" style="${tlTimerStyle}">${customTimer}</span>`;
       } else if (window.isLoadingHistory && !isEnd) {
-        iconHtml = getIcon(iconName || 'terminal');
-        initialTimer = `<span id="timer-${stepId}" class="sre-timer ms-2" style="min-width: 45px; text-align: right; color: var(--success-text);;">✓</span>`;
+        initialTimer = `<span id="timer-${stepId}" class="sre-timer" style="${tlTimerStyle}">✓</span>`;
       } else {
-        initialTimer = `<span id="timer-${stepId}" class="sre-timer ms-2" style="min-width: 45px; text-align: right;">0.0s</span>`;
+        initialTimer = `<span id="timer-${stepId}" class="sre-timer" style="${tlTimerStyle}">0.0s</span>`;
       }
 
       if (lastGenericStepId && lastGenericStepId !== stepId && !isEnd) {
@@ -2927,28 +2984,31 @@
       if (!stepDiv) {
         stepDiv = document.createElement('div');
         stepDiv.id = 'step-' + stepId;
-        stepDiv.className = 'accordion-item mb-2 sre-agent-step';
-        stepDiv.style.borderLeft = `3px solid ${color}`;
-        stepDiv.style.borderRadius = '8px';
-        stepDiv.style.overflow = 'hidden';
-
-
-
-                stepDiv.innerHTML = `
-                <h2 class="accordion-header" id="heading-${stepId}" style="margin: 0;">
-                    <button class="accordion-button${window.isLoadingHistory ? ' collapsed' : ''}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${stepId}" aria-expanded="${window.isLoadingHistory ? 'false' : 'true'}" aria-controls="collapse-${stepId}" style="padding: 10px 14px; background: rgba(0,0,0,0.02); border: none; box-shadow: none; width: 100%; display: flex; align-items: center; justify-content: space-between;">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <span id="icon-${stepId}" style="color: ${color}; display: flex; align-items: center;">
-                                ${iconHtml}
-                            </span>
-                            <span style="color: ${color}; font-weight: 600;">${label}</span>
+        stepDiv.className = 'sre-agent-step';
+        stepDiv.dataset.status = tlStatus;
+        stepDiv.dataset.open = tlOpen ? '1' : '0';
+        stepDiv.style.cssText = 'position: relative; display: flex; gap: 12px;';
+        stepDiv.innerHTML = `
+                <div class="sre-tl-line" style="position: absolute; left: 11px; top: 28px; bottom: 0; width: 2px; background: var(--border-color); opacity: .55; display: none;"></div>
+                <div class="sre-tl-dot" style="position: relative; z-index: 1; flex: none; width: 24px; height: 24px; margin-top: 1px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: ${tlPal[0]}; color: ${tlPal[1]}; box-shadow: 0 0 0 3px ${tlPal[2]};">
+                    <span id="icon-${stepId}" style="display: flex; align-items: center;">
+                        ${iconHtml}
+                    </span>
+                </div>
+                <div style="flex: 1; min-width: 0; padding-bottom: 16px;">
+                    <div onclick="toggleStep('${stepId}', event)" onmouseover="this.style.background='rgba(127,140,160,.08)'" onmouseout="this.style.background='transparent'" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 1px 6px; margin: 0 -6px; border-radius: 6px; cursor: pointer; user-select: none;">
+                        <span style="font-size: 13.5px; font-weight: ${tlStatus === 'active' ? '600' : '500'}; color: ${tlStatus === 'error' ? 'var(--error)' : (tlStatus === 'active' ? 'var(--text-strong)' : color)};">${label}</span>
+                        <span style="display: flex; align-items: center; gap: 8px; flex: none;">
+                            ${initialTimer}
+                            <span class="sre-tl-chev" style="display: flex; color: var(--text-secondary); opacity: .6; transition: transform .2s; transform: rotate(${tlOpen ? '0deg' : '-90deg'});">${getIcon('chevron-down') || '▾'}</span>
+                        </span>
+                    </div>
+                    <div id="collapse-${stepId}" style="display: grid; grid-template-rows: ${tlOpen ? '1fr' : '0fr'}; opacity: ${tlOpen ? '1' : '0'}; transition: grid-template-rows .35s ease, opacity .3s ease;">
+                        <div style="overflow: hidden; min-height: 0;">
+                            <div id="step-content-${stepId}" class="sre-text-secondary" style="padding: 8px 2px 2px; font-size: 13px;">
+                                ${contentHtml}
+                            </div>
                         </div>
-                        ${initialTimer}
-                    </button>
-                </h2>
-                <div id="collapse-${stepId}" class="accordion-collapse collapse${window.isLoadingHistory ? '' : ' show'}" aria-labelledby="heading-${stepId}">
-                    <div id="step-content-${stepId}" class="accordion-body sre-text-secondary" style="padding: 10px 14px; border-top: 1px solid var(--border-color); font-size: 13px;">
-                        ${contentHtml}
                     </div>
                 </div>
             `;
@@ -2959,7 +3019,19 @@
         if (window.activeRunWrap && window.activeRunWrap.dataset.sessionId === String(sessionId || '')) {
           stepParent = window.activeRunWrap;
         }
+        if (window.isLoadingHistory) {
+          const _tlCount = stepParent.querySelectorAll(':scope > .sre-agent-step').length;
+          stepDiv.style.animationDelay = Math.min(_tlCount * 60, 480) + 'ms';
+        }
         stepParent.appendChild(stepDiv);
+        // The rail runs through every step but the last: earlier siblings keep
+        // their line, the newcomer (always last) hides its own.
+        Array.from(stepParent.children).forEach((ch) => {
+          if (ch !== stepDiv && ch.classList && ch.classList.contains('sre-agent-step')) {
+            const ln = ch.querySelector(':scope > .sre-tl-line');
+            if (ln) ln.style.display = '';
+          }
+        });
 
         if (!isEnd && !window.isLoadingHistory) {
           startAgentStepTimer(stepId);
@@ -5277,6 +5349,14 @@
   #sre-agent-app ol {
     padding-left: 20px;
   }
+
+  @keyframes sreStepIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+  .sre-agent-step { animation: sreStepIn 0.35s ease both; }
+  .sre-tl-dot svg { display: block; }
+  .sre-tl-chev svg { display: block; }
 
   #sre-agent-app a {
     color: #58a6ff;
