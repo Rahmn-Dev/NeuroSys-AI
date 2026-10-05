@@ -2839,8 +2839,8 @@
       }
       const icon = document.getElementById('icon-' + stepId);
       if (icon) {
-        if (status === 'success') icon.innerHTML = window.sreCheckSvg(14);
-        else if (status === 'error') icon.innerHTML = window.sreXSvg(14);
+        if (status === 'success') icon.innerHTML = window.sreCheckSvg(13);
+        else if (status === 'error') icon.innerHTML = window.sreXSvg(13);
         else if (status === 'active') icon.innerHTML = '<div class="spinner-border spinner-border-sm" role="status" style="width: 12px; height: 12px; border-width: 2px;"></div>';
         icon.style.color = pal[1];
       }
@@ -3105,7 +3105,7 @@
       if (tlStatus === 'active') {
         iconHtml = `<div class="spinner-border spinner-border-sm" role="status" style="width: 12px; height: 12px; border-width: 2px;"></div>`;
       } else {
-        iconHtml = tlStatus === 'error' ? window.sreXSvg(14) : window.sreCheckSvg(14);
+        iconHtml = tlStatus === 'error' ? window.sreXSvg(13) : window.sreCheckSvg(13);
       }
       const tlTimerStyle = 'min-width: 45px; text-align: right; font-size: 12px; font-family: monospace; color: var(--text-secondary); opacity: .85; white-space: nowrap;';
       let initialTimer;
@@ -3138,15 +3138,15 @@
         stepDiv.className = 'sre-agent-step';
         stepDiv.dataset.status = tlStatus;
         stepDiv.dataset.open = tlOpen ? '1' : '0';
-        stepDiv.style.cssText = 'position: relative; display: flex; gap: 16px;';
+        stepDiv.style.cssText = 'position: relative; display: flex; gap: 14px; padding-left: 2px;';
         stepDiv.innerHTML = `
-                <div class="sre-tl-line" style="position: absolute; left: 14px; top: 34px; bottom: 0; width: 2px; background: var(--border-color); opacity: .55; display: none;"></div>
-                <div class="sre-tl-dot" style="position: relative; z-index: 1; flex: none; width: 30px; height: 30px; margin-top: 0; border-radius: 50%; overflow: visible; display: flex; align-items: center; justify-content: center; background: ${tlPal[0]}; color: ${tlPal[1]}; box-shadow: 0 0 0 3px ${tlPal[2]};">
+                <div class="sre-tl-line" style="position: absolute; left: 15px; top: 36px; bottom: 0; width: 2px; background: var(--border-color); opacity: .55; display: none;"></div>
+                <div class="sre-tl-dot" style="position: relative; z-index: 1; flex: none; width: 25px; height: 25px; margin-top: 8px; border-radius: 50%; overflow: visible; display: flex; align-items: center; justify-content: center; background: ${tlPal[0]}; color: ${tlPal[1]}; box-shadow: 0 0 0 3px ${tlPal[2]}; margin-left: 3px;">
                     <span id="icon-${stepId}" style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">
                         ${iconHtml}
                     </span>
                 </div>
-                <div style="flex: 1; min-width: 0; padding-bottom: 24px;">
+                <div style="flex: 1; min-width: 0; padding: 8px 0 24px;">
                     <div onclick="toggleStep('${stepId}', event)" onmouseover="this.style.background='rgba(127,140,160,.08)'" onmouseout="this.style.background='transparent'" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 1px 6px; margin: 0 -6px; border-radius: 6px; cursor: pointer; user-select: none;">
                         <span style="font-size: 15px; font-weight: ${tlStatus === 'active' ? '600' : '500'}; color: ${tlStatus === 'error' ? 'var(--error)' : (tlStatus === 'active' ? 'var(--text-strong)' : color)};">${label}</span>
                         <span style="display: flex; align-items: center; gap: 8px; flex: none;">
