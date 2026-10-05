@@ -1650,8 +1650,18 @@ Output strictly the category name."""
                         pass  # non-critical
 
         duration = time.time() - start_time
+        if (not run_completed and not terminal_failure and final_message
+                and mode != "autonomous_single" and 'inv_id' in locals() and inv_id):
+            # The controller path (guided/multi) has no verified-completion gate:
+            # a delivered final answer closes the case. Without this, answered
+            # runs stayed 'active' and the next turn superseded an investigation
+            # the operator watched complete. Paused single-agent runs are
+            # excluded by the mode check so they stay resumable.
+            run_completed = True
         if run_completed:
             yield evt_completed(final_message or f"Task completed in {duration:.1f}s", duration=duration)
+            if 'inv_id' in locals() and inv_id:
+                await sync_to_async(lambda _i=inv_id: Investigation.objects.filter(id=_i).update(status="completed"))()
             return
 
         # A partial report can still be useful, but it is not a successful
