@@ -1876,7 +1876,7 @@
 
         case 'tool_start':
           window.ensureRunWrap();
-          addAgentStep('Executing', `<code>${escapeHtml(data.tool || '')}</code> ${escapeHtml(data.command || '')}`, 'var(--warning)', 'zap', data.step_id, false);
+          addAgentStep('Executing', window.sreToolChip(escapeHtml(data.tool || 'tool'), data.command ? escapeHtml(data.command) : ''), 'var(--warning)', 'zap', data.step_id, false);
           window.setProgressOrb('working');
           break;
 
@@ -1885,7 +1885,7 @@
           const resultHtml = resultTxt
             ? escapeHtml(resultTxt.substring(0, 1000))
             : '(no output)';
-          addAgentStep('Result', `<pre class="sre-layout" style="padding: 8px; border-radius: 6px; overflow-x: auto; font-size: 12px; max-height: 200px; overflow-y: auto; margin: 4px 0; border: 1px solid var(--border-color);">${resultHtml}</pre>`, 'var(--success)', 'check-circle', data.step_id, true);
+          addAgentStep('Result', window.sreResultCard(resultHtml), 'var(--success)', 'check-circle', data.step_id, true);
           break;
 
         case 'approval_required':
@@ -2673,7 +2673,7 @@
 
       const iconContainer = document.getElementById('icon-' + stepId);
       if (iconContainer && forceSuccess) {
-        iconContainer.innerHTML = getIcon('check-circle');
+        iconContainer.innerHTML = window.sreCheckSvg(14);
         iconContainer.style.color = 'var(--success-text)';
         const svg = iconContainer.querySelector('svg');
         if (svg) svg.classList.remove('fa-spin');
@@ -2686,6 +2686,37 @@
     // Chain-of-thought status rings: blue while a step is working, emerald
     // once it lands, rose when it fails. Translated from the AgentPlanning
     // reference into CSS variables so both themes keep working.
+    window.__sreUiBuild = 'timeline-03';
+    console.log('[NeuroSysAI UI] build timeline-03 (planning-card steps)');
+
+    // Icons below never depend on the lucide name table: an unknown name used
+    // to render an empty dot. These inline SVGs always paint.
+    window.sreCheckSvg = function (size) {
+      const px = size || 13;
+      return `<svg width="${px}" height="${px}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+    };
+    window.sreXSvg = function (size) {
+      const px = size || 13;
+      return `<svg width="${px}" height="${px}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
+    };
+    window.sreChevSvg = function (size) {
+      const px = size || 14;
+      return `<svg width="${px}" height="${px}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+    };
+    // Tool chip + result card. Arguments arrive already escaped.
+    window.sreToolChip = function (toolHtml, cmdHtml) {
+      return `<div style="font-family: monospace; font-size: 11px; color: var(--text-secondary);">`
+        + `<div style="display: flex; align-items: center; gap: 8px;">Executing tool: `
+        + `<span style="display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 8px; background: rgba(129,140,248,.12); color: #818cf8; border: 1px solid rgba(129,140,248,.3); font-weight: 600;">${toolHtml}</span></div>`
+        + (cmdHtml ? `<div style="margin-top: 6px; opacity: .8; word-break: break-all;">${cmdHtml}</div>` : '')
+        + `</div>`;
+    };
+    window.sreResultCard = function (resultHtml) {
+      return `<div style="border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-main); box-shadow: 0 1px 2px rgba(0,0,0,.05); overflow: hidden;">`
+        + `<div style="padding: 6px 12px; font-size: 11px; font-weight: 700; color: var(--text-strong); border-bottom: 1px solid var(--border-color);">Output</div>`
+        + `<pre class="sre-layout" style="padding: 10px 12px; margin: 0; overflow-x: auto; font-size: 12px; max-height: 220px; overflow-y: auto;">${resultHtml}</pre></div>`;
+    };
+
     window.sreTlPalette = function (status) {
       return {
         active: ['rgba(88,166,255,.16)', 'var(--accent)', 'rgba(88,166,255,.35)'],
@@ -2707,8 +2738,8 @@
       }
       const icon = document.getElementById('icon-' + stepId);
       if (icon) {
-        if (status === 'success') icon.innerHTML = getIcon('check-circle');
-        else if (status === 'error') icon.innerHTML = getIcon('x-circle');
+        if (status === 'success') icon.innerHTML = window.sreCheckSvg(13);
+        else if (status === 'error') icon.innerHTML = window.sreXSvg(13);
         else if (status === 'active') icon.innerHTML = '<div class="spinner-border spinner-border-sm" role="status" style="width: 12px; height: 12px; border-width: 2px;"></div>';
         icon.style.color = pal[1];
       }
@@ -2783,7 +2814,7 @@
             <i class="fa-solid fa-chevron-down" id="${wrapId}-chev" style="font-size: 12px; color: var(--text-secondary); transition: transform .2s; transform: rotate(-90deg);"></i>
           </span>
         </div>
-        <div id="${wrapId}-body" class="sre-run-body" style="padding: 4px 20px 20px; display: flex; flex-direction: column; max-height: 420px; overflow-y: auto;"></div>
+        <div id="${wrapId}-body" class="sre-run-body" style="padding: 20px 20px 20px; display: flex; flex-direction: column; max-height: 420px; overflow-y: auto;"></div>
       `;
       messagesDiv.appendChild(wrap);
       window.agentAutoScroll = window.isPinnedToBottom();
@@ -2964,7 +2995,7 @@
       if (tlStatus === 'active') {
         iconHtml = `<div class="spinner-border spinner-border-sm" role="status" style="width: 12px; height: 12px; border-width: 2px;"></div>`;
       } else {
-        iconHtml = getIcon(tlStatus === 'error' ? 'x-circle' : 'check-circle');
+        iconHtml = tlStatus === 'error' ? window.sreXSvg(13) : window.sreCheckSvg(13);
       }
       const tlTimerStyle = 'min-width: 45px; text-align: right; font-size: 11px; font-family: monospace; color: var(--text-secondary); opacity: .85;';
       let initialTimer;
@@ -3005,12 +3036,12 @@
                         ${iconHtml}
                     </span>
                 </div>
-                <div style="flex: 1; min-width: 0; padding-bottom: 16px;">
+                <div style="flex: 1; min-width: 0; padding-bottom: 22px;">
                     <div onclick="toggleStep('${stepId}', event)" onmouseover="this.style.background='rgba(127,140,160,.08)'" onmouseout="this.style.background='transparent'" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 1px 6px; margin: 0 -6px; border-radius: 6px; cursor: pointer; user-select: none;">
-                        <span style="font-size: 13.5px; font-weight: ${tlStatus === 'active' ? '600' : '500'}; color: ${tlStatus === 'error' ? 'var(--error)' : (tlStatus === 'active' ? 'var(--text-strong)' : color)};">${label}</span>
+                        <span style="font-size: 14px; font-weight: ${tlStatus === 'active' ? '600' : '500'}; color: ${tlStatus === 'error' ? 'var(--error)' : (tlStatus === 'active' ? 'var(--text-strong)' : color)};">${label}</span>
                         <span style="display: flex; align-items: center; gap: 8px; flex: none;">
                             ${initialTimer}
-                            <span class="sre-tl-chev" style="display: flex; color: var(--text-secondary); opacity: .6; transition: transform .2s; transform: rotate(${tlOpen ? '0deg' : '-90deg'});">${getIcon('chevron-down') || '▾'}</span>
+                            <span class="sre-tl-chev" style="display: flex; color: var(--text-secondary); opacity: .6; transition: transform .2s; transform: rotate(${tlOpen ? '0deg' : '-90deg'});">${window.sreChevSvg(14)}</span>
                         </span>
                     </div>
                     <div id="collapse-${stepId}" style="display: grid; grid-template-rows: ${tlOpen ? '1fr' : '0fr'}; opacity: ${tlOpen ? '1' : '0'}; transition: grid-template-rows .35s ease, opacity .3s ease;">
@@ -3056,7 +3087,7 @@
           stopStep(stepId, false);
           const iconContainer = document.getElementById('icon-' + stepId);
           if (iconContainer) {
-            iconContainer.innerHTML = getIcon('check-circle');
+            iconContainer.innerHTML = window.sreCheckSvg(14);
             iconContainer.style.color = 'var(--success-text)';
           }
         }
@@ -4525,7 +4556,7 @@
                     break;
 
                   case 'tool_start':
-                    addAgentStep('Executing', `<code>${escapeHtml(evt.tool || '')}</code> ${escapeHtml(evt.command || '')}`, 'var(--warning)', 'zap', evt.step_id, false, time);
+                    addAgentStep('Executing', window.sreToolChip(escapeHtml(evt.tool || 'tool'), evt.command ? escapeHtml(evt.command) : ''), 'var(--warning)', 'zap', evt.step_id, false, time);
                     break;
 
                   case 'tool_end':
@@ -4533,7 +4564,7 @@
                     const resultHtml = resultTxt
                       ? escapeHtml(resultTxt.substring(0, 1000))
                       : '(no output)';
-                    addAgentStep('Result', `<pre class="sre-layout" style="padding: 8px; border-radius: 6px; overflow-x: auto; font-size: 12px; max-height: 200px; overflow-y: auto; margin: 4px 0; border: 1px solid var(--border-color);">${resultHtml}</pre>`, 'var(--success)', 'check-circle', evt.step_id, true, time);
+                    addAgentStep('Result', window.sreResultCard(resultHtml), 'var(--success)', 'check-circle', evt.step_id, true, time);
                     break;
 
                   case 'message_chunk':
@@ -5364,7 +5395,7 @@
     from { opacity: 0; transform: translateY(6px); }
     to { opacity: 1; transform: none; }
   }
-  .sre-agent-step { animation: sreStepIn 0.35s ease both; }
+  .sre-agent-step { animation: sreStepIn 0.35s ease both; border: 0 !important; background: transparent !important; box-shadow: none !important; border-radius: 0 !important; }
   .sre-tl-dot svg { display: block; }
   .sre-tl-chev svg { display: block; }
 
