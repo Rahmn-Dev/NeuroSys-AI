@@ -1393,6 +1393,18 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
                 from sre_agent.canonical_lifecycle import is_terminal
                 previous = getattr(getattr(self, "engine", None), "_lifecycle", None)
                 if previous is None or not is_terminal(previous.run.status):
+                    # Single flight per socket: say so out loud instead of
+                    # dropping the message silently.
+                    try:
+                        other = str(getattr(getattr(self, "engine", None), "session_id", "") or "")
+                        mine = str(data.get("session_id") or "")
+                        if other and mine and other != mine:
+                            hint = "A run is still active in another chat. Stop it there (or wait) before starting this one."
+                        else:
+                            hint = "A run is still going. Stop it before sending a new message."
+                        await self.send(text_data=json.dumps({"type": "status", "content": hint}))
+                    except Exception:
+                        pass
                     return
             session_id = data.get("session_id", "")
             if session_id:

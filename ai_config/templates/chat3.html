@@ -2953,17 +2953,21 @@
     };
 
     window.stopCurrentRun = function () {
-      if (!isProcessing) return;
-      const sid = String(sessionId || '');
-      addSystemMsg('Stopping the run...', 'circle-notch');
-      try {
-        if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'cancel', session_id: sid }));
-      } catch (err) { /* socket closing */ }
+      const sids = Object.keys(window.runsBySession || {});
+      if (!sids.length && !isProcessing) return;
+      const targets = sids.length ? sids : [String(sessionId || '')];
+      addSystemMsg(targets.length > 1 ? ('Stopping ' + targets.length + ' runs...') : 'Stopping the run...', 'circle-notch');
+      targets.forEach((sid) => {
+        try {
+          if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'cancel', session_id: String(sid) }));
+        } catch (err) { /* socket closing */ }
+        window.markRunFinished(String(sid), false);
+      });
       if (window.activeRunOrb) window.applyOrbTo(window.activeRunOrb, 'done');
       window.activeRunOrb = null;
+      window.activeRunWrap = null;
       setBeamRunning(false);
       stopAllAgentStepTimers();
-      window.markRunFinished(sid, false);
       addAgentStep('Cancelled', 'Stopped by the operator before it finished.', 'var(--warning)', 'circle-xmark', null, true);
       isProcessing = false;
       window.setSendButtonState('idle');
@@ -3047,6 +3051,32 @@
       window.renderActiveRuns();
     };
 
+    // Entries the server no longer reports are resolved once against the
+    // run snapshot: a finished run becomes "new result" instead of lingering
+    // as active, and a run that never started anywhere is dropped quietly.
+    window.resolveStaleRunEntry = async function (sid) {
+      const entry = (window.runsBySession || {})[String(sid)];
+      if (!entry || entry.probed) return;
+      entry.probed = true;
+      if (Date.now() - (entry.startedAt || 0) < 45000) return;
+      try {
+        const res = await fetch('/api/v1/agent-runs/snapshot/?session_id=' + encodeURIComponent(sid), { credentials: 'same-origin' });
+        if (!res.ok) return;
+        const data = await res.json();
+        const run = data.run;
+        if (!run) { delete window.runsBySession[String(sid)]; }
+        else {
+          const terminal = ['completed', 'failed', 'cancelled', 'blocked', 'denied',
+            'denied_timeout', 'security_blocked', 'error', 'finalized'];
+          if (terminal.includes(String(run.status))) {
+            window.markRunFinished(String(sid), run.status === 'completed');
+          }
+        }
+        window.renderActiveRuns();
+        window.refreshHistoryRowState(String(sid));
+      } catch (err) { /* best-effort */ }
+    };
+
     // Live presence: the sidebar reflects what the server is actually doing,
     // even for runs this page never saw start (reload mid-run, another tab).
     window.refreshRunPresence = async function () {
@@ -3073,6 +3103,7 @@
           if (window.unreadSessions) delete window.unreadSessions[String(sid)];
           window.refreshHistoryRowState(sid);
         });
+        Object.keys(window.runsBySession || {}).forEach((sid) => window.resolveStaleRunEntry(sid));
         window.renderActiveRuns();
       } catch (err) { /* presence is best-effort */ }
     };
@@ -3106,6 +3137,13 @@
     window.noteForeignRunEvent = function (payload, explicitSid) {
       const sid = explicitSid || window.liveRunSessionId;
       if (!sid) return;
+      const terminal = ['completed', 'failed', 'cancelled', 'blocked', 'denied',
+        'denied_timeout', 'security_blocked', 'error', 'finalized'];
+      const status = String(payload.status || '');
+      if (payload.type === 'lifecycle' && terminal.includes(status)) {
+        window.markRunFinished(sid, status === 'completed');
+        return;
+      }
       const label = window.phaseLabelForEvent(payload);
       const entry = window.runsBySession[String(sid)] || { id: String(sid), label: 'Agent run', startedAt: Date.now() };
       if (label) entry.phase = label;
@@ -3722,11 +3760,20 @@
       if (!msg) return;
       const silent = window.silentSubmit === true;
       window.silentSubmit = false;
-      if (isProcessing) {
-        // The send button is Stop while a run is live; submitting text then is
-        // a mistake, so say so instead of silently dropping the message.
-        addSystemMsg('A run is still going. Press Stop to cancel it before sending a new message.', 'circle-info');
-        window.setSendButtonState('running');
+      if (isProcessing || Object.keys(window.runsBySession || {}).length) {
+        // Single flight per socket: a background run elsewhere blocks a new one
+        // here, so name it instead of failing silently.
+        const others = Object.keys(window.runsBySession || {}).filter((sid) => String(sid) !== String(sessionId));
+        if (others.length) {
+          const where = others.map((sid) => {
+            const item = document.getElementById('history-item-' + sid);
+            const title = item ? (item.querySelector('.sre-history-title') || {}).textContent : '';
+            return title ? ('\u201c' + String(title).trim().slice(0, 40) + '\u201d') : 'another chat';
+          }).join(', ');
+          addSystemMsg('A run is still active in ' + where + '. Stop it or wait for it to finish before sending here.', 'circle-info');
+        } else {
+          addSystemMsg('A run is still going. Press Stop to cancel it before sending a new message.', 'circle-info');
+        }
         return;
       }
 
@@ -4107,13 +4154,11 @@
     async function loadSession(id) {
 
       const previousSessionId = sessionId;
-      // Never leave a run executing behind a chat the operator just left.
+      // Switching chats never cancels: the run keeps executing in the
+      // background and the sidebar tracks it. Only the local render state is
+      // dropped below; the guards refuse foreign content regardless.
       if ((previousSessionId !== id) && (typeof isProcessing !== 'undefined') && isProcessing) {
-        try {
-          if (ws && ws.readyState === 1) {
-            ws.send(JSON.stringify({ type: 'cancel', session_id: previousSessionId || sessionId || '' }));
-          }
-        } catch (err) { /* the socket may already be closing */ }
+        addSystemMsg('Switched chats. The run in the previous chat keeps going - watch it in History.', 'arrow-right');
         isProcessing = false;
         window.setSendButtonState && window.setSendButtonState('idle');
         if (window.activeRunOrb) window.applyOrbTo(window.activeRunOrb, 'done');

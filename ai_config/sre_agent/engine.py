@@ -625,6 +625,10 @@ class SREAgentEngine:
             await sync_to_async(session_obj.save)(update_fields=['title'])
             yield evt_session_title(new_title)
 
+        # Stored first: even a run cancelled a second later still shows the
+        # request that started it when the chat is reopened.
+        await self._save_message(db_session_id, "user", user_message)
+
         # Resolve the case boundary before loading any history. Unrelated turns
         # must never inherit the previous investigation's prompt or findings.
         from .canonical_lifecycle import (
@@ -756,7 +760,6 @@ class SREAgentEngine:
         bind_context(self.session_id, self.user_id,
                      mode="full" if permission_mode == "full_access" else "controlled",
                      scope=self.operational_scope, goal=effective_goal)
-        await self._save_message(db_session_id, "user", user_message)
         self.short_memory.add("user_input", user_message)
 
         from .canonical_lifecycle import DurableAgentLifecycle
