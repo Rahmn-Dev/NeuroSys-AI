@@ -298,6 +298,9 @@ class SREAgentEngine:
                 return db_model, compatible
 
             db_model, compatible_models = await fetch_model(self.model_name)
+            # Remembered for later phases (e.g. the ReAct loop needs the row's
+            # tool_choice). A local variable here would not exist there.
+            self._resolved_db_model = db_model
 
             if db_model:
                 provider = (db_model.provider or "").lower().strip()
@@ -1172,7 +1175,7 @@ Output strictly the category name."""
                 current_model_name.set(self.model_name)
                 react_engine = ReactEngine(llm, discovery_result.tools, system_prompt, self.session_id,
                                            mode=mode, goal=effective_goal,
-                                           tool_choice=getattr(db_model, "tool_choice", None) or "any")
+                                           tool_choice=getattr(getattr(self, "_resolved_db_model", None), "tool_choice", None) or "any")
                 react_engine._selected_model_hint = getattr(self, "_selected_model_hint", "")
                 async for event in react_engine.astream(initial_state):
                     if event.type == AgentEventType.SECURITY_BLOCKED:
