@@ -2567,6 +2567,9 @@
         const card = skel.column.querySelector(':scope > [id^="runwrap-"] > .sre-run-body');
         if (card) return card;
       }
+      // While replaying, steps belong to the card currently being rebuilt.
+      const replayWrap = window.historyReplayWrap;
+      if (replayWrap && document.contains(replayWrap)) return replayWrap;
       if (!window.isLoadingHistory && window.ensureRunWrap) {
         const fresh = window.ensureRunWrap();
         if (fresh && document.contains(fresh)) return fresh;
@@ -2857,12 +2860,30 @@
         + `<pre class="sre-layout" style="padding: 10px 12px; margin: 0; overflow-x: auto; font-size: 12px; max-height: 220px; overflow-y: auto;">${resultHtml}</pre></div>`;
     };
 
+    // One neutral look for every phase. The phase itself is carried by its
+    // icon, not by a rainbow of hues, so a replayed run reads exactly like the
+    // live one.
     window.sreTlPalette = function (status) {
-      return {
-        active: ['rgba(88,166,255,.16)', 'var(--accent)', 'rgba(88,166,255,.35)'],
-        success: ['rgba(63,185,80,.16)', 'var(--success-text)', 'rgba(63,185,80,.3)'],
-        error: ['rgba(248,81,73,.16)', 'var(--error)', 'rgba(248,81,73,.3)'],
-      }[status] || ['rgba(127,140,160,.14)', 'var(--text-secondary)', 'var(--border-color)'];
+      if (status === 'error') {
+        return ['rgba(248,81,73,.14)', 'var(--error)', 'rgba(248,81,73,.28)'];
+      }
+      if (status === 'active') {
+        return ['rgba(127,140,160,.16)', 'var(--text-primary)', 'var(--border-color)'];
+      }
+      return ['rgba(127,140,160,.12)', 'var(--text-secondary)', 'var(--border-color)'];
+    };
+
+    // Phase identity comes from an icon, so no step is coloured by mood.
+    window.srePhaseIcon = function (label, iconName) {
+      const text = String(label || '').toLowerCase();
+      if (/^(error|cancelled|failed)/.test(text) || iconName === 'x-circle') return 'x-circle';
+      if (/execut|tool|command|terminal/.test(text) || iconName === 'zap') return 'zap';
+      if (/plan|task/.test(text) || iconName === 'list-todo') return 'list-todo';
+      if (/think|reason|evaluat|hypothes/.test(text) || iconName === 'brain') return 'brain';
+      if (/discover|tool set/.test(text) || iconName === 'wrench') return 'wrench';
+      if (/result|output|finding|success/.test(text) || iconName === 'check-circle') return 'check-circle';
+      if (/investigat|start/.test(text) || iconName === 'search') return 'search';
+      return iconName || 'terminal';
     };
 
     window.paintTimelineStep = function (stepId, status) {
@@ -3140,12 +3161,12 @@
       else if (!window.isLoadingHistory && !isEnd && !customTimer) tlStatus = 'active';
       const tlOpen = tlStatus === 'active' || !window.isLoadingHistory;
       const tlPal = window.sreTlPalette(tlStatus);
-      let iconHtml;
-      if (tlStatus === 'active') {
-        iconHtml = `<div class="spinner-border spinner-border-sm" role="status" style="width: 12px; height: 12px; border-width: 2px;"></div>`;
-      } else {
-        iconHtml = tlStatus === 'error' ? window.sreXSvg(13) : window.sreCheckSvg(13);
-      }
+      const tlPhase = window.srePhaseIcon(label, iconName);
+      // A working step shows its phase icon with a quiet ring; a landed step
+      // shows a check. Nothing is tinted by phase.
+      const iconHtml = tlStatus === 'active'
+        ? getIcon(tlPhase) || window.sreChevSvg(13)
+        : (tlStatus === 'error' ? window.sreXSvg(13) : window.sreCheckSvg(13));
       const tlTimerStyle = 'min-width: 45px; text-align: right; font-size: 12px; font-family: monospace; color: var(--text-secondary); opacity: .85; white-space: nowrap;';
       let initialTimer;
       if (customTimer) {
@@ -3186,12 +3207,12 @@
                     </span>
                 </div>
                 <div style="flex: 1; min-width: 0; padding: 8px 0 24px;">
-                    <div onclick="toggleStep('${stepId}', event)" onmouseover="this.style.background='rgba(127,140,160,.08)'" onmouseout="this.style.background='transparent'" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 1px 6px; margin: 0 -6px; border-radius: 6px; cursor: pointer; user-select: none;">
-                        <span style="font-size: 15px; font-weight: ${tlStatus === 'active' ? '600' : '500'}; color: ${tlStatus === 'error' ? 'var(--error)' : (tlStatus === 'active' ? 'var(--text-strong)' : color)};">${label}</span>
-                        <span style="display: flex; align-items: center; gap: 8px; flex: none;">
+                    <div onclick="toggleStep('${stepId}', event)" onmouseover="this.style.background='rgba(127,140,160,.08)'" onmouseout="this.style.background='transparent'" style="display: flex; align-items: center; gap: 10px; padding: 1px 6px; margin: 0 -6px; border-radius: 6px; cursor: pointer; user-select: none;">
+                        <span style="display: flex; align-items: baseline; gap: 8px; min-width: 0;">
+                            <span style="font-size: 14px; font-weight: ${tlStatus === 'active' ? '600' : '500'}; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${label}</span>
                             ${initialTimer}
-                            <span class="sre-tl-chev" style="display: flex; color: var(--text-secondary); opacity: .6; transition: transform .2s; transform: rotate(${tlOpen ? '0deg' : '-90deg'});">${window.sreChevSvg(14)}</span>
                         </span>
+                        <span class="sre-tl-chev" style="display: flex; margin-left: auto; color: var(--text-secondary); opacity: .55; transition: transform .2s; transform: rotate(${tlOpen ? '0deg' : '-90deg'});">${window.sreChevSvg(14)}</span>
                     </div>
                     <div id="collapse-${stepId}" style="display: grid; grid-template-rows: ${tlOpen ? '1fr' : '0fr'}; opacity: ${tlOpen ? '1' : '0'}; transition: grid-template-rows .35s ease, opacity .3s ease;">
                         <div style="overflow: hidden; min-height: 0;">
@@ -4820,7 +4841,16 @@
                   scrollToBottom();
                   break;
 
-                case 'investigation_started':
+                case 'investigation_started': {
+                  // Live runs print their investigation id in the card header;
+                  // a replayed run must show it too.
+                  const _replayWrap = window.activeRunWrap;
+                  if (_replayWrap) {
+                    const slot = document.getElementById(_replayWrap.dataset.wrapId + '-case');
+                    if (slot && !slot.textContent.trim()) {
+                      slot.textContent = evt.case_id || evt.investigation_id || '';
+                    }
+                  }
                   if (evt.investigation_id) {
                     if (!investigations[evt.investigation_id]) {
                       investigations[evt.investigation_id] = {
@@ -4835,7 +4865,8 @@
                     renderInvestigationTimeline();
                   }
                   addAgentStep('Investigation Started', evt.content || 'Starting new investigation...', 'var(--accent)', 'search', null, false, time);
-                  break;
+                    break;
+                  }
 
                 case 'task_updated':
                   const taskData = evt.task;
@@ -4952,6 +4983,7 @@
         window.historyReplaySet = replayMessages;
 
         window.renderHistoryMessages(messages, replayMessages);
+        window.historyReplayWrap = null;
         window.isLoadingHistory = false;
         window.normalizeRunCards();
         window.activeRunWrap = null;
