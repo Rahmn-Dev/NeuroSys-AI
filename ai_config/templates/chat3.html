@@ -2082,7 +2082,8 @@
           addAgentStep('Error', data.content, 'var(--error)', 'x-circle', null, true);
           {
             window.continueSessionId = sessionId;
-            messagesDiv.appendChild(window.renderRunFailureActions(sessionId));
+            window.continueCaseId = data.case_id || '';
+            messagesDiv.appendChild(window.renderRunFailureActions(sessionId, data.case_id));
             window.renderActiveRuns && window.renderActiveRuns();
             scrollToBottom();
           }
@@ -3628,8 +3629,10 @@
         selected_file_name: attachedFileName,
         model: document.getElementById('model-selector').value,
         auto_model_rotation: localStorage.getItem('sre_auto_models') === 'true',
-        mode: document.getElementById('mode-selector').value
+        mode: document.getElementById('mode-selector').value,
+        resume_case_id: window.pendingResumeCaseId || ''
       }));
+      window.pendingResumeCaseId = '';
       if (attachedFile) window.clearSelectedFile();
     });
 
@@ -4220,8 +4223,8 @@
                       escapeHtml(evt.content || String(evt.type)),
                       'var(--error)', 'x-circle', null, true,
                     );
-                    // Same affordances as the live run, bound to this chat.
-                    messagesDiv.appendChild(window.renderRunFailureActions(sessionId));
+                    // Same affordances as the live run, bound to this chat and case.
+                    messagesDiv.appendChild(window.renderRunFailureActions(sessionId, evt.case_id));
                     scrollToBottom();
                     break;
 
@@ -4499,14 +4502,15 @@
 
     // Failure actions are rendered from one place and bound to the chat that
     // owns the run, so a replayed run offers exactly what a live one did.
-    window.renderRunFailureActions = function (sid) {
+    window.renderRunFailureActions = function (sid, caseId) {
       const host = document.createElement('div');
       host.className = 'sre-run-actions';
       host.dataset.sessionId = String(sid || sessionId || '');
+      host.dataset.caseId = String(caseId || '');
       host.style.cssText = 'margin: 8px 0;';
       host.innerHTML =
         `<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">` +
-        `<button onclick="window.continueRun('${escapeHtml(host.dataset.sessionId)}')" style="background: rgba(88,166,255,0.12); color: var(--text-strong); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 14px; font-size: 12px; cursor: pointer; font-weight: 600;">` +
+        `<button onclick="window.continueRun('${escapeHtml(host.dataset.sessionId)}', '${escapeHtml(host.dataset.caseId)}')" style="background: rgba(88,166,255,0.12); color: var(--text-strong); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 14px; font-size: 12px; cursor: pointer; font-weight: 600;">` +
         `<i class="fa-solid fa-rotate-right" style="font-size:11px;"></i> Retry</button>` +
         `<button onclick="window.cancelRunForSession('${escapeHtml(host.dataset.sessionId)}')" style="background: transparent; color: var(--text-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 12px; font-size: 12px; cursor: pointer; font-weight: 600;">` +
         `<i class="fa-solid fa-xmark" style="font-size:11px;"></i> Cancel</button>` +
@@ -4717,10 +4721,11 @@
       }
     };
 
-    window.continueRun = function (forSessionId) {
+    window.continueRun = function (forSessionId, forCaseId) {
       try {
         if (typeof isProcessing !== 'undefined' && isProcessing) return;
         const owner = forSessionId || window.continueSessionId || sessionId;
+        window.pendingResumeCaseId = forCaseId || window.continueCaseId || '';
         // Refuse to continue a case that belongs to a chat the operator has
         // since navigated away from.
         if (owner && String(owner) !== String(sessionId)) {

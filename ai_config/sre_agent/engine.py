@@ -223,6 +223,39 @@ Project Workspace: {project_workspace}
 # SRE Agent Engine
 # ---------------------------------------------------------------------------
 
+def select_resumable_case(recent_cases, resume_case_id="", generic_continuation=False,
+                          ttl_minutes=180, now=None):
+    """Decide which case a retry may resume. Pure logic, no I/O.
+
+    Returns (resumable_or_None, expired_ids, refusal_reason). An explicit Retry
+    names its case and bypasses the freshness rule; a bare "continue" only gets
+    the newest case while it is still fresh. A foreign id is refused, never
+    rerouted to another case.
+    """
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+    if now is None:
+        now = _dt.now(_tz.utc)
+    try:
+        cutoff = now - _td(minutes=int(ttl_minutes or 180))
+    except Exception:
+        cutoff = now
+    latest = recent_cases[0] if recent_cases else None
+    resumable, expired, refusal = None, [], ""
+    if latest is not None and latest.status == "active" and latest.updated_at >= cutoff:
+        resumable = latest
+    elif latest is not None and latest.status == "active":
+        expired = [latest.pk if hasattr(latest, "pk") else latest.id]
+    if resume_case_id and generic_continuation:
+        explicit = next((c for c in recent_cases if str(c.id) == str(resume_case_id)), None)
+        if explicit is None:
+            return None, expired, "That case belongs to another chat. Open it there to continue."
+        if explicit.status == "completed":
+            return None, expired, "That run already completed; there is nothing to resume."
+        return explicit, expired, ""
+    return resumable, expired, refusal
+
+
+
 class SREAgentEngine:
     """
     The core agent execution engine.
@@ -518,7 +551,7 @@ class SREAgentEngine:
         from .thread_memory import maybe_refresh_digest
         asyncio.create_task(maybe_refresh_digest(db_session_id, llm))
 
-    async def _run_internal(self, user_message: str, terminal_cwd: Optional[str] = None, active_workspace: Optional[str] = None, selected_file: Optional[str] = None, selected_file_name: Optional[str] = None, mode: str = "guided", permission_mode: str = "need_approval") -> AsyncGenerator[AgentEvent, None]:
+    async def _run_internal(self, user_message: str, terminal_cwd: Optional[str] = None, active_workspace: Optional[str] = None, selected_file: Optional[str] = None, selected_file_name: Optional[str] = None, mode: str = "guided", permission_mode: str = "need_approval", resume_case_id: str = "") -> AsyncGenerator[AgentEvent, None]:
         """
         Internal loop — runs the full agent loop and yields events.
         """
@@ -610,16 +643,18 @@ class SREAgentEngine:
         # session let a stale investigation from hours earlier (a failed run is
         # deliberately left active) hijack an unrelated new conversation.
         resume_ttl_minutes = int(getattr(settings, "SRE_RESUME_TTL_MINUTES", 180) or 180)
-        resume_cutoff = timezone.now() - timedelta(minutes=resume_ttl_minutes)
         latest = recent_cases[0] if recent_cases else None
-        resumable_case = None
-        if latest is not None and latest.status == "active" and latest.updated_at >= resume_cutoff:
-            resumable_case = latest
-        elif latest is not None and latest.status == "active":
+        resumable_case, expired_ids, refusal = select_resumable_case(
+            recent_cases, resume_case_id, generic_continuation,
+            ttl_minutes=resume_ttl_minutes)
+        for expired_pk in expired_ids:
             # Too old to resume: close it out so it can never be picked again.
             await sync_to_async(
-                lambda _pk=latest.pk: Investigation.objects.filter(pk=_pk).update(status="expired")
+                lambda _pk=expired_pk: Investigation.objects.filter(pk=_pk).update(status="expired")
             )()
+        if refusal:
+            yield evt_error(refusal)
+            return
         relation_type = case_relation(latest_case.title if latest_case else "", user_message)
         case_info = classify_case(user_message)
         from .memory_graph import best_case_candidate, extract_features, refresh_relations
@@ -1620,7 +1655,7 @@ Output strictly the category name."""
         except Exception:
             pass
 
-    async def run(self, user_message: str, terminal_cwd: Optional[str] = None, active_workspace: Optional[str] = None, selected_file: Optional[str] = None, selected_file_name: Optional[str] = None, mode: str = "guided", permission_mode: str = "need_approval") -> AsyncGenerator[AgentEvent, None]:
+    async def run(self, user_message: str, terminal_cwd: Optional[str] = None, active_workspace: Optional[str] = None, selected_file: Optional[str] = None, selected_file_name: Optional[str] = None, mode: str = "guided", permission_mode: str = "need_approval", resume_case_id: str = "") -> AsyncGenerator[AgentEvent, None]:
         """Main entry point — wraps internal loop to persist events and tool logs."""
         tool_start_times = {}
         tool_args = {}
@@ -1662,7 +1697,7 @@ Output strictly the category name."""
             run_timeout = int(_timeout_default)
         try:
             async with asyncio.timeout(run_timeout):
-                async for event in self._run_internal(user_message, terminal_cwd, active_workspace, selected_file, selected_file_name, mode, permission_mode):
+                async for event in self._run_internal(user_message, terminal_cwd, active_workspace, selected_file, selected_file_name, mode, permission_mode, resume_case_id=resume_case_id or ""):
                     lifecycle = getattr(self, "_lifecycle", None)
                     while model_switch_cursor < len(self._model_switches):
                         switch = self._model_switches[model_switch_cursor]
@@ -1704,6 +1739,10 @@ Output strictly the category name."""
                         event.metadata.setdefault("run_id", str(lifecycle.run.pk))
                         event.metadata.setdefault("event_id", f"{lifecycle.run.pk}:terminal" if event.type.value == "completed" else f"{lifecycle.run.pk}:{len(events_history) + 1}")
                         event.metadata.setdefault("checkpoint_version", lifecycle.run.checkpoint_version)
+                    # The owning case travels with every live event (completed,
+                    # error, or otherwise) so Retry can name the exact case it
+                    # resumes instead of re-guessing from the word "continue".
+                    event.metadata.setdefault("case_id", str(getattr(self, "_active_case_id", "") or ""))
                     events_history.append(_stamp_event(event.to_history_dict()))
                     if event.type.value == "completed":
                         await self._update_last_message_metadata({"events": events_history, "model_rotation": self._rotation_metadata()})

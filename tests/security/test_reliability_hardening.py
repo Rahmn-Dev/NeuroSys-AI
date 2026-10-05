@@ -120,7 +120,7 @@ def test_engine_terminal_persists_before_yield_and_deduplicates(monkeypatch):
     engine = SREAgentEngine(session_id='fixture')
     lifecycle = SimpleNamespace(run=SimpleNamespace(pk='run', checkpoint_version=0), atransition=AsyncMock())
     engine._lifecycle = lifecycle
-    async def internal(*args):
+    async def internal(*args, **kwargs):
         yield evt_completed('done')
         yield evt_completed('duplicate')
     monkeypatch.setattr(engine, '_run_internal', internal)
@@ -158,7 +158,7 @@ def test_cancellation_propagates_and_persists(monkeypatch):
     engine = SREAgentEngine(session_id='fixture')
     lifecycle = SimpleNamespace(atransition=AsyncMock())
     engine._lifecycle = lifecycle
-    async def internal(*args):
+    async def internal(*args, **kwargs):
         raise asyncio.CancelledError()
         yield
     monkeypatch.setattr(engine, '_run_internal', internal)
@@ -174,7 +174,7 @@ def test_error_cannot_be_followed_by_success(monkeypatch):
     from sre_agent.engine import SREAgentEngine
     from sre_agent.events import evt_error, evt_completed
     engine = SREAgentEngine(session_id='fixture')
-    async def internal(*args):
+    async def internal(*args, **kwargs):
         yield evt_error('failure')
         yield evt_completed('incorrect success')
     monkeypatch.setattr(engine, '_run_internal', internal)

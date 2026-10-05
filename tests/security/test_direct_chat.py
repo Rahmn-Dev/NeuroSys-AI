@@ -502,3 +502,59 @@ def test_retry_removes_failed_terminals_but_keeps_answers(chat_tables):
     assert failed.id not in remaining
     assert answered.id in remaining
     assert asked.id in remaining
+
+
+# --- explicit resume selection ------------------------------------------------
+
+from types import SimpleNamespace  # noqa: E402
+import datetime as _dt  # noqa: E402
+
+from sre_agent.engine import select_resumable_case  # noqa: E402
+
+
+def _case(cid, status, minutes_ago):
+    return SimpleNamespace(
+        id=cid, pk=cid, status=status,
+        updated_at=_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(minutes=minutes_ago),
+    )
+
+
+def test_bare_continue_gets_the_fresh_latest_case_only():
+    fresh = _case("inv_new", "active", 10)
+    old = _case("inv_old", "active", 500)
+    resumable, expired, refusal = select_resumable_case([fresh, old], "", True)
+    assert resumable.id == "inv_new"
+    assert expired == [] and refusal == ""
+
+
+def test_bare_continue_expires_a_stale_latest_case():
+    stale = _case("inv_old", "active", 500)
+    resumable, expired, refusal = select_resumable_case([stale], "", True)
+    assert resumable is None
+    assert expired == ["inv_old"] and refusal == ""
+
+
+def test_explicit_retry_names_its_case_regardless_of_age():
+    stale = _case("inv_old", "active", 500)
+    resumable, _, refusal = select_resumable_case([stale], "inv_old", True)
+    assert resumable.id == "inv_old" and refusal == ""
+
+
+def test_explicit_retry_of_a_foreign_case_is_refused_not_rerouted():
+    mine = _case("inv_mine", "active", 5)
+    resumable, _, refusal = select_resumable_case([mine], "inv_theirs", True)
+    assert resumable is None
+    assert "another chat" in refusal
+
+
+def test_explicit_retry_of_a_completed_case_is_refused():
+    done = _case("inv_done", "completed", 5)
+    resumable, _, refusal = select_resumable_case([done], "inv_done", True)
+    assert resumable is None
+    assert "already completed" in refusal
+
+
+def test_case_id_without_a_retry_word_is_ignored():
+    fresh = _case("inv_new", "active", 5)
+    resumable, _, refusal = select_resumable_case([fresh], "inv_new", False)
+    assert resumable.id == "inv_new" and refusal == ""

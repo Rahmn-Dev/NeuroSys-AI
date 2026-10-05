@@ -1566,6 +1566,7 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
                 selected_file_name=selected_file_name,
                 mode=mode,
                 permission_mode=permission_mode,
+                resume_case_id=str(data.get("resume_case_id") or ""),
             ):
                 if not self.run_group and getattr(engine, "_lifecycle", None):
                     await self.subscribe(str(engine.session_id))
