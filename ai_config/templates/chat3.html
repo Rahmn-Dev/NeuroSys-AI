@@ -1601,18 +1601,33 @@
         reconnectTimer = setTimeout(connect, delay);
       };
 
+      // Run-scoped events render only with positive proof they belong to the
+      // open chat. Anything else is either presence for the sidebar or dropped.
+      window.RUN_CONTENT_EVENTS = new Set(['exploring', 'discovering_tools', 'planning',
+        'thinking', 'hypothesis', 'resolution_plan', 'tool_start', 'tool_end',
+        'message_chunk', 'task_plan', 'task_updated', 'findings', 'worker_activity',
+        'executing', 'observing', 'analyzing', 'approval_required',
+        'creating_artifact', 'restoring_artifact', 'security_scan']);
+
+      window.eventBelongsHere = function (payload) {
+        if (!window.RUN_CONTENT_EVENTS.has(String(payload.type || ''))) return true;
+        return !!(window.liveRunSessionId && sessionId &&
+          window.liveRunSessionId === String(sessionId));
+      };
+
       ws.onmessage = (e) => {
         agentLastActivity = Date.now();
         try {
           const payload = JSON.parse(e.data);
-          // A run belongs to the chat that started it. If the operator switched
-          // history while it was live, its events must never be rendered into
-          // the chat now on screen.
           if (payload.type === 'session_id') {
             window.liveRunSessionId = String(payload.content || '');
-          } else if (window.liveRunSessionId && sessionId && window.liveRunSessionId !== String(sessionId)) {
-            window.noteForeignRunEvent(payload);
-            window.updateForeignRunBadge && window.updateForeignRunBadge(payload);
+          } else if (!window.eventBelongsHere(payload)) {
+            // Either a foreign run (update its presence) or an orphan its
+            // session cannot be proven for (drop it, never render it here).
+            if (window.liveRunSessionId) {
+              window.noteForeignRunEvent(payload);
+              window.updateForeignRunBadge && window.updateForeignRunBadge(payload);
+            }
             return;
           }
           handleEvent(payload);
@@ -1995,6 +2010,7 @@
           if (!currentAIMsg) {
             currentAIMsg = addAIMessage('');
           }
+          if (currentAIMsg.dataset.sessionId !== String(sessionId || '')) break;
           // Reply is streaming: the bubble keeps the bot avatar, the header
           // orb steps aside until the next agent phase.
           window.setProgressOrb('composing');
@@ -2530,6 +2546,7 @@
     function addAIMessage(content, ts) {
       const div = document.createElement('div');
       div.className = 'agent-msg sre-msg-ai';
+      div.dataset.sessionId = String(sessionId || '');
       div.style.cssText = 'display:flex; align-items:flex-start; gap:12px; max-width: 85%; margin-bottom: 2px;';
       div.innerHTML = `
             <div data-avatar="agent" data-orb-size="42" style="flex-shrink:0; width:56px; height:56px; border-radius:50%; background:rgba(31, 111, 235, 0.12); border:1px solid var(--border-color); display:flex; align-items:center; justify-content:center; box-shadow: 0 4px 12px rgba(0,0,0,0.08); flex-wrap: nowrap; overflow: hidden;">
@@ -2616,6 +2633,7 @@
       const wrapId = 'runwrap-' + Math.random().toString(36).substr(2, 9);
       const wrap = document.createElement('div');
       wrap.id = wrapId;
+      wrap.dataset.sessionId = String(sessionId || '');
       wrap.style.cssText = 'border: 1px solid var(--border-color); border-radius: 12px; margin-bottom: 10px;';
       wrap.innerHTML = `
         <div onclick="toggleRunWrap('${wrapId}')" style="cursor: pointer; padding: 10px 14px; display: flex; align-items: center; gap: 8px; background: var(--bg-panel); user-select: none; border-radius: 11px 11px 0 0;">
@@ -2840,8 +2858,12 @@
                 </div>
             `;
         // Stream into the active run container (roadmap rail); fall back to
-        // the bare timeline for ungrouped contexts.
-        const stepParent = (window.activeRunWrap) || messagesDiv;
+        // the bare timeline for ungrouped contexts. A container owned by another
+        // chat is never a valid target, even if a stale reference survived.
+        let stepParent = messagesDiv;
+        if (window.activeRunWrap && window.activeRunWrap.dataset.sessionId === String(sessionId || '')) {
+          stepParent = window.activeRunWrap;
+        }
         stepParent.appendChild(stepDiv);
 
         if (!isEnd && !window.isLoadingHistory) {
@@ -3057,6 +3079,7 @@
       if (type === 'message_chunk') return 'composing';
       if (type === 'lifecycle') return payload.status || 'executing';
       if (type === 'verifying') return 'verifying';
+      if (type === 'approval_required') return 'awaiting approval';
       return '';
     };
 
@@ -3707,6 +3730,7 @@
       window.setSendButtonState('running');
 
       window.lastSubmittedMessage = msg;
+      window.liveRunSessionId = String(sessionId || '');
       window.setAgentDotState('running');
       sendBtn.classList.remove('sre-press');
       // Force a reflow so the press animation replays on every send.
@@ -4077,6 +4101,11 @@
       }
       window.liveRunSessionId = null;
       window.continueSessionId = null;
+      window.continueCaseId = null;
+      window.pendingResumeCaseId = '';
+      window.activeRunWrap = null;
+      window.activeRunOrb = null;
+      currentAIMsg = null;
       window.renderActiveRuns && window.renderActiveRuns();
       stopAllAgentStepTimers();
       window.sessionStartTime = null;
