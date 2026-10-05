@@ -2686,8 +2686,8 @@
     // Chain-of-thought status rings: blue while a step is working, emerald
     // once it lands, rose when it fails. Translated from the AgentPlanning
     // reference into CSS variables so both themes keep working.
-    window.__sreUiBuild = 'timeline-03';
-    console.log('[NeuroSysAI UI] build timeline-03 (planning-card steps)');
+    window.__sreUiBuild = 'timeline-04';
+    console.log('[NeuroSysAI UI] build timeline-04 (planning-card steps)');
 
     // Icons below never depend on the lucide name table: an unknown name used
     // to render an empty dot. These inline SVGs always paint.
@@ -2803,7 +2803,7 @@
       wrap.dataset.sessionId = String(sessionId || '');
       wrap.style.cssText = 'background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 1px 2px rgba(0,0,0,.06); overflow: hidden; margin-bottom: 10px;';
       wrap.innerHTML = `
-        <div id="${wrapId}-head" onclick="toggleRunWrap('${wrapId}')" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; user-select: none; border-radius: 12px; transition: background .2s;" onmouseover="this.style.background='rgba(127,140,160,.08)'" onmouseout="if(this.dataset.open!=='1')this.style.background=''">
+        <div id="${wrapId}-head" onclick="toggleRunWrap('${wrapId}')" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; user-select: none; border-radius: 12px; background: rgba(127,140,160,.06); transition: background .2s;" onmouseover="this.style.background='rgba(127,140,160,.12)'" onmouseout="if(this.dataset.open!=='1')this.style.background='rgba(127,140,160,.06)'">
           <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
             <span id="${wrapId}-orb" data-orb-size="24" data-orb-only="1" aria-label="Agent progress" style="width:24px; height:24px; border-radius:50%; background: rgba(148, 163, 184, 0.34); border: 1px solid rgba(203, 213, 225, 0.45); box-shadow: inset 0 0 6px rgba(15, 23, 42, 0.55), 0 0 0 1px rgba(15, 23, 42, 0.35); display:flex; align-items:center; justify-content:center; flex:none;">${window.neuroOrbAvatar('exploring', 24)}</span>
             <span id="${wrapId}-pill" class="sre-run-phase" style="font-size: 15px; font-weight: 600; letter-spacing: -.01em; color: var(--text-strong); white-space: nowrap;">observing</span>
@@ -2850,7 +2850,7 @@
       const head = document.getElementById(wrapId + '-head');
       if (head) {
         head.dataset.open = open ? '1' : '0';
-        head.style.background = open ? 'rgba(127,140,160,.08)' : '';
+        head.style.background = open ? 'rgba(127,140,160,.12)' : 'rgba(127,140,160,.06)';
         head.style.borderBottom = open ? '1px solid var(--border-color)' : '';
         head.style.borderRadius = open ? '12px 12px 0 0' : '12px';
       }
@@ -3030,9 +3030,9 @@
         stepDiv.dataset.open = tlOpen ? '1' : '0';
         stepDiv.style.cssText = 'position: relative; display: flex; gap: 12px;';
         stepDiv.innerHTML = `
-                <div class="sre-tl-line" style="position: absolute; left: 11px; top: 28px; bottom: 0; width: 2px; background: var(--border-color); opacity: .55; display: none;"></div>
-                <div class="sre-tl-dot" style="position: relative; z-index: 1; flex: none; width: 24px; height: 24px; margin-top: 1px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: ${tlPal[0]}; color: ${tlPal[1]}; box-shadow: 0 0 0 3px ${tlPal[2]};">
-                    <span id="icon-${stepId}" style="display: flex; align-items: center;">
+                <div class="sre-tl-line" style="position: absolute; left: 12px; top: 30px; bottom: 0; width: 2px; background: var(--border-color); opacity: .55; display: none;"></div>
+                <div class="sre-tl-dot" style="position: relative; z-index: 1; flex: none; width: 26px; height: 26px; margin-top: 0; border-radius: 50%; overflow: visible; display: flex; align-items: center; justify-content: center; background: ${tlPal[0]}; color: ${tlPal[1]}; box-shadow: 0 0 0 3px ${tlPal[2]};">
+                    <span id="icon-${stepId}" style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">
                         ${iconHtml}
                     </span>
                 </div>
