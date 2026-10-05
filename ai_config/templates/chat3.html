@@ -2111,7 +2111,8 @@
                         </div>
                     </details>
                 `;
-          messagesDiv.innerHTML += auditHtml;
+          messagesDiv.insertAdjacentHTML('beforeend', auditHtml);
+          window.normalizeRunCards();
 
           currentAIMsg = null;
           window.sessionStartTime = null;
@@ -2584,6 +2585,24 @@
       if (!wrap || wrap === card || wrap.contains(card)) return;
       if (String(wrap.dataset.sessionId || '') !== String(card.dataset.sessionId || '')) return;
       messagesDiv.insertBefore(wrap, card);
+    };
+
+    // A run card is a sibling of the answer it explains, never a child of
+    // the bubble: nested inside the flex row it squeezes into a broken column
+    // and its header stops receiving clicks. This lifts out any card that a
+    // stale render left nested, then enforces sibling order everywhere.
+    window.normalizeRunCards = function () {
+      try {
+        document.querySelectorAll('[id^="runwrap-"]').forEach((wrap) => {
+          if (wrap.parentElement === messagesDiv) return;
+          const bubble = wrap.closest('.agent-msg.sre-msg-ai');
+          if (bubble && bubble.parentElement === messagesDiv) {
+            messagesDiv.insertBefore(wrap, bubble);
+          } else if (wrap.parentElement) {
+            messagesDiv.appendChild(wrap);
+          }
+        });
+      } catch (err) { /* best-effort */ }
     };
 
     function addAIMessage(content, ts) {
@@ -4477,7 +4496,8 @@
                                       </div>
                                   </details>
                               `;
-                    messagesDiv.innerHTML += auditHtml;
+                    messagesDiv.insertAdjacentHTML('beforeend', auditHtml);
+          window.normalizeRunCards();
                     break;
 
                   case 'error':
@@ -4546,6 +4566,7 @@
           }
         });
         window.isLoadingHistory = false;
+        window.normalizeRunCards();
         window.activeRunWrap = null;
         window.agentAutoScroll = false;
         // Opening a chat lands on its newest message; that is a deliberate jump,
