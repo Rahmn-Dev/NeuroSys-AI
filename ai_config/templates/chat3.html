@@ -3799,6 +3799,7 @@
       window.lastSubmittedMessage = msg;
       window.liveRunSessionId = String(sessionId || '');
       window.expectingSession = true;
+      window.markRunActive(sessionId, msg.slice(0, 60));
       window.setAgentDotState('running');
       sendBtn.classList.remove('sre-press');
       // Force a reflow so the press animation replays on every send.
@@ -4045,6 +4046,36 @@
           if (evt.event_type === 'provider_fallback') handleEvent({ type: 'provider_fallback', content: 'Provider fallback recorded', ...evt.payload });
           else if (evt.event_type === 'task_verified') handleEvent({ type: 'verifying', content: 'Task verification recorded' });
         });
+        // Adopt a still-running run: reopen its card live so the orb, phase
+        // and steps keep updating here instead of freezing at the replay.
+        if (!terminalRunStates.includes(run.status) && !window.activeRunWrap) {
+          let adopted = null;
+          const knownWrap = window.historyRunWraps && window.historyRunWraps[run.id];
+          if (knownWrap && document.getElementById(knownWrap + '-body')) {
+            adopted = knownWrap;
+          } else {
+            startRunWrap();
+            const fresh = window.activeRunWrap;
+            if (fresh) {
+              adopted = fresh.dataset.wrapId;
+              window.historyRunWraps = window.historyRunWraps || {};
+              window.historyRunWraps[run.id] = adopted;
+            }
+          }
+          if (adopted) {
+            const body = document.getElementById(adopted + '-body');
+            if (body) {
+              window.activeRunWrap = body;
+              window.activeRunOrb = document.getElementById(adopted + '-orb');
+              window.orbInRun = true;
+              toggleRunWrap(adopted, true);
+              isProcessing = true;
+              window.setSendButtonState('running');
+              window.liveRunSessionId = String(sessionId || '');
+              window.markRunActive(sessionId, run.goal || 'Agent run');
+            }
+          }
+        }
       } catch (err) {
         console.warn('Agent run snapshot unavailable', err);
       } finally {
@@ -4166,7 +4197,9 @@
         window.activeRunWrap = null;
         setBeamRunning(false);
       }
-      window.liveRunSessionId = null;
+      // Claim this chat's live events up front: a run that is still going
+      // must stream here the moment we return, not only after a reload.
+      window.liveRunSessionId = String(id || '');
       window.expectingSession = false;
       window.continueSessionId = null;
       window.continueCaseId = null;
