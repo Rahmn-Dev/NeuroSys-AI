@@ -26,9 +26,11 @@ def system_status(request):
     return Response(status)
 
 
+# One @api_view only. Stacking a second one made the inner view receive an
+# already-wrapped DRF Request, which its dispatch refuses, so every poll of the
+# live-run list failed with a 500.
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
-@api_view(['GET'])
 def agent_runs_active(request):
     """Every still-running agent run of this user, for the live history sidebar.
 
@@ -54,6 +56,8 @@ def agent_runs_active(request):
     } for r in runs]})
 
 
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
 def agent_run_snapshot(request):
     """Return only the authenticated user's durable run state for rehydration."""
     from .models import AgentRun, AgentApproval, ChatMessage

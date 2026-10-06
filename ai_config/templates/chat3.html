@@ -4786,6 +4786,11 @@
                 case 'message_chunk':
                   break;
 
+                case 'direct_chat':
+                  // Plain conversation turn: the answer is already
+                  // rendered as the message, nothing to rebuild here.
+                  break;
+
                 case 'worker_activity':
                   if (evt.workers) {
                     activeWorkers = evt.workers;
