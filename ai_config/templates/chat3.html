@@ -4831,8 +4831,17 @@
         const _evts = (msg.metadata && Array.isArray(msg.metadata.events)) ? msg.metadata.events : [];
         // Older messages were recorded before run grouping existed and carry no
         // run_id. They still belong to a card: opening one here is what stops
-        // their steps from spilling onto the bare chat timeline.
-        window.historyReplayWrap = _evts.some((e) => e && e.run_id)
+        // their steps from spilling onto the bare chat timeline. A message with
+        // no renderable trace gets no card at all - an empty "archived run" with
+        // nothing to open is worse than no card, especially for a turn that
+        // never ran.
+        const _TRACE_TYPES = ['exploring', 'discovering_tools', 'planning', 'thinking',
+          'tool_start', 'tool_end', 'investigation_started', 'task_plan', 'task_updated',
+          'resolution_plan', 'hypothesis', 'findings', 'parallel_start', 'parallel_complete',
+          'verifying', 'resuming', 'lifecycle', 'status', 'completed', 'error', 'failed',
+          'cancelled', 'blocked', 'denied', 'denied_timeout', 'security_blocked'];
+        const _hasTrace = _evts.some((e) => e && _TRACE_TYPES.includes(String(e.type)));
+        window.historyReplayWrap = (_evts.some((e) => e && e.run_id) || !_hasTrace)
           ? null
           : ensureHistoryWrap('msg-' + (msg.id || 'orphan'));
         if (msg.sender === 'user') {
@@ -5106,6 +5115,14 @@
               }
             });
           }
+          // If a card was opened for this turn but nothing landed in it, drop
+          // it. An empty run card must never be presented as if there were
+          // something to look at.
+          if (window.historyReplayWrap && document.contains(window.historyReplayWrap)
+              && window.historyReplayWrap.childElementCount === 0) {
+            window.removeRunCard(window.historyReplayWrap);
+          }
+          window.historyReplayWrap = null;
           if (msg.message && msg.message.trim() !== "") {
             const _wasBlocked = _evts.some((e) => e && e.type === 'security_blocked');
             const _bubble = addAIMessage(msg.message, msg.created_at, msg.id);
