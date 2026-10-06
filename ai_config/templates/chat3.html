@@ -4001,118 +4001,138 @@
     let activeWorkers = [];
     // ← ADD THIS
 
+    // Status vocabulary shared by the task rows and the case badge.
+    const SRE_INV_TONE = {
+      completed: 'var(--success-text)',
+      success: 'var(--success-text)',
+      running: 'var(--accent)',
+      in_progress: 'var(--accent)',
+      executing: 'var(--accent)',
+      thinking: 'var(--accent)',
+      planning: 'var(--accent)',
+      pending: 'var(--text-secondary)',
+      queued: 'var(--text-secondary)',
+      blocked: 'var(--warning)',
+      awaiting_approval: 'var(--warning)',
+      warning: 'var(--warning)',
+      failed: 'var(--error)',
+      error: 'var(--error)',
+      denied: 'var(--error)',
+      denied_timeout: 'var(--error)',
+      security_blocked: 'var(--error)',
+      cancelled: 'var(--text-secondary)',
+    };
+    const sreInvTone = (state) => SRE_INV_TONE[String(state || 'pending').toLowerCase()] || 'var(--text-secondary)';
+    const sreInvGlyph = (state) => {
+      const st = String(state || '').toLowerCase();
+      if (st === 'completed' || st === 'success') return '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+      if (['failed', 'error', 'denied', 'denied_timeout', 'security_blocked'].includes(st)) return '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
+      if (['blocked', 'awaiting_approval', 'warning'].includes(st)) return '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>';
+      if (['running', 'in_progress', 'executing', 'thinking', 'planning'].includes(st)) return '<i class="fa-solid fa-circle-notch fa-spin" style="font-size:8px;"></i>';
+      return '';
+    };
+
     function renderInvestigationTimeline() {
       const container = document.getElementById('investigation-timeline-container');
       if (!container) return;
 
       const invKeys = Object.keys(investigations);
       if (invKeys.length === 0) {
-        container.innerHTML = `<div style="padding: 16px; color: var(--text-secondary); font-style: italic;">No investigations yet.</div>`;
+        container.innerHTML = '<div class="sre-inv-empty">No investigations yet.</div>';
         return;
       }
 
       let html = '';
-      invKeys.forEach(key => {
-        const inv = investigations[key];
+      invKeys.forEach((key) => {
+        const inv = investigations[key] || {};
         const isOpen = inv.id === activeInvestigationId;
-        const badgeColor = inv.status === 'completed' ? 'var(--success)' : 'var(--accent)';
+        const status = String(inv.status || 'pending').toLowerCase();
+        const tone = sreInvTone(status);
+        const plan = Array.isArray(inv.plan) ? inv.plan : [];
+        const findings = Array.isArray(inv.findings) ? inv.findings : [];
+        const done = plan.filter((p) => String(p.status || '').toLowerCase() === 'completed').length;
+        const pct = plan.length ? Math.round((done / plan.length) * 100) : 0;
 
-        let planHtml = '';
-        if (inv.plan && inv.plan.length > 0) {
-          const total = inv.plan.length;
-          const doneCount = inv.plan.filter(p => String(p.status || '').toLowerCase() === 'completed').length;
-          planHtml = `<div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px;">${doneCount}/${total} selesai</div>` + inv.plan.map(p => {
-            const st = String(p.status || 'pending').toLowerCase();
-            let box, color, extra;
-            if (st === 'completed') {
-              box = '☑'; color = 'var(--success)'; extra = 'text-decoration: line-through; opacity: 0.6;';
-            } else if (st === 'failed' || st === 'error') {
-              box = '☒'; color = 'var(--error)'; extra = '';
-            } else if (st === 'blocked' || st === 'awaiting_approval') {
-              box = '⦸'; color = 'var(--warning)'; extra = '';
-            } else if (st === 'running' || st === 'in_progress' || st === 'executing') {
-              box = '⧗'; color = 'var(--accent)'; extra = '';
-            } else {
-              box = '☐'; color = 'var(--text-secondary)'; extra = '';
-            }
-            return `<div style="display: flex; align-items: start; gap: 8px;"><span style="color: ${color}; font-size: 14px; line-height: 1.4;">${box}</span> <span style="${extra} flex: 1; word-break: break-word;">${p.role ? `<span style="font-size: 10px; background: rgba(88,166,255,0.15); color: var(--text-strong); padding: 1px 6px; border-radius: 8px; margin-right: 6px; font-weight: 700; white-space: nowrap;">${escapeHtml(p.role)}</span>` : ''}${escapeHtml(p.description || p.task || '')} <span style="font-size: 10px; color: ${color}; text-transform: uppercase;">[${escapeHtml(st)}]</span></span></div>`;
-          }).join('');
-        } else {
-          planHtml = `<div class="sre-text-secondary" style="font-style: italic;">No tasks yet</div>`;
-        }
+        const planHtml = plan.length
+          ? plan.map((p) => {
+              const st = String(p.status || 'pending').toLowerCase();
+              const rowTone = sreInvTone(st);
+              const done_ = st === 'completed' || st === 'success';
+              const text = p.description || p.task || p.title || '';
+              return '<div class="sre-inv-row">'
+                + '<span class="sre-inv-dot" style="color:' + rowTone + ';">' + sreInvGlyph(st) + '</span>'
+                + '<span class="sre-inv-text" style="' + (done_ ? 'opacity:.6;text-decoration:line-through;' : '') + '">'
+                + (p.role ? '<span class="sre-inv-chip" style="background:rgba(88,166,255,.14);color:var(--accent);margin-right:6px;">' + escapeHtml(p.role) + '</span>' : '')
+                + escapeHtml(text)
+                + '</span>'
+                + '<span class="sre-inv-chip" style="color:' + rowTone + ';">' + escapeHtml(st.replace(/_/g, ' ')) + '</span>'
+                + '</div>';
+            }).join('')
+          : '<div class="sre-inv-empty" style="padding:4px 0;">No tasks yet</div>';
 
-        let findingsHtml = '';
-        if (inv.findings && inv.findings.length > 0) {
-          findingsHtml = inv.findings.map(f => {
-            let icon = `<span style="color: var(--success); margin-top: 2px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>`;
-            let content = escapeHtml(f);
+        const findingsHtml = findings.length
+          ? findings.map((f) => {
+              const raw = String(f == null ? '' : f);
+              const match = raw.match(/^\[(.*?)\]\[(.*?)\]\s*([\s\S]*)$/);
+              const level = match ? String(match[2]).toUpperCase() : 'INFO';
+              const worker = match ? String(match[1]) : '';
+              let text = match ? String(match[3]) : raw;
+              const fTone = ['FAILURE', 'ERROR', 'CRITICAL', 'BLOCKED'].includes(level) ? 'var(--error)'
+                : ['WARNING'].includes(level) ? 'var(--warning)' : 'var(--success-text)';
 
-            const match = f.match(/^\[(.*?)\]\[(.*?)\]\s*(.*)$/);
-            if (match) {
-              const worker = escapeHtml(match[1]);
-              const level = escapeHtml(match[2]);
-              let text = match[3];
-
-              let badgeColor = 'var(--text-secondary)';
-              if (level === 'FAILURE' || level === 'ERROR' || level === 'CRITICAL' || level === 'BLOCKED') badgeColor = 'var(--error)';
-              if (level === 'SUCCESS' || level === 'INFO') badgeColor = 'var(--success)';
-              if (level === 'WARNING') badgeColor = 'var(--warning)';
-
-              if (text.length > 300) {
+              let textHtml = escapeHtml(text);
+              if (text.length > 280) {
                 const fid = 'finding-' + (window.findingSeq = (window.findingSeq || 0) + 1);
                 window.findingContents = window.findingContents || {};
                 window.findingContents[fid] = text;
-                text = `<span id="${fid}-short">${escapeHtml(text.slice(0, 300))}… </span><span id="${fid}-full" style="display: none;">${escapeHtml(text)}</span><a href="javascript:void(0)" onclick="window.toggleFinding('${fid}')" id="${fid}-btn" style="color: var(--text-strong); font-size: 11px; white-space: nowrap;">show all</a>`;
-              } else {
-                text = escapeHtml(text);
+                textHtml = '<span id="' + fid + '-short">' + escapeHtml(text.slice(0, 280)) + '… </span>'
+                  + '<span id="' + fid + '-full" style="display:none;">' + escapeHtml(text) + '</span>'
+                  + '<a href="javascript:void(0)" class="sre-inv-more" onclick="window.toggleFinding(\'' + fid + '\')">Show all</a>';
               }
 
-              content = `<span style="font-size: 10px; background: ${badgeColor}22; color: ${badgeColor}; padding: 2px 6px; border-radius: 4px; margin-right: 6px; font-weight: 600;">${level}</span>
-                            <span style="color: var(--text-secondary); font-weight: 600; margin-right: 6px;">[${worker}]</span>
-                            <span>${text}</span>`;
-            }
+              return '<div class="sre-inv-finding" style="color:' + fTone + ';">'
+                + '<span class="sre-inv-stripe"></span>'
+                + '<div style="flex:1; min-width:0;">'
+                + '<div style="display:flex; align-items:center; gap:6px; margin-bottom:3px; flex-wrap:wrap;">'
+                + '<span class="sre-inv-chip" style="color:' + fTone + '; background:color-mix(in srgb, currentColor 14%, transparent);">' + escapeHtml(level) + '</span>'
+                + (worker ? '<span class="sre-inv-chip" style="color:var(--text-secondary); background:rgba(127,140,160,.14);">' + escapeHtml(worker) + '</span>' : '')
+                + '</div>'
+                + '<div class="sre-inv-text" style="color:var(--text-primary);">' + textHtml + '</div>'
+                + '</div></div>';
+            }).join('')
+          : '<div class="sre-inv-empty" style="padding:4px 0;">No findings yet</div>';
 
-            return `<div style="display: flex; align-items: start; gap: 8px; line-height: 1.4;">
-                        ${!match ? icon : ''}
-                        <div style="flex: 1; word-break: break-word;">${content}</div>
-                    </div>`;
-          }).join('');
-        } else {
-          findingsHtml = `<div class="sre-text-secondary" style="font-style: italic;">No findings yet</div>`;
-        }
-
-        html += `
-                <div style="border-bottom: 1px solid var(--border-color);">
-                    <details ${isOpen ? 'open' : ''} style="cursor: default;">
-                        <summary style="cursor: pointer; font-weight: 600; padding: 12px 16px; display: flex; gap: 8px; align-items: center; user-select: none; background: var(--bg-panel);">
-                            <span style="flex: 1;">${escapeHtml(inv.title)}</span>
-                            <span style="font-size: 10px; padding: 2px 6px; border-radius: 10px; background: ${badgeColor}22; color: ${badgeColor}; text-transform: uppercase;">${inv.status}</span>
-                        </summary>
-                        <div style="padding: 16px; background: var(--bg-main);">
-                            <div style="font-weight: 600; margin-bottom: 12px; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
-                                Task Plan
-                            </div>
-                            <div style="display: flex; flex-direction: column; gap: 8px;">${planHtml}</div>
-                            
-                            <div style="font-weight: 600; margin-bottom: 12px; margin-top: 20px; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                                Findings
-                            </div>
-                            <div style="display: flex; flex-direction: column; gap: 8px;">${findingsHtml}</div>
-                        </div>
-                    </details>
-                </div>
-            `;
+        html += '<section class="sre-inv-card" data-open="' + (isOpen ? '1' : '0') + '">'
+          + '<button class="sre-inv-head" onclick="window.toggleInvestigationCard(this)">'
+          + '<span class="sre-inv-chev"><i class="fa-solid fa-chevron-right"></i></span>'
+          + '<span class="sre-inv-title" title="' + escapeHtml(inv.title || '') + '">' + escapeHtml(inv.title || 'Investigation') + '</span>'
+          + '<span class="sre-inv-badge" style="color:' + tone + ';">' + escapeHtml(status.replace(/_/g, ' ')) + '</span>'
+          + '</button>'
+          + '<div class="sre-inv-meta">'
+          + '<span>' + done + '/' + plan.length + ' tasks</span>'
+          + '<span>' + findings.length + ' finding' + (findings.length === 1 ? '' : 's') + '</span>'
+          + (inv.id ? '<span style="font-family:monospace; opacity:.7;">' + escapeHtml(inv.id) + '</span>' : '')
+          + '</div>'
+          + '<div class="sre-inv-bar"><i style="width:' + pct + '%;"></i></div>'
+          + '<div class="sre-inv-body" ' + (isOpen ? '' : 'hidden') + '>'
+          + '<div class="sre-inv-section"><i class="fa-solid fa-list-check" style="font-size:10px;"></i> Task plan</div>'
+          + planHtml
+          + '<div class="sre-inv-section"><i class="fa-solid fa-magnifying-glass" style="font-size:10px;"></i> Findings</div>'
+          + findingsHtml
+          + '</div></section>';
       });
 
       container.innerHTML = html;
-
-      // const invTab = document.getElementById('tab-investigation');
-      // if (invTab && invTab.style.display === 'none') {
-      //   window.switchTab('investigation');
-      // }
     }
+
+    window.toggleInvestigationCard = function (btn) {
+      const card = btn.closest('.sre-inv-card');
+      if (!card) return;
+      const open = card.dataset.open !== '1';
+      card.dataset.open = open ? '1' : '0';
+      const body = card.querySelector('.sre-inv-body');
+      if (body) body.hidden = !open;
+    };
 
     function renderWorkerActivity() {
       const container = document.getElementById('worker-activity-container');
@@ -5716,12 +5736,17 @@
     window.toggleFinding = function (fid) {
       const shortEl = document.getElementById(fid + '-short');
       const fullEl = document.getElementById(fid + '-full');
-      const btn = document.getElementById(fid + '-btn');
+      // The trigger is matched by class as well as by its old id, so both the
+      // current markup and anything already on screen keep working.
+      const btn = document.getElementById(fid + '-btn') ||
+        (fullEl && fullEl.parentElement
+          ? fullEl.parentElement.querySelector('.sre-inv-more')
+          : null);
       if (!shortEl || !fullEl || !btn) return;
       const expanded = fullEl.style.display !== 'none';
       fullEl.style.display = expanded ? 'none' : 'inline';
       shortEl.style.display = expanded ? 'inline' : 'none';
-      btn.textContent = expanded ? 'show all' : 'summarize';
+      btn.textContent = expanded ? 'Show all' : 'Show less';
     };
 
     window.toggleArtifactFull = function (cardId) {
@@ -5939,6 +5964,100 @@
   }
   #sre-agent-app .ai-content.sre-streaming {
     animation: sreReveal .5s ease both;
+  }
+  /* --- Investigation panel -------------------------------------------------
+     Cards with a quiet surface, a hairline that lights up on hover, and rows
+     that read as one system instead of loose inline styles. */
+  #sre-agent-app .sre-inv-card {
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--bg-panel);
+    overflow: hidden;
+    margin-bottom: 10px;
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  #sre-agent-app .sre-inv-card:hover {
+    border-color: var(--accent);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, .07);
+  }
+  #sre-agent-app .sre-inv-card[data-open="1"] { border-color: var(--accent); }
+  #sre-agent-app .sre-inv-head {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    padding: 10px 12px; background: transparent; border: 0;
+    text-align: left; cursor: pointer; user-select: none;
+    transition: background .15s ease;
+  }
+  #sre-agent-app .sre-inv-head:hover { background: rgba(127, 140, 160, .08); }
+  #sre-agent-app .sre-inv-head:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: -2px;
+  }
+  #sre-agent-app .sre-inv-chev {
+    flex: none; display: flex; color: var(--text-secondary);
+    font-size: 10px; transition: transform .2s ease;
+  }
+  #sre-agent-app .sre-inv-card[data-open="1"] .sre-inv-chev { transform: rotate(90deg); }
+  #sre-agent-app .sre-inv-title {
+    flex: 1; min-width: 0; font-size: 13px; font-weight: 600;
+    color: var(--text-primary);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #sre-agent-app .sre-inv-badge {
+    flex: none; font-size: 10px; font-weight: 700; letter-spacing: .4px;
+    text-transform: uppercase; padding: 2px 8px; border-radius: 999px;
+    border: 1px solid currentColor;
+  }
+  #sre-agent-app .sre-inv-meta {
+    padding: 0 12px 8px; font-size: 11px; color: var(--text-secondary);
+    display: flex; gap: 10px; flex-wrap: wrap;
+  }
+  #sre-agent-app .sre-inv-bar {
+    height: 3px; background: var(--border-color); overflow: hidden;
+  }
+  #sre-agent-app .sre-inv-bar > i {
+    display: block; height: 100%; background: var(--success-text);
+    transition: width .35s ease;
+  }
+  #sre-agent-app .sre-inv-body { padding: 12px; border-top: 1px solid var(--border-color); }
+  #sre-agent-app .sre-inv-section {
+    display: flex; align-items: center; gap: 6px; margin-bottom: 8px;
+    font-size: 10.5px; font-weight: 700; letter-spacing: .4px;
+    text-transform: uppercase; color: var(--text-secondary);
+  }
+  #sre-agent-app .sre-inv-section + .sre-inv-section { margin-top: 16px; }
+  #sre-agent-app .sre-inv-row {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 6px 8px; border-radius: 8px;
+    transition: background .15s ease;
+  }
+  #sre-agent-app .sre-inv-row:hover { background: rgba(127, 140, 160, .08); }
+  #sre-agent-app .sre-inv-dot {
+    flex: none; width: 18px; height: 18px; margin-top: 1px;
+    border-radius: 50%; border: 1px solid currentColor;
+    display: flex; align-items: center; justify-content: center; font-size: 9px;
+  }
+  #sre-agent-app .sre-inv-text {
+    flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.55;
+    color: var(--text-primary); word-break: break-word;
+  }
+  #sre-agent-app .sre-inv-chip {
+    font-size: 10px; font-weight: 600; padding: 1px 6px;
+    border-radius: 6px; white-space: nowrap;
+  }
+  #sre-agent-app .sre-inv-finding {
+    display: flex; gap: 10px; padding: 8px 10px; border-radius: 8px;
+    border: 1px solid var(--border-color); background: var(--bg-main);
+    margin-bottom: 6px; transition: border-color .15s ease, transform .15s ease;
+  }
+  #sre-agent-app .sre-inv-finding:hover { border-color: var(--accent); }
+  #sre-agent-app .sre-inv-finding > .sre-inv-stripe {
+    flex: none; width: 3px; border-radius: 99px; background: currentColor;
+  }
+  #sre-agent-app .sre-inv-more {
+    color: var(--accent); font-size: 11px; cursor: pointer; white-space: nowrap;
+    text-decoration: underline; text-underline-offset: 2px;
+  }
+  #sre-agent-app .sre-inv-empty {
+    padding: 12px; font-size: 12px; color: var(--text-secondary); font-style: italic;
   }
   #sre-agent-app .sre-reasoning[open] > summary .sre-reasoning-chev {
     transform: rotate(90deg);
