@@ -181,21 +181,76 @@ class ReactEngine:
         else:
             self.llm_with_tools = self.llm
 
-    async def _save_agent_artifact(self, tool_name: str, params: dict, result: str):
+    # Tools that change a file on disk. Their artifacts must show what actually
+    # changed in the file, not that a tool happened to run.
+    FILE_MUTATING_TOOLS = {"write_file", "edit_file", "multi_replace_file_content",
+                           "replace_file_content", "create_file", "append_file"}
+
+    def _file_target(self, tool_name: str, params: dict):
+        """The (path, action) a mutating tool is about to touch, if any."""
+        if tool_name not in self.FILE_MUTATING_TOOLS:
+            return None, None
+        path = ""
+        for key in ("path", "file_path", "filepath", "target_file"):
+            value = params.get(key)
+            if isinstance(value, str) and value.strip():
+                path = value.strip()
+                break
+        if not path:
+            return None, None
+        import os
+        action = "edit" if tool_name == "edit_file" else "create"
         try:
-            import os, time, json
+            if not os.path.exists(path):
+                action = "create"
+        except Exception:
+            pass
+        return path, action
+
+    def _read_file_state(self, path: str):
+        """Content of a file before the tool runs, or None when it is new."""
+        import os
+        try:
+            if not path or not os.path.exists(path):
+                return None
+            with open(path, "r", encoding="utf-8", errors="replace") as handle:
+                return handle.read()
+        except Exception:
+            return None
+
+    async def _record_file_change(self, tool_name: str, params: dict, result: str,
+                                  before: str, case_id: str = ""):
+        """Store the real before/after of a file the agent just changed."""
+        try:
+            import os
             from sre_agent.artifacts import ArtifactManager
-            session_id = self.session_id or "default"
-            mgr = ArtifactManager(workspace_path=os.getcwd(), session_id=session_id)
-            timestamp = int(time.time())
-            file_path = f".neurosys/sessions/{session_id}/artifacts/agent_{tool_name}_{timestamp}.md"
-            from .events import sanitize_tool_args_for_audit, redact_text
-            safe_args = sanitize_tool_args_for_audit(params)
-            safe_result = redact_text(result, 3000)
-            content = f"# Agent Tool Execution Record ({tool_name.upper()})\n\n**Tool Name**: {tool_name}\n**Timestamp**: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n## Input Parameters\n```json\n{json.dumps(safe_args, indent=2, default=str)[:2000]}\n```\n\n## Output / Result\n```\n{safe_result}\n```\n"
-            await mgr.create_artifact(file_path, content, action_type="agent_execution")
-        except Exception as e:
-            print(f"[AgentArtifact] Warning: Failed to record artifact: {e}")
+            path, action = self._file_target(tool_name, params)
+            if not path:
+                return
+            after = self._read_file_state(path)
+            if after is None:
+                return
+            if before is not None and before == after:
+                # Nothing actually changed on disk (e.g. a denied write).
+                return
+            if before is None:
+                action = "create"
+            mgr = ArtifactManager(workspace_path=os.getcwd(),
+                                  session_id=self.session_id or "default",
+                                  case_id=case_id or "")
+            await mgr.create_artifact(path, after, action_type=action,
+                                      old_content=before or "")
+        except Exception:
+            pass
+
+    async def _save_agent_artifact(self, tool_name: str, params: dict, result: str):
+        """Kept for callers that still record a tool-level note.
+
+        Tool executions are visible in the run card already; recording each one
+        as an artifact filled the panel with thousands of synthetic markdown
+        files and buried the file changes that actually happened.
+        """
+        return None
 
     async def _sync_single_plan_tasks(self, plan: dict):
         """Persist the single-agent phase checklist so reloads show it too."""
@@ -616,6 +671,10 @@ Do NOT stop calling tools until you are ready to call `finish_task`.
                             if ToolRegistry().get_metadata(tool_name) is None:
                                 raise PermissionError("Unregistered tool")
                             executed_signatures.add(call_signature)
+                            # Capture the file's content BEFORE the write, so the
+                            # recorded artifact can show a real before/after.
+                            _file_path, _file_action = self._file_target(tool_name, tool_args)
+                            _file_before = self._read_file_state(_file_path) if _file_path else None
                             # A sync tool body runs in a worker thread, and
                             # neither the authorization context nor the approval
                             # lifecycle follows a call into a thread. They are
@@ -677,8 +736,11 @@ Do NOT stop calling tools until you are ready to call `finish_task`.
                         except Exception as e:
                             output_str = f"Error executing {tool_name}: {str(e)}"
 
-                        if tool_name not in ["finish_task", "spawn_subagent"]:
-                            await self._save_agent_artifact(tool_name, tool_args, output_str)
+                        if _file_path and not str(output_str or "").lower().startswith(("error", "blocked", "failed")):
+                            await self._record_file_change(
+                                tool_name, tool_args, output_str, _file_before,
+                                case_id=(single_plan or {}).get("investigation_id", ""),
+                            )
 
                         yield evt_tool_end(tool_name, output_str)
 

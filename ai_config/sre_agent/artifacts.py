@@ -16,22 +16,30 @@ class ArtifactManager:
         ws, _ = await sync_to_async(WorkspaceInfo.objects.get_or_create)(workspace_path=self.workspace_path)
         return ws
 
-    async def create_artifact(self, file_path: str, new_content: str, action_type: str = "edit"):
-        """Creates an artifact record for a file change."""
+    async def create_artifact(self, file_path: str, new_content: str, action_type: str = "edit",
+                              old_content: str = None):
+        """Creates an artifact record for a file change.
+
+        `old_content` may be supplied by the caller when it captured the file
+        before the write. Reading it here would read the already-modified file
+        and produce an empty diff, which is exactly what made every recorded
+        change look like "wrote a file" with nothing to show.
+        """
         from chatbot.models import AgentArtifact
         
         abs_path = os.path.join(self.workspace_path, file_path) if not os.path.isabs(file_path) else file_path
         
-        old_content = ""
-        if os.path.exists(abs_path):
-            try:
-                with open(abs_path, 'r', encoding='utf-8') as f:
-                    old_content = f.read()
-            except Exception:
-                pass # Binary or unreadable
+        if old_content is None:
+            old_content = ""
+            if os.path.exists(abs_path):
+                try:
+                    with open(abs_path, 'r', encoding='utf-8') as f:
+                        old_content = f.read()
+                except Exception:
+                    pass # Binary or unreadable
                 
         diff = ""
-        if action_type in ["edit", "create"]:
+        if action_type in ["edit", "create", "delete"]:
             try:
                 diff_lines = list(difflib.unified_diff(
                     old_content.splitlines(keepends=True),

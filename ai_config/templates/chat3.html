@@ -5280,15 +5280,103 @@
       return ['report', 'plan', 'finding', 'subagent_execution', 'agent_execution'].includes(String(art.action_type || ''));
     };
 
+    // --- file viewers -------------------------------------------------------
+    // Artifacts are files, so they are shown as files: a code editor surface
+    // with line numbers for code, a key/value view for JSON, rendered markdown
+    // for .md, and the diff when the change is known.
+    window.sreArtifactLang = function (filePath) {
+      const name = String(filePath || '').toLowerCase();
+      const ext = (name.split('.').pop() || '');
+      if (['py', 'pyi'].includes(ext)) return 'python';
+      if (['js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx'].includes(ext)) return 'js';
+      if (['css', 'scss', 'less'].includes(ext)) return 'css';
+      if (['html', 'htm', 'xml', 'svg', 'vue'].includes(ext)) return 'html';
+      if (['json', 'jsonc'].includes(ext)) return 'json';
+      if (['yml', 'yaml'].includes(ext)) return 'yaml';
+      if (['sh', 'bash', 'zsh', 'conf', 'cfg', 'ini', 'toml', 'service', 'env'].includes(ext)) return 'shell';
+      if (['md', 'markdown'].includes(ext)) return 'markdown';
+      return 'text';
+    };
+
+    const SRE_KEYWORDS = {
+      python: ['def', 'class', 'return', 'import', 'from', 'if', 'elif', 'else', 'for', 'while', 'try', 'except', 'finally', 'with', 'as', 'async', 'await', 'yield', 'None', 'True', 'False', 'pass', 'raise', 'lambda', 'in', 'not', 'and', 'or', 'self'],
+      js: ['const', 'let', 'var', 'function', 'return', 'import', 'export', 'from', 'if', 'else', 'for', 'while', 'try', 'catch', 'finally', 'class', 'extends', 'new', 'async', 'await', 'typeof', 'instanceof', 'null', 'undefined', 'true', 'false', 'this'],
+      shell: ['if', 'then', 'else', 'fi', 'for', 'do', 'done', 'while', 'case', 'esac', 'function', 'return', 'export', 'local', 'sudo', 'echo', 'set'],
+      yaml: ['true', 'false', 'null', 'yes', 'no'],
+      css: ['important', 'inherit', 'initial', 'none'],
+    };
+
+    // One pass, one regex: the text is escaped first and tokenized afterwards,
+    // so highlighting can never inject markup or re-colour our own tags.
+    window.sreHighlight = function (text, lang) {
+      const escaped = escapeHtml(String(text == null ? '' : text));
+      const keywords = (SRE_KEYWORDS[lang] || []).join('|');
+      const hashComment = (lang === 'python' || lang === 'shell' || lang === 'yaml');
+      const commentPart = lang === 'css' || lang === 'html'
+        ? '(\\/\\*[\\s\\S]*?\\*\\/)'
+        : '(\\/\\/[^\\n]*' + (hashComment ? '|#[^\\n]*' : '') + '|\\/\\*[\\s\\S]*?\\*\\/)';
+      const pattern = new RegExp(
+        commentPart +
+        '|(&quot;[^&\\n]*?&quot;|&#39;[^&\\n]*?&#39;|`[^`]*?`|"[^"\\n]*?"|\'[^\'\\n]*?\')' +
+        '|\\b(\\d+(?:\\.\\d+)?)\\b' +
+        (keywords ? '|\\b(' + keywords + ')\\b' : ''),
+        'g'
+      );
+      return escaped.replace(pattern, (match, comment, str, num, kw) => {
+        if (comment) return '<span style="color:#8b949e;font-style:italic;">' + comment + '</span>';
+        if (str) return '<span style="color:#a5d6ff;">' + str + '</span>';
+        if (num) return '<span style="color:#79c0ff;">' + num + '</span>';
+        if (kw) return '<span style="color:#ff7b72;font-weight:600;">' + kw + '</span>';
+        return match;
+      });
+    };
+
+    // A small editor surface: line-number gutter, monospace, and the theme's
+    // own colours so it reads correctly in light and dark.
+    window.sreCodeView = function (text, lang) {
+      const lines = String(text == null ? '' : text).split('\n');
+      const gutter = '<div style="flex:none; padding:10px 8px 10px 10px; text-align:right; color:var(--text-secondary); opacity:.45; user-select:none; font-family:\'JetBrains Mono\',\'Fira Code\',monospace; font-size:11px; line-height:1.6; background:rgba(127,140,160,.05); border-right:1px solid var(--border-color);">'
+        + lines.map((_, i) => '<div>' + (i + 1) + '</div>').join('') + '</div>';
+      const body = '<div style="flex:1; min-width:0; overflow-x:auto; padding:10px 12px; font-family:\'JetBrains Mono\',\'Fira Code\',monospace; font-size:11.5px; line-height:1.6; color:var(--text-primary);">'
+        + lines.map((line) => '<div style="white-space:pre;">' + (window.sreHighlight(line, lang) || '&nbsp;') + '</div>').join('')
+        + '</div>';
+      return '<div style="display:flex; max-height:420px; overflow:hidden; border:1px solid var(--border-color); border-radius:10px; background:var(--bg-main);">'
+        + gutter + body + '</div>';
+    };
+
+    window.sreJsonView = function (text) {
+      let pretty = text;
+      try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch (e) { pretty = String(text); }
+      return '<div style="max-height:420px; overflow:auto; border:1px solid var(--border-color); border-radius:10px; background:var(--bg-main); padding:10px 12px; font-family:\'JetBrains Mono\',\'Fira Code\',monospace; font-size:11.5px; line-height:1.6;">'
+        + escapeHtml(pretty)
+          .replace(/(&quot;[^&]*?&quot;)(\s*:)/g, '<span style="color:#79c0ff;">$1</span>$2')
+          .replace(/:\s*(&quot;[^&]*?&quot;)/g, ': <span style="color:#a5d6ff;">$1</span>')
+          .replace(/\b(true|false|null)\b/g, '<span style="color:#ff7b72;">$1</span>')
+          .replace(/\b(\d+(?:\.\d+)?)\b/g, '<span style="color:#79c0ff;">$1</span>')
+        + '</div>';
+    };
+
+    window.renderArtifactDiff = window.renderArtifactDiff || function () { return ''; };
+
     window.renderArtifactBody = function (art, cardId) {
-      if (art.has_diff) return window.renderArtifactDiff(art.diff);
       const text = art.new_content || '';
-      if (!window.isMarkdownArtifact(art)) return null;
-      try {
-        return `<div class="sre-md" style="font-size:12px; line-height:1.6;">${marked.parse(text)}</div>`;
-      } catch (e) {
-        return `<pre style="white-space:pre-wrap; word-break:break-word; font-size:11px;">${escapeHtml(text)}</pre>`;
+      const lang = window.sreArtifactLang(art.file_path);
+      if (art.has_diff) {
+        const stat = '<div style="display:flex; align-items:center; gap:10px; padding:6px 10px; font-family:monospace; font-size:11px; border-bottom:1px solid var(--border-color); background:var(--bg-panel);">'
+          + '<span style="color:var(--text-secondary);">' + escapeHtml(String(art.file_path || '').split('/').pop()) + '</span>'
+          + (art.added ? '<span style="color:#3fb950; font-weight:700;">+' + art.added + '</span>' : '')
+          + (art.removed ? '<span style="color:#f85149; font-weight:700;">−' + art.removed + '</span>' : '')
+          + '</div>';
+        return stat + window.renderArtifactDiff(art.diff);
       }
+      if (lang === 'markdown' || window.isMarkdownArtifact(art)) {
+        try {
+          return '<div class="sre-md" style="font-size:12px; line-height:1.6; padding:10px 12px; border:1px solid var(--border-color); border-radius:10px; background:var(--bg-main);">' + marked.parse(text) + '</div>';
+        } catch (e) { /* fall through to plain */ }
+      }
+      if (lang === 'json') return window.sreJsonView(text);
+      if (lang !== 'text') return window.sreCodeView(text, lang);
+      return '<pre style="white-space:pre-wrap; word-break:break-word; font-size:11px; margin:0;">' + escapeHtml(text) + '</pre>';
     };
 
     // Failure actions are rendered from one place and bound to the chat that
