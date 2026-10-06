@@ -4808,6 +4808,13 @@
       messages.forEach(msg => {
         if (msg.id && replayMessages.has(msg.id)) return;
         if (msg.id) replayMessages.add(msg.id);
+        const _evts = (msg.metadata && Array.isArray(msg.metadata.events)) ? msg.metadata.events : [];
+        // Older messages were recorded before run grouping existed and carry no
+        // run_id. They still belong to a card: opening one here is what stops
+        // their steps from spilling onto the bare chat timeline.
+        window.historyReplayWrap = _evts.some((e) => e && e.run_id)
+          ? null
+          : ensureHistoryWrap('msg-' + (msg.id || 'orphan'));
         if (msg.sender === 'user') {
           addUserMessage(msg.message, msg.created_at);
         } else if (msg.sender === 'ai') {
