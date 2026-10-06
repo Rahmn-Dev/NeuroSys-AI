@@ -243,14 +243,84 @@ class ReactEngine:
         except Exception:
             pass
 
-    async def _save_agent_artifact(self, tool_name: str, params: dict, result: str):
-        """Kept for callers that still record a tool-level note.
+    # --- execution audit -----------------------------------------------------
+    # What the agent actually ran has to survive the UI: the run card can be
+    # scrolled away and history is paged, so every call is written to the audit
+    # table and summarised once per run as an execution artifact.
+    async def _audit_tool_call(self, tool_name: str, params: dict, result: str,
+                               started_at: float, status: str = "success", case_id: str = ""):
+        """Record one tool call. Awaited so the write cannot be lost, and
+        wrapped so bookkeeping can never fail a run."""
+        try:
+            import time as _time
+            from asgiref.sync import sync_to_async
+            from chatbot.models import ToolExecutionLog
+            from .events import sanitize_tool_args_for_audit, redact_text
 
-        Tool executions are visible in the run card already; recording each one
-        as an artifact filled the panel with thousands of synthetic markdown
-        files and buried the file changes that actually happened.
-        """
+            duration = round(max(0.0, _time.time() - started_at), 3)
+            # sanitize returns a dict; it has to be serialised before it can be
+            # stored or sliced, and slicing it used to raise and silently skip
+            # the whole audit record.
+            safe_args = sanitize_tool_args_for_audit(params)
+            args_json = __import__("json").dumps(safe_args, default=str)[:4000]
+            safe_out = redact_text(str(result or ""), 2000)
+
+            await sync_to_async(ToolExecutionLog.objects.create)(
+                conversation_id=self.session_id,
+                tool_name=str(tool_name)[:100],
+                input_parameters=args_json,
+                output_result=str(safe_out or "")[:4000],
+                status=status[:50],
+                execution_time=duration,
+            )
+            return {
+                "tool": tool_name, "status": status, "duration": duration,
+                "case_id": case_id or "", "args": safe_args,
+            }
+        except Exception:
+            return None
+
+    async def _save_agent_artifact(self, tool_name: str, params: dict, result: str):
+        """Kept for callers that still record a tool-level note."""
         return None
+
+    async def _record_run_execution(self, case_id: str, started_at: float):
+        """One execution record per run: which tools ran, how long, what failed."""
+        try:
+            import time as _time
+            import os as _os
+            from sre_agent.artifacts import ArtifactManager
+            entries = list(getattr(self, "_execution_log", []) or [])
+            if not entries:
+                return None
+            total = round(max(0.0, _time.time() - started_at), 1)
+            tools = {}
+            for entry in entries:
+                slot = tools.setdefault(entry["tool"], {"n": 0, "failed": 0, "seconds": 0.0})
+                slot["n"] += 1
+                slot["seconds"] += entry.get("duration", 0.0)
+                if entry.get("status") != "success":
+                    slot["failed"] += 1
+            lines = [f"# Agent execution\n",
+                     f"**Case**: {case_id or 'session'}\n",
+                     f"**Tool calls**: {len(entries)} in {total}s\n",
+                     f"**Tools**: {', '.join(sorted(tools))}\n",
+                     "\n## Calls\n"]
+            for entry in entries:
+                cmd = ""
+                args = entry.get("args") or {}
+                if isinstance(args, dict):
+                    cmd = str(args.get("command") or args.get("path") or args.get("file_path") or "")[:160]
+                lines.append(f"- `{entry['tool']}` {cmd} - {entry['status']} ({entry['duration']}s)\n")
+            mgr = ArtifactManager(workspace_path=_os.getcwd(),
+                                  session_id=self.session_id or "default",
+                                  case_id=case_id or "")
+            await mgr.upsert_artifact(
+                f".neurosys/sessions/{self.session_id}/investigations/{case_id or 'session'}/agent_execution.md",
+                "".join(lines), action_type="agent_execution", case_id=case_id or "")
+            return entries
+        except Exception:
+            return None
 
     async def _sync_single_plan_tasks(self, plan: dict):
         """Persist the single-agent phase checklist so reloads show it too."""
@@ -277,6 +347,9 @@ class ReactEngine:
             pass
 
     async def astream(self, initial_state: dict) -> AsyncGenerator[str, None]:
+        import time as _start
+        self._run_started_at = _start.time()
+        self._execution_log = []
         self.completed = False
         self.outcome = "running"
         self.completion_summary = ""
@@ -623,6 +696,9 @@ Do NOT stop calling tools until you are ready to call `finish_task`.
                         self.completed = True
                         self.outcome = "completed"
                         self.completion_summary = str(summary)
+                        await self._record_run_execution(
+                            (single_plan or {}).get("investigation_id", ""),
+                            getattr(self, "_run_started_at", 0.0) or __import__('time').time())
                         from .events import FINAL_ANSWER_MARKER
                         yield evt_message_chunk(f"\n\n{FINAL_ANSWER_MARKER}✅ **Task Completed**: {summary}")
                         history.append(ToolMessage(content="Task completed successfully.", name=tool_name, tool_call_id=tool_call_id))
@@ -676,6 +752,9 @@ Do NOT stop calling tools until you are ready to call `finish_task`.
                             # recorded artifact can show a real before/after.
                             _file_path, _file_action = self._file_target(tool_name, tool_args)
                             _file_before = self._read_file_state(_file_path) if _file_path else None
+                            import time as _time
+                            _call_started = _time.time()
+                            self._execution_log = getattr(self, "_execution_log", [])
                             # A sync tool body runs in a worker thread, and
                             # neither the authorization context nor the approval
                             # lifecycle follows a call into a thread. They are
@@ -737,10 +816,17 @@ Do NOT stop calling tools until you are ready to call `finish_task`.
                         except Exception as e:
                             output_str = f"Error executing {tool_name}: {str(e)}"
 
+                        _call_case = (single_plan or {}).get("investigation_id", "")
+                        _entry = await self._audit_tool_call(
+                            tool_name, tool_args, output_str, _call_started,
+                            status="error" if str(output_str or "").lower().startswith(("error", "blocked", "failed")) else "success",
+                            case_id=_call_case)
+                        if _entry:
+                            self._execution_log.append(_entry)
                         if _file_path and not str(output_str or "").lower().startswith(("error", "blocked", "failed")):
                             await self._record_file_change(
                                 tool_name, tool_args, output_str, _file_before,
-                                case_id=(single_plan or {}).get("investigation_id", ""),
+                                case_id=_call_case,
                             )
 
                         yield evt_tool_end(tool_name, output_str)
