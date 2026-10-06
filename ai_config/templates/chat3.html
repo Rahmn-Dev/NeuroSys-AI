@@ -5590,7 +5590,7 @@
           window.activeRunWrap = _own;
         }
         if (msg.sender === 'user') {
-          addUserMessage(msg.message, msg.created_at);
+          addUserMessage(msg.message, msg.created_at, msg.id);
         } else if (msg.sender === 'ai') {
           if (msg.metadata && msg.metadata.events && Array.isArray(msg.metadata.events)) {
 
