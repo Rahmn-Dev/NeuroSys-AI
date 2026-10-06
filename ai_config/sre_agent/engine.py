@@ -1372,8 +1372,10 @@ Output strictly the category name."""
                 # labelled, on the case, on its in-flight tasks, and as a
                 # finding, so the audit trail is complete.
                 _outcome = str(getattr(react_engine, "outcome", "") or "").lower()
+                _lc = getattr(self, "_lifecycle", None)
                 _terminal_case = await self._label_case_terminal(
-                    inv_id, _outcome, events_history, artifact_mgr)
+                    inv_id, _outcome, events_history, artifact_mgr,
+                    run_id=getattr(getattr(_lc, "run", None), "pk", None))
                 if inv_id and run_completed:
                     await sync_to_async(lambda _i=inv_id: Investigation.objects.filter(id=_i).update(status="completed"))()
                     # The split marker is a front-end contract. It must be
@@ -1951,8 +1953,10 @@ Output strictly the category name."""
                         if _case and _ending in {"denied", "denied_timeout",
                                                   "cancelled", "security_blocked",
                                                   "blocked", "failed"}:
+                            _lc2 = getattr(self, "_lifecycle", None)
                             await self._label_case_terminal(
-                                _case, _ending, events_history, artifact_mgr)
+                                _case, _ending, events_history, artifact_mgr,
+                                run_id=getattr(getattr(_lc2, "run", None), "pk", None))
                     except Exception:
                         pass
             except Exception:
@@ -2108,7 +2112,8 @@ Output strictly the category name."""
 
         return await _db()
 
-    async def _label_case_terminal(self, inv_id, outcome, events_history, artifact_mgr):
+    async def _label_case_terminal(self, inv_id, outcome, events_history, artifact_mgr,
+                                   run_id=None):
         """Label a stopped case everywhere it shows: the case, its in-flight
         tasks, and a finding with the reason.
 
@@ -2132,6 +2137,15 @@ Output strictly the category name."""
         await sync_to_async(lambda _i=inv_id, _s=terminal_case: InvestigationTask.objects.filter(
             investigation_id=_i,
             status__in=["pending", "running", "in_progress", "executing"]).update(status=_s))()
+        # The run's own task list (S1/S2/S3) is a different table from the
+        # case's plan, and it was never frozen: a denied run kept showing
+        # verifying/running/pending tasks in its own response.
+        if run_id:
+            from chatbot.models import AgentTask
+            await sync_to_async(lambda _r=run_id, _s=terminal_case: AgentTask.objects.filter(
+                run_id=_r,
+                status__in=["pending", "running", "in_progress", "executing",
+                            "verifying"]).update(status=_s))()
         block_reason = ""
         for _ev in reversed(events_history or []):
             if str((_ev or {}).get("type", "")).lower() in {
