@@ -3073,7 +3073,7 @@
       wrap.innerHTML = `
         <div id="${wrapId}-head" class="sre-run-head" data-open="0" onclick="toggleRunWrap('${wrapId}')" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; user-select: none;" onmouseover="if(this.dataset.open!=='1')this.style.background='rgba(127,140,160,.12)'" onmouseout="if(this.dataset.open!=='1')this.style.background=''">
           <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
-            <span id="${wrapId}-stat" style="width:20px; height:20px; display:flex; align-items:center; justify-content:center; flex:none; color:var(--accent);"><div class="spinner-border spinner-border-sm" role="status" style="width:14px; height:14px; border-width:2px;"></div></span>
+            <span id="${wrapId}-stat" style="width:20px; height:20px; display:flex; align-items:center; justify-content:center; flex:none; color:var(--text-secondary);"></span>
             <span id="${wrapId}-pill" class="sre-run-phase" style="font-size: 15px; font-weight: 600; letter-spacing: -.01em; color: var(--text-strong); white-space: nowrap;">observing</span>
             <span id="${wrapId}-dur" style="font-size: 11px; font-family: monospace; color: var(--text-secondary);"></span>
             <span id="${wrapId}-case" style="font-size: 10px; font-family: monospace; color: var(--text-secondary); opacity: .7;"></span>
@@ -3096,6 +3096,13 @@
       body.dataset.open = '0';
       body.style.display = 'none';
       window.activeRunWrap = body;
+      const liveStat = document.getElementById(wrapId + '-stat');
+      if (liveStat) {
+        liveStat.style.color = 'var(--accent)';
+        liveStat.innerHTML = '<div class="spinner-border spinner-border-sm" role="status" style="width:13px; height:13px; border-width:2px;"></div>';
+      }
+      const livePill = document.getElementById(wrapId + '-pill');
+      if (livePill) livePill.style.color = '';
       window.activeRunOrb = null;
       window.orbInRun = false;
       // Live runs are born packaged: avatar + run card together from the first
@@ -3186,13 +3193,13 @@
       if (wrapId) {
         window.historyRunWraps[runId] = wrapId;
         toggleRunWrap(wrapId, false);
-        // Replayed runs are finished: no live orb, no shimmering phase label.
-        const histOrb = document.getElementById(wrapId + '-orb');
-        if (histOrb) histOrb.remove();
+        // A replayed run is over: no shimmer, no spinning glyph. The header
+        // stays neutral until its terminal event paints the real outcome.
         const histPill = document.getElementById(wrapId + '-pill');
         if (histPill) {
           histPill.classList.remove('sre-run-phase');
-          histPill.textContent = 'run';
+          histPill.textContent = 'archived run';
+          histPill.style.color = 'var(--text-secondary)';
         }
         window.activeRunOrb = null;
       }
@@ -3220,13 +3227,19 @@
         if (phase && !terminal) window.setProgressOrb(phase[0], phase[1]);
       }
       const successful = String(status).toLowerCase() === 'completed';
+      const blocked = String(status).toLowerCase() === 'security_blocked';
       const color = terminal && !successful ? 'var(--error)' : '#79c0ff';
       const existing = document.getElementById(`step-${stepId}`);
+      const stateLabel = blocked ? 'Blocked by Security Policy' : 'Run State';
       if (!existing) {
         const timer = terminal ? `✓ ${Number(duration || 0).toFixed(1)}s` : null;
-        addAgentStep('Run State', escapeHtml(status || 'running'), color,
+        addAgentStep(stateLabel, escapeHtml(status || 'running'), color,
           successful ? 'check-circle' : terminal ? 'x-circle' : 'activity', stepId, terminal, timer);
         return;
+      }
+      if (blocked) {
+        const title = document.querySelector(`#step-${stepId} .sre-tl-title`);
+        if (title) title.textContent = stateLabel;
       }
 
       const content = document.getElementById(`step-content-${stepId}`);
