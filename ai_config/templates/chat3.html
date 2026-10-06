@@ -5567,7 +5567,7 @@
             '<span style="font-size:10px; font-family:monospace; color:var(--text-secondary);">' +
             escapeHtml(group.caseId || 'session') + '</span>' +
             (group.earliest
-              ? '<span class="sre-art-locate" data-when="' + escapeHtml(group.earliest) + '" data-label="' + escapeHtml(group.title || 'this investigation') + '" title="Jump to the turn that started this investigation" onclick="window.jumpToArtifact(this)" style="display:flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:6px; color:var(--text-secondary); flex:none;"><i class="fa-solid fa-location-crosshairs" style="font-size:11px;"></i></span>'
+              ? '<span class="sre-art-locate" data-when="' + escapeHtml(group.earliest) + '" data-label="' + escapeHtml(group.title || 'this investigation') + '" title="Go to this investigation in the chat" onclick="window.jumpToArtifact(this)" title="Go to this investigation in the chat" style="display:flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:6px; color:var(--text-secondary); flex:none;"><i class="fa-solid fa-arrow-up" style="font-size:11px;"></i></span>'
               : '');
           section.appendChild(header);
 
@@ -5607,7 +5607,6 @@
                     '<i class="fa-solid fa-file-lines" style="font-size:11px; color:var(--text-secondary); margin-right:6px;"></i>' + escapeHtml(fileName) + '</span>' +
                   stat +
                   '<span title="' + escapeHtml(when) + '" style="font-size:10px; color:var(--text-secondary);">' + timeStr + '</span>' +
-                  '<span class="sre-art-locate" data-when="' + escapeHtml(art.created_at || '') + '" data-label="' + escapeHtml(fileName) + '" title="Jump to the turn in the chat that produced this" onclick="window.jumpToArtifact(this)" style="display:flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:6px; color:var(--text-secondary); flex:none;"><i class="fa-solid fa-location-crosshairs" style="font-size:11px;"></i></span>' +
                   '<i class="fa-solid fa-chevron-down" id="' + cardId + '-chevron" style="font-size:10px; color:var(--text-secondary); transition:transform 0.2s;"></i>' +
                 '</div>' +
                 '<div id="' + cardId + '-content" style="display:none; border-top:1px solid var(--border-color);">' +
@@ -5643,7 +5642,6 @@
     // break the inline handler.
     window.jumpToArtifact = async function (trigger) {
       const createdAt = trigger && trigger.dataset ? trigger.dataset.when : '';
-      const label = trigger && trigger.dataset ? trigger.dataset.label : '';
       const box = document.getElementById('chat-messages');
       if (!box) return;
       const when = Date.parse(createdAt || '');
@@ -5685,7 +5683,6 @@
       target.style.outline = '2px solid var(--accent)';
       target.style.outlineOffset = '6px';
       target.style.borderRadius = '14px';
-      addSystemMsg('Jumped to the turn that produced ' + (label || 'this artifact') + '.', 'arrow-up');
       setTimeout(() => { target.style.outline = 'none'; }, 2600);
     };
 
