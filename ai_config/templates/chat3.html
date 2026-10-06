@@ -1981,6 +1981,26 @@
             : data.type === 'denied_timeout' ? 'denied_timeout' : 'denied';
           finalizeRunWrap(_stopStatus);
           addAgentStep(_stopLabel, escapeHtml(data.content || ''), 'var(--warning)', 'ban', null, true);
+          // The pill and the plan must say what happened right now, even if the
+          // run container was already cleared: otherwise the pill keeps spinning
+          // on the last live phase and the plan keeps reading running/pending.
+          try {
+            const _body = window.activeRunWrap
+              || (window.lastRunBody && document.contains(window.lastRunBody) ? window.lastRunBody : null);
+            if (_body && _body.dataset.wrapId) {
+              paintRunWrap(_body.dataset.wrapId, _stopStatus);
+            }
+          } catch (err) { /* best-effort */ }
+          if (data.type !== 'security_blocked'
+              && activeInvestigationId && investigations[activeInvestigationId]) {
+            const _inv = investigations[activeInvestigationId];
+            _inv.status = data.type === 'denied_timeout' ? 'denied_timeout' : 'denied';
+            (_inv.plan || []).forEach((p) => {
+              const _st = String(p.status || '').toLowerCase();
+              if (['pending', 'running', 'in_progress', 'executing'].includes(_st)) p.status = 'denied';
+            });
+            renderInvestigationTimeline();
+          }
           if (data.type === 'security_blocked') {
             const _blockedBubble = addAIMessage(data.content || '', new Date());
             window.paintBlockedBubble(_blockedBubble);
