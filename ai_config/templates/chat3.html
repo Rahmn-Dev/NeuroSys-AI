@@ -1802,6 +1802,18 @@
             isProcessing = false;
             window.setSendButtonState('idle');
             window.markRunFinished(window.liveRunSessionId || sessionId, data.status === 'completed');
+            try { window.refreshInvestigations(); } catch (err) { /* best-effort */ }
+            if (activeInvestigationId && investigations[activeInvestigationId]) {
+              const _inv = investigations[activeInvestigationId];
+              (_inv.plan || []).forEach((p) => {
+                const _st = String(p.status || '').toLowerCase();
+                if (['pending', 'running', 'in_progress', 'executing'].includes(_st)) {
+                  p.status = window.SRE_TERMINAL.includes(String(data.status).toLowerCase()) ? data.status : 'stopped';
+                }
+              });
+              _inv.status = data.status === 'error' ? 'failed' : data.status;
+              renderInvestigationTimeline();
+            }
             // Any terminal state brings the bot avatar back.
             window.setProgressOrb('done');
           } else if (!window.isLoadingHistory) {
@@ -4046,6 +4058,37 @@
       delete window.unreadSessions[String(sid)];
       window.renderActiveRuns();
       window.refreshSendButton();
+    };
+
+    // Update a run's pill by its id. The registry is session-keyed, so the
+    // run's entry is found through its session. This used to be called without
+    // ever being defined, which killed every handler that touched it - a
+    // denied run therefore left its turn spinning forever.
+    window.updateRunStateCard = function (runId, status) {
+      try {
+        var keys = Object.keys(window.runsBySession || {});
+        for (var i = 0; i < keys.length; i++) {
+          var entry = window.runsBySession[keys[i]];
+          if (entry && String(entry.id) === String(runId)) {
+            if (window.SRE_TERMINAL.includes(String(status || '').toLowerCase())) {
+              window.markRunFinished(keys[i], status === 'completed');
+            } else {
+              entry.phase = status;
+              window.renderActiveRuns();
+            }
+            return;
+          }
+        }
+        var sid = String(window.liveRunSessionId || '');
+        if (sid && window.runsBySession[sid]) {
+          if (window.SRE_TERMINAL.includes(String(status || '').toLowerCase())) {
+            window.markRunFinished(sid, status === 'completed');
+          } else {
+            window.runsBySession[sid].phase = status;
+            window.renderActiveRuns();
+          }
+        }
+      } catch (err) { /* best-effort */ }
     };
 
     window.markRunFinished = function (sid, ok) {
