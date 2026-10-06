@@ -2586,6 +2586,9 @@
       // While replaying, steps belong to the card currently being rebuilt.
       const replayWrap = window.historyReplayWrap;
       if (replayWrap && document.contains(replayWrap)) return replayWrap;
+      // Replay of a turn whose card is not open yet must never fall through to
+      // the bare timeline: that is how steps escaped their card entirely.
+      if (window.isLoadingHistory) return null;
       if (!window.isLoadingHistory && window.ensureRunWrap) {
         const fresh = window.ensureRunWrap();
         if (fresh && document.contains(fresh)) return fresh;
@@ -4848,9 +4851,18 @@
           'completed', 'error', 'failed', 'cancelled', 'blocked', 'denied',
           'denied_timeout', 'security_blocked'];
         const _hasTrace = _evts.some((e) => e && _STEP_TYPES.includes(String(e.type)));
-        window.historyReplayWrap = (_evts.some((e) => e && e.run_id) || !_hasTrace)
-          ? null
-          : ensureHistoryWrap('msg-' + (msg.id || 'orphan'));
+        if (_evts.some((e) => e && e.run_id) || !_hasTrace) {
+          window.historyReplayWrap = null;
+        } else {
+          const _own = ensureHistoryWrap('msg-' + (msg.id || 'orphan'));
+          window.historyReplayWrap = _own;
+          // The card this turn owns has to be the active one, not just the
+          // replay fallback: steps and the answer bubble are both placed
+          // through it, and only one of them was looking at it before. That is
+          // why stored runs (which carry no run_id) were drawing steps into
+          // someone else's card while their own card stayed empty and detached.
+          window.activeRunWrap = _own;
+        }
         if (msg.sender === 'user') {
           addUserMessage(msg.message, msg.created_at);
         } else if (msg.sender === 'ai') {
