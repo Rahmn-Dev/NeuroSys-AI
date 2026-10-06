@@ -1294,12 +1294,7 @@
     permissionSaving = true;
     updatePermissionPickerLabel();
     try {
-      const response = await sreFetch('/api/v1/agent-permission/', {
-        method: 'PUT', credentials: 'same-origin',
-        body: JSON.stringify({mode})
-      });
-      if (!response.ok) throw new Error(`permission update failed (${response.status})`);
-      const payload = await response.json();
+      const payload = await window.wsCall('agent_permission.set', { mode });
       // A newer PUT already went out; its response owns the final state.
       if (seq !== permissionSaveSeq) return;
       applyPermissionValue(payload.mode);
@@ -1461,17 +1456,11 @@
     const animated = window.animateHistoryRowOut(id);
     if (animated) await new Promise((resolve) => setTimeout(resolve, 250));
     try {
-      const res = await sreFetch(`/api/v1/chat-sessions/${id}/`, {
-        method: 'DELETE'
-      });
-      if (res.ok) {
-        if (typeof window.onSessionDeleted === 'function') {
-          window.onSessionDeleted(id);
-        } else {
-          window.location.reload();
-        }
+      await window.wsCall('chat.delete', { id });
+      if (typeof window.onSessionDeleted === 'function') {
+        window.onSessionDeleted(id);
       } else {
-        alert(await explainMutationFailure(res, 'Delete chat session'));
+        window.location.reload();
       }
     } catch (e) {
       console.error(e);
@@ -1491,24 +1480,12 @@
     if (!confirm(`Are you sure you want to delete ${sessionIds.length} selected chat session(s)?`)) return;
 
     try {
-      const res = await sreFetch('/api/v1/chat-sessions/bulk_delete/', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ session_ids: sessionIds })
-      });
-
-      if (res.ok) {
-        toggleBulkEditMode();
-        if (typeof window.loadHistoryGlobal === 'function') {
-          window.loadHistoryGlobal();
-        } else {
-          window.location.reload();
-        }
+      await window.wsCall('chat.bulk_delete', { session_ids: sessionIds });
+      toggleBulkEditMode();
+      if (typeof window.loadHistoryGlobal === 'function') {
+        window.loadHistoryGlobal();
       } else {
-        const errData = await res.json();
-        alert('Failed to delete chat sessions: ' + (errData.error || res.status));
+        window.location.reload();
       }
     } catch (e) {
       console.error(e);
@@ -1668,10 +1645,46 @@
           window.liveRunSessionId === String(sessionId));
       };
 
+    // Mutations go over this authenticated socket with request/response
+    // correlation, not over cookie-based HTTP: there is no ambient credential
+    // for a foreign page to ride, so the CSRF class is gone structurally.
+    window.wsSeq = window.wsSeq || 0;
+    window.wsPending = window.wsPending || {};
+    window.wsCall = function (type, payload, timeoutMs) {
+      return new Promise((resolve, reject) => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          reject(new Error('The live connection is not open. Reconnect and try again.'));
+          return;
+        }
+        const request_id = 'rpc-' + Date.now().toString(36) + '-' + (++window.wsSeq);
+        const timer = setTimeout(() => {
+          if (window.wsPending[request_id]) {
+            delete window.wsPending[request_id];
+            reject(new Error('The server took too long to answer.'));
+          }
+        }, timeoutMs || 20000);
+        window.wsPending[request_id] = { resolve, reject, timer };
+        ws.send(JSON.stringify(Object.assign({ type, request_id }, payload || {})));
+      });
+    };
+    window.resolveRpcResult = function (payload) {
+      const pending = payload && payload.request_id && window.wsPending[payload.request_id];
+      if (!pending) return false;
+      delete window.wsPending[payload.request_id];
+      clearTimeout(pending.timer);
+      if (payload.ok) pending.resolve(payload.data || {});
+      else pending.reject(new Error(payload.error || 'Request failed.'));
+      return true;
+    };
+
       ws.onmessage = (e) => {
         agentLastActivity = Date.now();
         try {
           const payload = JSON.parse(e.data);
+          if (payload && payload.type === 'rpc_result') {
+            window.resolveRpcResult(payload);
+            return;
+          }
           if (payload && payload.type === 'presence') {
             window.applyPresence(payload);
             return;
@@ -3911,10 +3924,9 @@
         return;
       }
       try {
-        const res = await window.sreFetch(
-          `/api/v1/chat-sessions/${encodeURIComponent(sid)}/investigations/${encodeURIComponent(invId)}/cancel/`,
-          { method: 'POST' });
-        if (res && res.ok && investigations[invId]) {
+        const data = await window.wsCall('investigation.cancel',
+          { session_id: sid, inv_id: invId });
+        if (data && investigations[invId]) {
           investigations[invId].status = 'cancelled';
           (investigations[invId].plan || []).forEach((p) => {
             const st = String(p.status || '').toLowerCase();
@@ -6370,20 +6382,11 @@
       const btn = document.querySelector(`[data-rollback-id="${id}"]`);
       if (btn) { btn.disabled = true; btn.textContent = 'Restoring...'; }
       try {
-        const res = await sreFetch(`/api/v1/workspace/artifacts/${id}/rollback/`, {
-          method: 'POST',
-        });
-        if (res.ok) {
-          addSystemMsg('File restored to its previous content.', 'rotate-left');
-          loadArtifacts();
-        } else {
-          let detail = 'Restore failed.';
-          try { const body = await res.json(); if (body && body.error) detail = body.error; } catch (e) {}
-          addSystemMsg(detail, 'alert-triangle');
-          if (btn) { btn.disabled = false; btn.textContent = '↩ Restore'; }
-        }
+        await window.wsCall('artifact.rollback', { id });
+        addSystemMsg('File restored to its previous content.', 'rotate-left');
+        loadArtifacts();
       } catch (e) {
-        addSystemMsg('Restore request failed.', 'alert-triangle');
+        addSystemMsg('Restore failed: ' + (e.message || e), 'alert-triangle');
         if (btn) { btn.disabled = false; btn.textContent = '↩ Restore'; }
       }
     };
@@ -7965,16 +7968,8 @@
     const _typedKey = document.getElementById('model-apikey-input').value.trim();
     if (_typedKey) payload.api_key = _typedKey;
 
-    const url = id ? `/api/v1/ai-models/${id}/` : '/api/v1/ai-models/';
-    const method = id ? 'PUT' : 'POST';
-
     try {
-      const res = await fetch(url, {
-        method: method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
+      const data = await window.wsCall('aimodel.save', Object.assign({}, payload, id ? { id } : {}));
       if (data.status === 'success') {
         const savedModelId = payload.model_id;
         localStorage.setItem('sre_selected_model', savedModelId);
@@ -7996,10 +7991,7 @@
   async function deleteAIModel(id) {
     if (!confirm('Are you sure you want to delete this model configuration?')) return;
     try {
-      const res = await sreFetch(`/api/v1/ai-models/${id}/`, {
-        method: 'DELETE',
-      });
-      const data = await res.json();
+      const data = await window.wsCall('aimodel.delete', { id });
       if (data.status === 'success') {
         await loadAIModels();
         renderModelManagerTable();
@@ -8036,11 +8028,7 @@
     resultDiv.style.display = 'none';
 
     try {
-      const res = await sreFetch('/api/v1/ai-models/test/', {
-        method: 'POST',
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
+      const data = await window.wsCall('aimodel.test', payload, 60000);
       resultDiv.style.display = 'block';
 
       if (data.status === 'success') {

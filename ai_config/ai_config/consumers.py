@@ -1282,6 +1282,83 @@ class AiIntrusionLogConsumer(AsyncWebsocketConsumer):
 # ---------------------------------------------------------------------------
 
 class SREAgentConsumer(AsyncWebsocketConsumer):
+
+    # Mutations travel over this authenticated socket instead of cookie-based
+    # HTTP, which removes the CSRF class structurally: there is no ambient
+    # credential a foreign page could ride. Each call carries a request_id and
+    # gets exactly one correlated answer.
+    RPC_TYPES = {
+        "agent_permission.set",
+        "chat.delete",
+        "chat.bulk_delete",
+        "artifact.rollback",
+        "aimodel.save",
+        "aimodel.delete",
+        "aimodel.test",
+        "investigation.cancel",
+    }
+
+    async def _handle_rpc(self, data):
+        from asgiref.sync import sync_to_async
+        from chatbot import mutations
+
+        request_id = data.get("request_id", "")
+        msg_type = data.get("type", "")
+        user = self.scope.get("user")
+
+        async def answer(ok, payload=None, error=""):
+            try:
+                await self.send(text_data=json.dumps({
+                    "type": "rpc_result",
+                    "request_id": request_id,
+                    "ok": bool(ok),
+                    "data": payload or {},
+                    "error": error or "",
+                }))
+            except Exception:
+                pass
+
+        if not request_id:
+            return
+        if msg_type not in self.RPC_TYPES:
+            await answer(False, error="Unknown call.")
+            return
+        if user is None or getattr(user, "is_anonymous", True):
+            await answer(False, error="Sign in first.")
+            return
+        try:
+            call = sync_to_async
+            if msg_type == "agent_permission.set":
+                result = await call(mutations.set_permission_mode)(
+                    user, str(data.get("mode", "")))
+            elif msg_type == "chat.delete":
+                result = await call(mutations.delete_chat_session)(
+                    user, data.get("id"))
+            elif msg_type == "chat.bulk_delete":
+                result = await call(mutations.bulk_delete_chats)(
+                    user, data.get("session_ids"))
+            elif msg_type == "artifact.rollback":
+                result = await call(mutations.rollback_artifact)(
+                    user, data.get("id"))
+            elif msg_type == "aimodel.save":
+                result = await call(mutations.save_ai_model)(
+                    user, data, data.get("id"))
+            elif msg_type == "aimodel.delete":
+                result = await call(mutations.delete_ai_model)(
+                    user, data.get("id"))
+            elif msg_type == "aimodel.test":
+                result = await call(mutations.test_ai_model)(user, data)
+            elif msg_type == "investigation.cancel":
+                result = await call(mutations.cancel_investigation)(
+                    user, data.get("session_id"), data.get("inv_id"))
+            else:
+                await answer(False, error="Unknown call.")
+                return
+            await answer(True, result)
+        except mutations.MutationError as exc:
+            await answer(False, error=str(exc))
+        except Exception as exc:
+            await answer(False, error=f"Request failed: {exc}")
     """
     WebSocket consumer for the NeuroSysAI SRE Agent.
     Connects to /ws/sre-agent/ and streams structured agent events.
@@ -1407,6 +1484,9 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
 
         if msg_type == "ping":
             await self.send(text_data=json.dumps({"type": "pong"}))
+            return
+        if msg_type in SREAgentConsumer.RPC_TYPES or data.get("request_id"):
+            await self._handle_rpc(data)
             return
         if msg_type == "subscribe":
             await self.subscribe(data.get("session_id", ""))

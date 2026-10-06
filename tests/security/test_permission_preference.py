@@ -1,9 +1,8 @@
 import pytest
 from django.contrib.auth.models import User
 from django.db import connection
-from rest_framework.test import APIRequestFactory, force_authenticate
 
-from chatbot.api import agent_permission
+from chatbot import mutations
 from chatbot.models import AgentPermissionAudit, Profile
 
 
@@ -23,17 +22,9 @@ def permission_tables():
 
 def test_permission_defaults_closed_and_change_is_audited(permission_tables):
     user = User.objects.create_user(username="operator")
-    factory = APIRequestFactory()
 
-    get_request = factory.get("/api/v1/agent-permission/")
-    force_authenticate(get_request, user=user)
-    assert agent_permission(get_request).data == {"mode": "need_approval"}
-
-    put_request = factory.put(
-        "/api/v1/agent-permission/", {"mode": "full_access"}, format="json"
-    )
-    force_authenticate(put_request, user=user)
-    assert agent_permission(put_request).data == {"mode": "full_access"}
+    assert mutations.get_permission_mode(user) == {"mode": "need_approval"}
+    assert mutations.set_permission_mode(user, "full_access") == {"mode": "full_access"}
     audit = AgentPermissionAudit.objects.get(user=user)
     assert (audit.previous_mode, audit.new_mode, audit.source) == (
         "need_approval", "full_access", "ui"
@@ -42,11 +33,17 @@ def test_permission_defaults_closed_and_change_is_audited(permission_tables):
 
 def test_permission_rejects_unknown_mode_without_audit(permission_tables):
     user = User.objects.create_user(username="operator")
-    request = APIRequestFactory().put(
-        "/api/v1/agent-permission/", {"mode": "unrestricted"}, format="json"
-    )
-    force_authenticate(request, user=user)
-    response = agent_permission(request)
-    assert response.status_code == 400
+    with pytest.raises(mutations.MutationError):
+        mutations.set_permission_mode(user, "unrestricted")
     assert Profile.objects.get(user=user).agent_permission_mode == "need_approval"
     assert not AgentPermissionAudit.objects.exists()
+
+
+def test_mutations_require_sign_in(permission_tables):
+    from django.contrib.auth.models import AnonymousUser
+
+    anon = AnonymousUser()
+    with pytest.raises(mutations.MutationError):
+        mutations.set_permission_mode(anon, "full_access")
+    with pytest.raises(mutations.MutationError):
+        mutations.delete_chat_session(anon, "00000000-0000-0000-0000-000000000000")
