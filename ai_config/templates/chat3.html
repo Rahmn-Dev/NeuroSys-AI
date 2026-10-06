@@ -1982,7 +1982,16 @@
           finalizeRunWrap(_stopStatus);
           addAgentStep(_stopLabel, escapeHtml(data.content || ''), 'var(--warning)', 'ban', null, true);
           window.sessionStartTime = null;
-          if (activeInvestigationId && investigations[activeInvestigationId]) {
+          // The prompt that triggered the block is quarantined in place.
+          try {
+            const users = messagesDiv.querySelectorAll('.sre-msg-user');
+            if (users.length) window.quarantineUserBubble(users[users.length - 1]);
+          } catch (err) { /* best-effort */ }
+          // A blocked prompt never ran this investigation. Repainting the case
+          // red overwrote work that had genuinely completed earlier, which is
+          // how a finished case ended up labelled "security blocked".
+          if (data.type !== 'security_blocked'
+              && activeInvestigationId && investigations[activeInvestigationId]) {
             investigations[activeInvestigationId].status = data.type;
             renderInvestigationTimeline();
           }
@@ -3300,6 +3309,38 @@
       }
       scrollToBottom();
     }
+
+    window.toggleQuarantine = function (btn) {
+      const box = btn && btn.closest('.sre-quarantine');
+      if (!box) return;
+      const open = !box.classList.contains('sre-open');
+      box.classList.toggle('sre-open', open);
+      const label = btn.querySelector('span');
+      if (label) label.textContent = open
+        ? 'Hide the blocked prompt'
+        : 'Blocked prompt — hidden. Click to reveal for audit.';
+    };
+
+    // A blocked prompt is evidence: it stays in history, blurred, until the
+    // operator explicitly reveals it. Called for the turn that precedes a
+    // security block, live and on replay alike.
+    window.quarantineUserBubble = function (bubble) {
+      try {
+        if (!bubble || !bubble.classList || !bubble.classList.contains('sre-msg-user')) return false;
+        if (bubble.dataset.quarantined === '1') return true;
+        bubble.dataset.quarantined = '1';
+        bubble.classList.add('sre-quarantined');
+        const original = bubble.innerHTML;
+        bubble.innerHTML =
+          '<div class="sre-quarantine">'
+          + '<div class="sre-quarantine-body">' + original + '</div>'
+          + '<button type="button" class="sre-quarantine-veil" onclick="window.toggleQuarantine(this)">'
+          + '<i class="fa-solid fa-triangle-exclamation"></i>'
+          + '<span>Blocked prompt — hidden. Click to reveal for audit.</span>'
+          + '</button></div>';
+        return true;
+      } catch (err) { return false; }
+    };
 
     window.toggleBubbleChain = function (bubbleId, force) {
       const bubble = document.getElementById(bubbleId);
@@ -5455,6 +5496,12 @@
           window.activeRunWrap = null;
           if (msg.message && msg.message.trim() !== "") {
             const _wasBlocked = _evts.some((e) => e && e.type === 'security_blocked');
+            if (_wasBlocked) {
+              try {
+                const users = messagesDiv.querySelectorAll('.sre-msg-user');
+                if (users.length) window.quarantineUserBubble(users[users.length - 1]);
+              } catch (err) { /* best-effort */ }
+            }
             const _bubble = addAIMessage(msg.message, msg.created_at, msg.id);
             if (_bubble) window.syncBubblePill(_bubble);
             // The chain of thought seats inside the bubble's own slot.
@@ -6680,6 +6727,31 @@
   }
   #sre-agent-app .sre-art-locate:hover {
     background: rgba(127, 140, 160, .16); color: var(--accent);
+  }
+  /* A blocked prompt stays in the transcript as evidence, but blurred and
+     collapsed until the operator chooses to read it. Never deleted: deleting
+     evidence is what made blocked turns vanish from history. */
+  #sre-agent-app .sre-msg-user.sre-quarantined {
+    border: 1px solid rgba(248, 81, 73, .45);
+  }
+  #sre-agent-app .sre-quarantine { position: relative; }
+  #sre-agent-app .sre-quarantine-body {
+    filter: blur(7px); user-select: none; pointer-events: none;
+    max-height: 110px; overflow: hidden;
+  }
+  #sre-agent-app .sre-quarantine.sre-open .sre-quarantine-body {
+    filter: none; user-select: text; pointer-events: auto; max-height: none;
+  }
+  #sre-agent-app .sre-quarantine-veil {
+    position: absolute; inset: 0; display: flex; align-items: center;
+    justify-content: center; gap: 8px; cursor: pointer;
+    background: rgba(248, 81, 73, .07); border: 1px dashed rgba(248, 81, 73, .5);
+    border-radius: 12px; color: var(--error);
+    font-size: 12px; font-weight: 700; font-family: inherit; width: 100%;
+  }
+  #sre-agent-app .sre-quarantine.sre-open .sre-quarantine-veil {
+    position: static; margin-top: 8px; padding: 4px 10px;
+    background: transparent; border-style: solid; width: auto;
   }
   #sre-agent-app .sre-inv-empty {
     padding: 12px; font-size: 12px; color: var(--text-secondary); font-style: italic;
