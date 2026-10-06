@@ -2956,8 +2956,7 @@
         messagesDiv.insertBefore(wrap, bubble);
         wrap.dataset.bubbleId = bubble.id;
         if (wrapId) bubble.dataset.wrapId = wrapId;
-        const toggle = bubble.querySelector('.sre-run-toggle');
-        if (toggle) toggle.classList.remove('sre-hidden');
+        window.syncBubblePill(bubble);
         const _shown = wrap.style.display !== 'none';
         bubble.dataset.chainOpen = _shown ? '1' : '0';
         const chev = bubble.querySelector('.sre-run-chev');
@@ -3376,6 +3375,35 @@
         const chev = toggle.querySelector('.sre-run-chev');
         if (chev) chev.style.transform = (bubble.dataset.chainOpen === '1') ? 'rotate(0deg)' : 'rotate(-90deg)';
       } catch (err) { /* best-effort */ }
+    };
+
+    // A bubble that owns a run always shows its pill. Seating, painting and
+    // replay all resolve through here, so a silent failure on any one path can
+    // no longer leave the pill hidden while the run exists.
+    window.syncBubblePill = function (bubble) {
+      try {
+        if (!bubble) return false;
+        const wrapId = bubble.dataset.wrapId;
+        const wrap = wrapId && document.getElementById(wrapId);
+        if (!wrap || !document.contains(wrap)) return false;
+        const toggle = bubble.querySelector('.sre-run-toggle');
+        if (!toggle) return false;
+        toggle.classList.remove('sre-hidden');
+        const last = wrap.dataset.lastStatus || '';
+        const rawDur = wrap.dataset.lastDuration;
+        const dur = (rawDur !== '' && rawDur != null) ? Number(rawDur) : null;
+        if (last) {
+          const low = last.toLowerCase();
+          const terminal = ['completed', 'failed', 'cancelled', 'blocked', 'denied', 'denied_timeout', 'security_blocked', 'error', 'finalized'].includes(low);
+          window.paintBubblePill(wrapId, terminal ? last : 'working',
+            terminal
+              ? { done: low === 'completed', failed: low !== 'completed', duration: dur }
+              : { spinner: true, working: true });
+        } else {
+          window.paintBubblePill(wrapId, 'working', { spinner: true, working: true });
+        }
+        return true;
+      } catch (err) { return false; }
     };
 
     function paintRunWrap(wrapId, status, duration) {
@@ -5414,6 +5442,7 @@
           if (msg.message && msg.message.trim() !== "") {
             const _wasBlocked = _evts.some((e) => e && e.type === 'security_blocked');
             const _bubble = addAIMessage(msg.message, msg.created_at, msg.id);
+            if (_bubble) window.syncBubblePill(_bubble);
             // The chain of thought seats inside the bubble's own slot.
             if (_bubble && _ownedWrap && _ownedWrap.id && _ownedWrap.id.indexOf('runwrap-') === 0) {
               window.seatChain(_bubble, _ownedWrap);
