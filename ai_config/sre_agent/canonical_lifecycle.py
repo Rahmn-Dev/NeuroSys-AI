@@ -355,6 +355,25 @@ class DurableAgentLifecycle:
             run.state = state
             run.save(update_fields=["status", "summary", "current_node", "checkpoint_version", "state", "updated_at"])
             self.run = run
+            # A finished run never leaves tasks looking live. The run snapshot
+            # surfaced statuses like "verifying"/"running" for a run that had
+            # already failed or timed out because nothing closed the task rows.
+            if is_terminal(to_status):
+                from chatbot.models import AgentTask
+                _task_status = {
+                    "completed": "done",
+                    "cancelled": "cancelled",
+                    "blocked": "blocked",
+                    "security_blocked": "blocked",
+                    "failed": "failed",
+                    "error": "failed",
+                    "denied_timeout": "failed",
+                }.get(to_status)
+                if _task_status:
+                    AgentTask.objects.filter(
+                        run=run,
+                        status__in=["pending", "running", "awaiting_approval", "verifying"]
+                    ).update(status=_task_status)
         broadcast_presence(self.user_id)
         return run
 
