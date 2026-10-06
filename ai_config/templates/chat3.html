@@ -3857,6 +3857,34 @@
       } catch (err) { /* best-effort */ }
     };
 
+    // Stop one investigation from its own card. A live run in this chat is
+    // stopped the usual way; a case whose run is already gone but which still
+    // reads as active is closed honestly instead of left running forever.
+    window.stopInvestigationCase = async function (invId) {
+      if (!invId) return;
+      const sid = String((typeof sessionId !== 'undefined' && sessionId) || '');
+      const live = !!((window.runsBySession || {})[sid])
+        || (typeof isProcessing !== 'undefined' && !!isProcessing
+            && String(window.processingSid || '') === sid);
+      if (live) {
+        window.stopCurrentRun();
+        return;
+      }
+      try {
+        const res = await window.sreFetch(
+          `/api/v1/chat-sessions/${encodeURIComponent(sid)}/investigations/${encodeURIComponent(invId)}/cancel/`,
+          { method: 'POST' });
+        if (res && res.ok && investigations[invId]) {
+          investigations[invId].status = 'cancelled';
+          (investigations[invId].plan || []).forEach((p) => {
+            const st = String(p.status || '').toLowerCase();
+            if (['pending', 'running', 'in_progress', 'executing'].includes(st)) p.status = 'cancelled';
+          });
+          renderInvestigationTimeline();
+        }
+      } catch (err) { /* best-effort */ }
+    };
+
     window.stopCurrentRun = function () {
       // One button, one run: only this chat's run stops. Background runs in
       // other chats are cancelled from their own row in History.
@@ -4574,6 +4602,9 @@
           + '<span class="sre-inv-chev"><i class="fa-solid fa-chevron-right"></i></span>'
           + '<span class="sre-inv-title" title="' + escapeHtml(inv.title || '') + '">' + escapeHtml(inv.title || 'Investigation') + '</span>'
           + '<span class="sre-inv-badge" style="color:' + tone + ';">' + escapeHtml(status.replace(/_/g, ' ')) + '</span>'
+          + (((inv.plan || []).some((p) => ['pending', 'running', 'in_progress', 'executing'].includes(String(p.status || '').toLowerCase())) || status === 'active')
+            ? '<span role="button" tabindex="0" title="Stop this investigation" onclick="event.stopPropagation(); window.stopInvestigationCase(\'' + escapeHtml(inv.id || '') + '\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();event.stopPropagation();window.stopInvestigationCase(\'' + escapeHtml(inv.id || '') + '\');}" style="flex:none; display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:6px; border:1px solid rgba(248,81,73,.5); background:rgba(248,81,73,.12); color:var(--error); cursor:pointer;" onmouseover="this.style.background=\'rgba(248,81,73,.25)\'" onmouseout="this.style.background=\'rgba(248,81,73,.12)\'"><i class="fa-solid fa-stop" style="font-size:8px; pointer-events:none;"></i></span>'
+            : '')
           + '</button>'
           + '<div class="sre-inv-meta">'
           + '<span>' + done + '/' + plan.length + ' tasks</span>'
