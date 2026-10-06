@@ -261,6 +261,13 @@ def test_ai_model(user, data):
 
 
 def cancel_investigation(user, session_id, inv_id):
+    """Stop a case now, and always answer with what the database now holds.
+
+    The old wording - a bare "unchanged" whenever the case was not active -
+    left the operator staring at a stop that looked like it had been ignored.
+    A stop either stops the case, or reports the outcome that was already
+    there; it never answers with nothing to show.
+    """
     require_user_id(user)
     from sre_agent.canonical_lifecycle import cancel_run_now
 
@@ -268,24 +275,31 @@ def cancel_investigation(user, session_id, inv_id):
         session = models.ChatSession.objects.get(pk=session_id)
     except (models.ChatSession.DoesNotExist, ValueError, TypeError):
         raise MutationError("Chat session not found.")
+    # ChatSession carries no owner of its own, so the run of that session is
+    # the ownership anchor: no run of yours, no stop of yours.
+    if not models.AgentRun.objects.filter(
+            session_id=session.pk, user_id=str(user.pk)).exists():
+        raise MutationError("Not allowed.")
     try:
-        cancel_run_now(str(session.pk), str(user.pk))
+        run_stopped = cancel_run_now(str(session.pk), str(user.pk))
     except Exception:
-        pass
-    updated = models.Investigation.objects.filter(
-        id=inv_id, session=session, status="active"
-    ).update(status="cancelled")
+        run_stopped = False
     # Tasks that read as running on a case that will never run again are
     # frozen whatever the outcome: a superseded or expired case keeps no live
     # tasks either.
-    models.InvestigationTask.objects.filter(
+    tasks_frozen = models.InvestigationTask.objects.filter(
         investigation_id=inv_id,
         status__in=["pending", "running", "in_progress", "executing"],
     ).update(status="cancelled")
-    if not updated:
-        return {"status": "unchanged"}
-    models.InvestigationTask.objects.filter(
-        investigation_id=inv_id,
-        status__in=["pending", "running", "in_progress", "executing"],
+    stopped = models.Investigation.objects.filter(
+        id=inv_id, session=session, status="active"
     ).update(status="cancelled")
-    return {"status": "cancelled"}
+    inv = models.Investigation.objects.filter(id=inv_id, session=session).first()
+    if inv is None:
+        raise MutationError("Investigation not found.")
+    return {
+        "status": inv.status,
+        "stopped": bool(stopped or tasks_frozen or run_stopped),
+        "run_stopped": bool(run_stopped),
+        "tasks_frozen": tasks_frozen,
+    }

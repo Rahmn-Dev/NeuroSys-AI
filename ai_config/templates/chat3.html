@@ -3949,17 +3949,34 @@
       try {
         const data = await window.wsCall('investigation.cancel',
           { session_id: sid, inv_id: invId });
-        try { await window.refreshRunPresence(); } catch (err) { /* best-effort */ }
-        window.refreshHistoryRowState(String(sid));
-        if (data && data.status === 'cancelled' && investigations[invId]) {
-          investigations[invId].status = 'cancelled';
+        // Paint from the answer itself: pressing stop always lands on a
+        // finished badge, whatever the database already held.
+        const finalState = String((data && data.status) || '').toLowerCase();
+        if (investigations[invId] && finalState) {
+          investigations[invId].status = finalState;
           (investigations[invId].plan || []).forEach((p) => {
             const st = String(p.status || '').toLowerCase();
-            if (['pending', 'running', 'in_progress', 'executing'].includes(st)) p.status = 'cancelled';
+            if (['pending', 'running', 'in_progress', 'executing'].includes(st)) {
+              p.status = (data && data.stopped) ? 'cancelled' : finalState;
+            }
           });
           renderInvestigationTimeline();
         }
-      } catch (err) { /* best-effort */ }
+      } catch (err) {
+        // A refused or failed stop still has to leave the card alone on a
+        // decided state rather than spinning forever.
+        if (investigations[invId]) {
+          investigations[invId].status = window.SRE_TERMINAL.includes(
+            String(investigations[invId].status || '').toLowerCase())
+            ? investigations[invId].status : 'cancelled';
+          renderInvestigationTimeline();
+        }
+      }
+      // The marker exists only to cover the round trip; the answer above ends it.
+      delete window.stoppingRuns[String(sid)];
+      try { await window.refreshRunPresence(); } catch (err) { /* best-effort */ }
+      window.refreshHistoryRowState(String(sid));
+      try { await window.refreshInvestigations(); } catch (err) { /* best-effort */ }
     };
 
     window.stopCurrentRun = function () {
@@ -4618,7 +4635,7 @@
       denied: 'var(--error)',
       denied_timeout: 'var(--error)',
       security_blocked: 'var(--error)',
-      cancelled: 'var(--text-secondary)',
+      cancelled: 'var(--error)',
       expired: 'var(--text-secondary)',
       superseded: 'var(--text-secondary)',
       security_blocked: 'var(--error)',
