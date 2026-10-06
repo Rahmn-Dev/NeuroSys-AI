@@ -1016,6 +1016,14 @@
         <!-- Terminal Tab -->
         <div id="tab-terminal" class="tab-content"
           style="flex: 1; display: none; flex-direction: column; background: #000; position: relative; padding: 10px;">
+          <div style="display: flex; align-items: center; gap: 8px; padding: 0 2px 8px;">
+            <button type="button" id="terminal-status-btn" title="Terminal connection"
+              style="display: inline-flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 600; padding: 3px 11px 3px 8px; border-radius: 999px; border: 1px solid var(--border-color); background: rgba(127,140,160,.08); color: var(--text-secondary); cursor: default;">
+              <span id="terminal-status-dot" style="width: 8px; height: 8px; border-radius: 50%; background: var(--warning);"></span>
+              <span id="terminal-status-text">Connecting…</span>
+            </button>
+            <span id="terminal-cwd-label" style="font-size: 10.5px; color: var(--text-secondary); font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
+          </div>
           <div id="terminal-container" style="flex: 1; overflow: hidden;"></div>
         </div>
 
@@ -6288,13 +6296,15 @@
       term.open(termContainer);
       window.fitTerminal = () => {
         fitAddon.fit();
-        if (termWs.readyState === WebSocket.OPEN) {
-          termWs.send(JSON.stringify({
-            type: 'resize',
-            cols: term.cols,
-            rows: term.rows
-          }));
-        }
+        try {
+          if (window.termWs && window.termWs.readyState === WebSocket.OPEN) {
+            window.termWs.send(JSON.stringify({
+              type: 'resize',
+              cols: term.cols,
+              rows: term.rows
+            }));
+          }
+        } catch (err) { /* not connected */ }
       };
 
       window.addEventListener('resize', () => {
@@ -6305,46 +6315,106 @@
 
       term.writeln('Welcome to NeuroSysAI Interactive Terminal\n');
 
-      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const termWs = new WebSocket(`${protocol}//${location.host}/ws/terminal/`);
+      window.termWs = null;
+      window.terminalRetryTimer = null;
+      window.terminalRetryCount = 0;
 
-      termWs.onopen = () => {
-        term.writeln('\r\n[Connected]');
-        setTimeout(window.fitTerminal, 500);
+      window.setTerminalStatus = function (state) {
+        const btn = document.getElementById('terminal-status-btn');
+        const dot = document.getElementById('terminal-status-dot');
+        const text = document.getElementById('terminal-status-text');
+        if (!btn || !dot || !text) return;
+        if (state === 'open') {
+          dot.style.background = 'var(--success-text)';
+          text.textContent = 'Connected';
+          btn.style.cursor = 'default';
+          btn.title = 'Terminal connected';
+        } else if (state === 'connecting') {
+          dot.style.background = 'var(--warning)';
+          text.textContent = 'Connecting…';
+          btn.style.cursor = 'default';
+          btn.title = 'Connecting the terminal…';
+        } else {
+          dot.style.background = 'var(--error)';
+          text.textContent = 'Reconnect';
+          btn.style.cursor = 'pointer';
+          btn.title = 'Terminal disconnected - click to reconnect';
+        }
+      };
+
+      const statusBtn = document.getElementById('terminal-status-btn');
+      if (statusBtn) statusBtn.onclick = () => {
+        if (!window.termWs || window.termWs.readyState === WebSocket.CLOSED) window.connectTerminal(true);
+      };
+
+      window.connectTerminal = function (manual) {
+        try {
+          if (window.termWs && (window.termWs.readyState === WebSocket.OPEN
+              || window.termWs.readyState === WebSocket.CONNECTING)) return;
+        } catch (err) { /* fall through and dial again */ }
+        if (window.terminalRetryTimer) {
+          clearTimeout(window.terminalRetryTimer);
+          window.terminalRetryTimer = null;
+        }
+        window.setTerminalStatus('connecting');
+        const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const sock = new WebSocket(`${protocol}//${location.host}/ws/terminal/`);
+        window.termWs = sock;
+        if (manual) {
+          window.terminalRetryCount = 0;
+          term.writeln('\r\nReconnecting the terminal…\r\n');
+        }
+        sock.onopen = () => {
+          window.terminalRetryCount = 0;
+          window.setTerminalStatus('open');
+          setTimeout(window.fitTerminal, 500);
+        };
+        sock.onmessage = (e) => {
+          try {
+            const msg = JSON.parse(e.data);
+            if (msg.type === 'output') {
+              term.write(msg.data);
+            } else if (msg.type === 'cwd') {
+              if (window.currentTerminalCwd !== msg.cwd) {
+                window.currentTerminalCwd = msg.cwd;
+                const cwdLabel = document.getElementById('terminal-cwd-label');
+                if (cwdLabel) cwdLabel.textContent = msg.cwd;
+                localStorage.setItem('sre_terminal_cwd', msg.cwd);
+                if (window.workspaceFollow) {
+                  const input = document.getElementById('workspace-path-input');
+                  if (input) input.value = msg.cwd;
+                  loadExplorer();
+                }
+              }
+            }
+          } catch (err) {
+            term.write(e.data);
+          }
+        };
+        const scheduleRetry = () => {
+          window.terminalRetryCount = (window.terminalRetryCount || 0) + 1;
+          const wait = Math.min(30000, 2000 * Math.pow(2, window.terminalRetryCount - 1));
+          window.terminalRetryTimer = setTimeout(() => window.connectTerminal(false), wait);
+        };
+        sock.onerror = () => {
+          try { sock.close(); } catch (err) { /* already closing */ }
+        };
+        sock.onclose = () => {
+          if (window.termWs !== sock) return;
+          window.setTerminalStatus('closed');
+          scheduleRetry();
+        };
       };
 
       window.currentTerminalCwd = null;
 
-      termWs.onmessage = (e) => {
-        try {
-          const msg = JSON.parse(e.data);
-          if (msg.type === 'output') {
-            term.write(msg.data);
-          } else if (msg.type === 'cwd') {
-            if (window.currentTerminalCwd !== msg.cwd) {
-              window.currentTerminalCwd = msg.cwd;
-              localStorage.setItem('sre_terminal_cwd', msg.cwd);
-              if (window.workspaceFollow) {
-                const input = document.getElementById('workspace-path-input');
-                if (input) input.value = msg.cwd;
-                loadExplorer();
-              }
-            }
-          }
-        } catch (err) {
-          term.write(e.data);
-        }
-      };
-
       term.onData((data) => {
-        if (termWs && termWs.readyState === WebSocket.OPEN) {
-          termWs.send(JSON.stringify({ type: 'input', data: data }));
+        if (window.termWs && window.termWs.readyState === WebSocket.OPEN) {
+          window.termWs.send(JSON.stringify({ type: 'input', data: data }));
         }
       });
 
-      termWs.onclose = () => {
-        term.writeln('\r\n[Disconnected]');
-      };
+      window.connectTerminal(false);
     }
 
     // --- Init ---
