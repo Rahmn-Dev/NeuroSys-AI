@@ -2582,7 +2582,7 @@
         if (!owner || owner === sid) return wrap;
       }
       const last = window.lastRunBody;
-      if (last && document.contains(last) && !window.isLoadingHistory) {
+      if (last && document.contains(last) && !window.replayActive) {
         const owner = String(last.dataset.sessionId || '');
         if (!owner || owner === sid) return last;
       }
@@ -2596,8 +2596,9 @@
       if (replayWrap && document.contains(replayWrap)) return replayWrap;
       // Replay of a turn whose card is not open yet must never fall through to
       // the bare timeline: that is how steps escaped their card entirely.
-      if (window.isLoadingHistory) return null;
-      if (!window.isLoadingHistory && window.ensureRunWrap) {
+      // A live call landing here takes the live path below instead.
+      if (window.replayActive) return null;
+      if (window.ensureRunWrap) {
         const fresh = window.ensureRunWrap();
         if (fresh && document.contains(fresh)) return fresh;
       }
@@ -2605,7 +2606,7 @@
     };
 
     window.ensureRunWrap = function () {
-      if (window.isLoadingHistory) return null;
+      if (window.replayActive) return null;
       if (!window.activeRunWrap) startRunWrap();
       return window.activeRunWrap;
     };
@@ -5004,7 +5005,13 @@
     // after the welcome bubble) and by the scroll-up loader (prepended above
     // what is already on screen), so a long chat is never fetched in one go.
     window.renderHistoryMessages = function (list, replayMessages) {
-      let sessionStartTimestamp = null;
+      // Scoped to the synchronous render only. A live event arriving in an
+      // async gap must take the live path; isLoadingHistory stays true across
+      // the whole load and cannot tell the two apart. try/finally because a
+      // throw here used to wedge the flag on and strand every later step on
+      // the bare timeline.
+      window.replayActive = true;
+      try {
       let lastEventTimestamp = null;
       const messages = (list || []).slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
       // Replayed runs carry no server duration, so the span between their first
@@ -5391,6 +5398,9 @@
         if (!isFinite(total) || total < 0) return;
         slot.textContent = `\u2713 ${total.toFixed(1)}s`;
       });
+      } finally {
+        window.replayActive = false;
+      }
     };
 
     async function loadSession(id) {
