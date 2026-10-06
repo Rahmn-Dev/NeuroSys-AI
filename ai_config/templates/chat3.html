@@ -2958,9 +2958,10 @@
         if (wrapId) bubble.dataset.wrapId = wrapId;
         const toggle = bubble.querySelector('.sre-run-toggle');
         if (toggle) toggle.classList.remove('sre-hidden');
-        bubble.dataset.chainOpen = '0';
+        const _shown = wrap.style.display !== 'none';
+        bubble.dataset.chainOpen = _shown ? '1' : '0';
         const chev = bubble.querySelector('.sre-run-chev');
-        if (chev) chev.style.transform = 'rotate(-90deg)';
+        if (chev) chev.style.transform = _shown ? 'rotate(0deg)' : 'rotate(-90deg)';
         return true;
       } catch (err) { return false; }
     };
