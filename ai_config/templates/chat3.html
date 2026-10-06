@@ -4839,12 +4839,15 @@
         // no renderable trace gets no card at all - an empty "archived run" with
         // nothing to open is worse than no card, especially for a turn that
         // never ran.
-        const _TRACE_TYPES = ['exploring', 'discovering_tools', 'planning', 'thinking',
+        // Only event types that actually draw a row count as a trace. Opening a
+        // card for a message whose events produce no row and then deleting it
+        // again is what made cards vanish on reload.
+        const _STEP_TYPES = ['exploring', 'discovering_tools', 'planning', 'thinking',
           'tool_start', 'tool_end', 'investigation_started', 'task_plan', 'task_updated',
           'resolution_plan', 'hypothesis', 'findings', 'parallel_start', 'parallel_complete',
-          'verifying', 'resuming', 'lifecycle', 'status', 'completed', 'error', 'failed',
-          'cancelled', 'blocked', 'denied', 'denied_timeout', 'security_blocked'];
-        const _hasTrace = _evts.some((e) => e && _TRACE_TYPES.includes(String(e.type)));
+          'completed', 'error', 'failed', 'cancelled', 'blocked', 'denied',
+          'denied_timeout', 'security_blocked'];
+        const _hasTrace = _evts.some((e) => e && _STEP_TYPES.includes(String(e.type)));
         window.historyReplayWrap = (_evts.some((e) => e && e.run_id) || !_hasTrace)
           ? null
           : ensureHistoryWrap('msg-' + (msg.id || 'orphan'));
