@@ -5567,7 +5567,7 @@
             '<span style="font-size:10px; font-family:monospace; color:var(--text-secondary);">' +
             escapeHtml(group.caseId || 'session') + '</span>' +
             (group.earliest
-              ? '<span class="sre-art-locate" data-when="' + escapeHtml(group.earliest) + '" data-label="' + escapeHtml(group.title || 'this investigation') + '" title="Go to this investigation in the chat" onclick="window.jumpToArtifact(this)" title="Go to this investigation in the chat" style="display:flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:6px; color:var(--text-secondary); flex:none;"><i class="fa-solid fa-arrow-up" style="font-size:11px;"></i></span>'
+              ? '<span class="sre-art-locate" data-when="' + escapeHtml(group.earliest) + '" data-label="' + escapeHtml(group.title || 'this investigation') + '" title="Go to this investigation in the chat" onclick="window.jumpToArtifact(this)" style="display:flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:6px; color:var(--text-secondary); flex:none;"><i class="fa-solid fa-arrow-up" style="font-size:11px;"></i></span>'
               : '');
           section.appendChild(header);
 
