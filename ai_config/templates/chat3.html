@@ -2759,12 +2759,8 @@
     window.setRunPhaseLabel = function (state, label) {
       var wrapId = window.activeRunWrap ? window.activeRunWrap.dataset.wrapId : null;
       if (!wrapId) return;
-      var pill = document.getElementById(wrapId + '-pill');
-      if (!pill) return;
       var text = label || window.orbPhaseLabels[state];
       if (!text) return;
-      pill.textContent = text;
-      pill.classList.add('sre-run-phase');
       window.paintBubblePill(wrapId, text, { spinner: true, working: true });
     };
 
@@ -3608,7 +3604,7 @@
     }
 
     function finalizeRunWrap(status, duration) {
-      const body = window.activeRunWrap;
+      const body = window.activeRunWrap || window.lastRunBody;
       if (!body) return;
       const wrapId = body.dataset.wrapId;
       paintRunWrap(wrapId, status, duration);
