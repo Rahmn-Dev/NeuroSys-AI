@@ -2002,6 +2002,9 @@
           }
           isProcessing = false;
           window.closeTurn();
+          // A stopped run leaves the registry, or the submit guard keeps
+          // insisting a run is going when there is nothing left to stop.
+          window.markRunFinished(window.liveRunSessionId || sessionId, false);
           window.setSendButtonState('idle');
           break;
 
