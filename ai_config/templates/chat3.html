@@ -3845,6 +3845,9 @@
     // current chat is never touched: only that session's task stops.
     window.stopOtherRun = function (sid) {
       if (!sid) return;
+      window.stoppingRuns = window.stoppingRuns || {};
+      window.stoppingRuns[String(sid)] = Date.now();
+      window.refreshHistoryRowState(String(sid));
       try {
         if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'cancel', session_id: String(sid) }));
       } catch (err) { /* socket closing */ }
@@ -3863,6 +3866,9 @@
     window.stopInvestigationCase = async function (invId) {
       if (!invId) return;
       const sid = String((typeof sessionId !== 'undefined' && sessionId) || '');
+      window.stoppingRuns = window.stoppingRuns || {};
+      window.stoppingRuns[String(sid)] = Date.now();
+      window.refreshHistoryRowState(String(sid));
       const live = !!((window.runsBySession || {})[sid])
         || (typeof isProcessing !== 'undefined' && !!isProcessing
             && String(window.processingSid || '') === sid);
@@ -3961,6 +3967,9 @@
 
     window.cancelRunForSession = function (sid) {
       if (!sid) return;
+      window.stoppingRuns = window.stoppingRuns || {};
+      window.stoppingRuns[String(sid)] = Date.now();
+      window.refreshHistoryRowState(String(sid));
       document.querySelectorAll('.sre-run-actions').forEach((block) => {
         if (String(block.dataset.sessionId) === String(sid)) {
           block.innerHTML = '<span style="font-size:11px; color:var(--text-secondary);">Cancelled.</span>';
@@ -4037,6 +4046,11 @@
         (data.runs || []).forEach((run) => {
           const sid = String(run.session_id || '');
           if (!sid) return;
+          const stopping = (window.stoppingRuns || {})[String(sid)];
+          if (stopping) {
+            if (Date.now() - stopping > 120000) delete window.stoppingRuns[String(sid)];
+            else { window.refreshHistoryRowState(sid); return; }
+          }
           const local = window.runsBySession[String(sid)];
           if (local) {
             if (!local.phase && run.current_node) local.phase = run.current_node;
@@ -4056,6 +4070,12 @@
         Object.keys(window.runsBySession || {}).forEach((sid) => window.resolveStaleRunEntry(sid));
         // Chats without a live run still need their state, from the same poll.
         Object.keys(_latest).forEach((sid) => {
+          const st = String((_latest[sid] || {}).status || '');
+          if (['completed', 'failed', 'cancelled', 'blocked', 'denied',
+               'denied_timeout', 'security_blocked', 'error', 'finalized'].includes(st)
+              && window.stoppingRuns) {
+            delete window.stoppingRuns[String(sid)];
+          }
           if (!(window.runsBySession || {})[sid]) window.refreshHistoryRowState(sid);
         });
         window.renderActiveRuns();
@@ -4113,6 +4133,13 @@
       if (!row) return;
       const slot = row.querySelector('[data-run-state]');
       if (!slot) return;
+      const stopping = (window.stoppingRuns || {})[String(sid)];
+      if (stopping && Date.now() - stopping < 120000) {
+        slot.innerHTML = '<i class="fa-solid fa-circle-notch spin-anim" title="Stopping the run…" style="color:var(--warning); font-size:11px; flex-shrink:0;"></i>'
+          + '<span style="font-size:10px; color:var(--warning); font-weight:700;">stopping…</span>';
+        return;
+      }
+      if (stopping) delete window.stoppingRuns[String(sid)];
       const run = (window.runsBySession || {})[String(sid)];
       const unread = !!(window.unreadSessions || {})[String(sid)];
       const latest = (window.latestRunBySession || {})[String(sid)];

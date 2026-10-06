@@ -1388,8 +1388,16 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
             return
         if msg_type == "cancel":
             from asgiref.sync import sync_to_async
-            from sre_agent.canonical_lifecycle import request_run_cancellation
-            await sync_to_async(request_run_cancellation)(data.get("session_id", ""), str(getattr(self.scope.get("user"), "pk", None) or "anonymous"))
+            from sre_agent.canonical_lifecycle import request_run_cancellation, cancel_run_now
+            _cancel_sid = str(data.get("session_id") or "")
+            _cancel_uid = str(getattr(self.scope.get("user"), "pk", None) or "anonymous")
+            await sync_to_async(request_run_cancellation)(_cancel_sid, _cancel_uid)
+            # The stored run goes terminal now, not when the worker happens to
+            # die: otherwise a stop still reads as working on every surface.
+            try:
+                await sync_to_async(cancel_run_now)(_cancel_sid, _cancel_uid)
+            except Exception:
+                pass
             # A cancel names its chat: only that session's task is stopped, so
             # cancelling one run never kills an unrelated background run.
             target = self.agent_tasks.get(str(data.get("session_id") or ""))

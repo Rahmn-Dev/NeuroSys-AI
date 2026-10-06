@@ -429,6 +429,27 @@ def normalize_provider_error(exc: Exception) -> dict:
     return {"category": category, "retryable": retryable, "status": status, "message": str(exc)[:500]}
 
 
+def cancel_run_now(session_id, user_id):
+    """Mark the latest active run cancelled immediately, with an audit trail.
+
+    Requesting cancellation only sets a flag and killing the worker task does
+    not touch the database, so a stopped run kept reading as active until the
+    watchdog found it minutes later - or forever, if nothing touched it again.
+    This runs first in the stop path, so the stored truth matches the operator's
+    action even when the worker ignores the kill. Terminal states are immutable,
+    so calling it twice, or on an already finished run, changes nothing.
+    """
+    from chatbot.models import AgentRun
+    run = (AgentRun.objects.filter(session_id=session_id, user_id=str(user_id),
+           status__in=ACTIVE_STATUSES).order_by('-created_at').first())
+    if run is None:
+        return False
+    lifecycle = DurableAgentLifecycle(session_id=str(session_id), user_id=str(user_id))
+    lifecycle.run = run
+    lifecycle.transition("operator", "cancelled", "cancel_requested", {"by": "operator"})
+    return True
+
+
 def request_run_cancellation(session_id, user_id):
     from chatbot.models import AgentRun
     with transaction.atomic():

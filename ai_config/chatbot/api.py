@@ -88,6 +88,12 @@ class ChatSessionViewSet(viewsets.ModelViewSet):
         whose run is already gone but whose tasks still read as running.
         """
         session = self.get_object()
+        try:
+            from sre_agent.canonical_lifecycle import cancel_run_now
+            user_id = str(getattr(request.user, 'pk', None) or 'anonymous')
+            cancel_run_now(str(session.pk), user_id)
+        except Exception:
+            pass
         updated = models.Investigation.objects.filter(
             id=inv_id, session=session, status='active').update(status='cancelled')
         if not updated:
