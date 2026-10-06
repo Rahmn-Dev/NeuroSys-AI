@@ -6561,9 +6561,8 @@
       document.querySelectorAll('.sre-run-actions').forEach((block) => {
         if (String(block.dataset.sessionId || '') !== owner) return;
         if (block.dataset.consumed === '1') return;
-        block.innerHTML = '<span style="font-size:11px; color:var(--text-secondary);">' +
-          '<i class="fa-solid fa-circle-notch spin-anim" style="font-size:9px;"></i> Resuming…</span>';
         block.dataset.consumed = '1';
+        block.remove();
       });
       const wrap = window.activeRunWrap;
       if (wrap) {
