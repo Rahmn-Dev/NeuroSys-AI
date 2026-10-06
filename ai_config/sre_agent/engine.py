@@ -545,22 +545,35 @@ class SREAgentEngine:
                 if content:
                     answer += content
                     yield evt_message_chunk(answer)
-        except Exception:
-            # Never swallow the turn: fall back to the full agent pipeline.
-            async for event in self._run_internal(
-                user_message, terminal_cwd, active_workspace, selected_file,
-                None, "autonomous_single", "need_approval",
-            ):
-                yield event
+        except Exception as exc:
+            # Provider down: show the error in the bubble instead of pretending
+            # the turn was denied. A denial implies an approval gate; there is
+            # none here.
+            from .canonical_lifecycle import normalize_provider_error
+            error_info = normalize_provider_error(exc)
+            answer = (
+                f"That request could not be completed ({error_info['category']}). "
+                f"The model provider returned an error, so no answer could be fetched."
+            )
+            _mid = await self._save_message(db_session_id, "ai", answer)
+            yield {"type": "message_saved", "sender": "ai", "msg_id": str(_mid)}
+            yield evt_direct_chat("Direct answer, provider unavailable")
+            yield evt_message_chunk(answer)
+            yield evt_completed(answer, duration=time.time() - start_time)
             return
 
         answer = (answer or "").strip()
         if not answer:
-            async for event in self._run_internal(
-                user_message, terminal_cwd, active_workspace, selected_file,
-                None, "autonomous_single", "need_approval",
-            ):
-                yield event
+            from .canonical_lifecycle import normalize_provider_error
+            answer = (
+                "That request could not be completed (provider_error). "
+                "The model returned an empty response, so no answer could be recorded."
+            )
+            _mid = await self._save_message(db_session_id, "ai", answer)
+            yield {"type": "message_saved", "sender": "ai", "msg_id": str(_mid)}
+            yield evt_direct_chat("Direct answer, empty response")
+            yield evt_message_chunk(answer)
+            yield evt_completed(answer, duration=time.time() - start_time)
             return
 
         _mid = await self._save_message(db_session_id, "ai", answer)
