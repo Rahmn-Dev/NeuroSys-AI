@@ -4612,6 +4612,11 @@
       stopAllAgentStepTimers();
       window.openTurn();
       startRunWrap();
+      // Sending means following: jump to the bottom and stay pinned so the
+      // run's starting and reasoning are visible instead of happening off
+      // screen while the viewport sits on old history.
+      window.agentAutoScroll = true;
+      scrollToBottom(true);
       window.sessionStartTime = new Date();
       isProcessing = true;
       window.processingSid = String(sessionId || '');
