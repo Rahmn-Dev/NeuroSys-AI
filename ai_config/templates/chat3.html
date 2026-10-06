@@ -5012,6 +5012,7 @@
       // the bare timeline.
       window.replayActive = true;
       try {
+      let sessionStartTimestamp = null;
       let lastEventTimestamp = null;
       const messages = (list || []).slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
       // Replayed runs carry no server duration, so the span between their first
