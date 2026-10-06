@@ -2389,6 +2389,7 @@
         ` font-weight:600; display:inline-flex; align-items:center; gap:4px; transition:background 0.15s ease;">` +
         `<i class="fa-solid fa-pen" style="font-size:9px;"></i> Edit</button>` +
         `<button title="Delete this message" class="sre-msg-delete-btn" onclick="window.deleteChatMessage(event,this)"` +
+        ` data-delete-msg="1"` +
         ` style="background:rgba(0, 0, 0, 0.18); border:1px solid rgba(255,255,255,0.35);` +
         ` color:#ffffff; border-radius:6px; padding:3px 8px; font-size:10px; cursor:pointer;` +
         ` font-weight:600; display:inline-flex; align-items:center; gap:4px; transition:background 0.15s ease;">` +
@@ -2442,6 +2443,15 @@
         timeDiv.classList.add('sre-sending');
       }
       messagesDiv.appendChild(timeDiv);
+      // Older prompts keep their text, but only the latest is currency: the
+      // delete affordance lives on the newest bubble alone.
+      try {
+        const _allUser = messagesDiv.querySelectorAll('.sre-msg-user');
+        _allUser.forEach((_el, _idx) => {
+          const _del = _el.querySelector('[data-delete-msg="1"]');
+          if (_del) _del.style.display = _idx === _allUser.length - 1 ? '' : 'none';
+        });
+      } catch (err) { /* best-effort */ }
       scrollToBottom();
     }
 
