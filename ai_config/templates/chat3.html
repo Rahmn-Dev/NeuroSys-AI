@@ -2134,8 +2134,25 @@
           const fullText = rawData || '';
 
           const contentDiv = currentAIMsg.querySelector('.ai-content');
-          try { contentDiv.dataset.fullText = fullText; } catch (err) { /* best-effort */ }
-          contentDiv.innerHTML = window.renderAnswerContent(fullText);
+          // The server accumulates every chunk into the stored reply, but an
+          // individual chunk is not always accumulated itself: the React path
+          // emits one piece of narration per turn. Replacing here is what left
+          // the live bubble showing only the last piece while the replay -
+          // built from the stored accumulation - showed everything. So the
+          // bubble accumulates exactly like the server does.
+          let nextText = String(fullText || '');
+          try {
+            const prevText = String(contentDiv.dataset.fullText || '');
+            if (prevText && nextText.startsWith(prevText)) {
+              // Already accumulated: take it as is.
+            } else if (prevText && prevText.startsWith(nextText) && nextText) {
+              nextText = prevText;
+            } else if (prevText && nextText) {
+              nextText = prevText + '\n\n' + nextText;
+            }
+            contentDiv.dataset.fullText = nextText;
+          } catch (err) { /* best-effort */ }
+          contentDiv.innerHTML = window.renderAnswerContent(nextText);
           // The reveal replays on every chunk, so each arrival settles in
           // instead of the whole block blinking at once.
           window.markStreaming(true, contentDiv);
