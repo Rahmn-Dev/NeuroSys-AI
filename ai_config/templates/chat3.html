@@ -5715,6 +5715,30 @@
                   try {
                     const _w = window.activeRunWrap
                       || (window.lastRunBody && document.contains(window.lastRunBody) ? window.lastRunBody : null);
+                    if (_w && _w.dataset && _w.dataset.wrapId) {
+                      window.paintRunWrap(_w.dataset.wrapId, String(evt.type), evt.duration || null);
+                    }
+                  } catch (err) { /* best-effort */ }
+                  try {
+                    const _cid = String(evt.case_id || evt.investigation_id || '');
+                    const _term = String(evt.type || '').toLowerCase();
+                    if (_cid && investigations[_cid]) {
+                      const _inv = investigations[_cid];
+                      _inv.status = _term === 'error' ? 'failed' : _term;
+                      (_inv.plan || []).forEach((p) => {
+                        const _p = String(p.status || '').toLowerCase();
+                        if (['pending', 'running', 'in_progress', 'executing'].includes(_p)) {
+                          p.status = _term === 'security_blocked' ? 'blocked'
+                            : _term === 'error' ? 'failed' : _term;
+                        }
+                      });
+                      renderInvestigationTimeline();
+                    }
+                  } catch (err) { /* best-effort */ }
+                  try { finalizeRunWrap(String(evt.type)); } catch (err) { /* best-effort */ }
+                  try {
+                    const _w = window.activeRunWrap
+                      || (window.lastRunBody && document.contains(window.lastRunBody) ? window.lastRunBody : null);
                     if (_w && _w.dataset && _w.dataset.wrapId) window.paintRunWrap(_w.dataset.wrapId, String(evt.type), evt.duration || null);
                   } catch (err) { /* best-effort */ }
                   // The saved plan events left the case with running/pending
