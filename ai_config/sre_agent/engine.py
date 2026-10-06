@@ -621,6 +621,16 @@ class SREAgentEngine:
             thread_label = ""
         self._router_topic = ""
         self._router_switched = False
+        # Simple greetings, acknowledgments and one-word replies do not need
+        # a router round-trip or an approval token; they always go direct.
+        simple = str(user_message or '').strip().lower()
+        if simple and len(simple) <= 20 and not is_secret_or_destructive(user_message):
+            async for event in self._run_direct_chat(
+                user_message, terminal_cwd, active_workspace, selected_file,
+            ):
+                yield event
+            return
+
         if not is_lookup_turn(user_message) and not is_secret_or_destructive(user_message):
             router_llm = await self._get_llm()
             route, route_reason, router_topic, router_switched = await route_turn(
