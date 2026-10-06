@@ -2603,10 +2603,6 @@
       const skelBody = skel && skel.wrap && document.contains(skel.wrap)
         ? (skel.wrap.querySelector('[data-wrap-id]') || null) : null;
       if (skelBody && document.contains(skelBody)) return skelBody;
-      if (skel && document.contains(skel.bubble)) {
-        const nested = skel.bubble.querySelector('.sre-cot [data-wrap-id]');
-        if (nested && document.contains(nested)) return nested;
-      }
       // While replaying, steps belong to the card currently being rebuilt.
       const replayWrap = window.historyReplayWrap;
       if (replayWrap && document.contains(replayWrap)) return replayWrap;
@@ -2919,25 +2915,20 @@
     // header and above the answer. The bubble owns the status pill; the run
     // card's own header steps aside (its hooks keep working, they are just not
     // painted anymore).
-    // The chain lives inside its bubble, under the header and above the
-    // answer; the bubble pill opens it. Placement is one append into the
-    // bubble's own slot, and every pointer (steps, pill, toggle) resolves
-    // through that same slot, so nothing can leak outside it.
+    // The chain is its own card standing directly above its bubble, and the
+    // bubble pill opens it. Nesting it inside the bubble kept breaking in ways
+    // that all looked the same from the outside - an empty slot, a card that
+    // never arrived, steps in someone else's card - because every render moved
+    // nodes across containers and each move could orphan something. Placement
+    // is now a single insertBefore in the transcript order, so ownership is
+    // visible in the DOM itself and there is nothing to leak.
     window.seatChain = function (bubble, wrap) {
       if (!bubble || !wrap) return false;
       try {
         if (String(wrap.dataset.sessionId || '') && String(bubble.dataset.sessionId || '')
             && String(wrap.dataset.sessionId) !== String(bubble.dataset.sessionId)) return false;
-        let slot = bubble.querySelector(':scope .agent-msg-body .sre-panel .sre-cot');
-        if (!slot) {
-          const panel = bubble.querySelector('.sre-panel');
-          if (!panel) return false;
-          slot = document.createElement('div');
-          slot.className = 'sre-cot';
-          slot.style.display = 'none';
-          const answer = panel.querySelector(':scope > .ai-content');
-          panel.insertBefore(slot, answer || null);
-        }
+        const slot = bubble.querySelector(':scope .agent-msg-body .sre-panel .sre-cot');
+        if (!slot) return false;
         const body = wrap.querySelector('[data-wrap-id]') || wrap.firstElementChild;
         const wrapId = (body && body.dataset.wrapId) || wrap.id;
         // A card painted before it met its bubble (replay) hands its latest
@@ -2956,16 +2947,20 @@
                 : { spinner: true, working: true });
           }
         }
-        if (slot.contains(wrap)) {
+        if (wrap.parentElement === messagesDiv && wrap.nextElementSibling === bubble) {
           if (wrapId) bubble.dataset.wrapId = wrapId;
+          bubble.dataset.chainOpen = document.getElementById(wrapId + '-body')
+            && document.getElementById(wrapId + '-body').dataset.open === '1' ? '1' : '0';
           return true;
         }
-        slot.appendChild(wrap);
+        messagesDiv.insertBefore(wrap, bubble);
         wrap.dataset.bubbleId = bubble.id;
         if (wrapId) bubble.dataset.wrapId = wrapId;
         const toggle = bubble.querySelector('.sre-run-toggle');
         if (toggle) toggle.classList.remove('sre-hidden');
-        bubble.dataset.chainOpen = slot.style.display !== 'none' ? '1' : '0';
+        bubble.dataset.chainOpen = '0';
+        const chev = bubble.querySelector('.sre-run-chev');
+        if (chev) chev.style.transform = 'rotate(-90deg)';
         return true;
       } catch (err) { return false; }
     };
@@ -3309,14 +3304,8 @@
       if (!bubble) return;
       const wrapId = bubble.dataset.wrapId;
       const body = wrapId && document.getElementById(wrapId + '-body');
-      if (body && document.contains(body)) { window.toggleRunWrap(wrapId, force); return; }
-      const slot = bubble.querySelector('.sre-cot');
-      if (!slot) return;
-      const open = (typeof force === 'boolean') ? force : slot.style.display === 'none';
-      slot.style.display = open ? '' : 'none';
-      const chev = bubble.querySelector('.sre-run-chev');
-      if (chev) chev.style.transform = open ? 'rotate(0deg)' : 'rotate(-90deg)';
-      bubble.dataset.chainOpen = open ? '1' : '0';
+      if (!body || !document.contains(body)) return;
+      window.toggleRunWrap(wrapId, force);
     };
 
     window.toggleRunWrap = function (wrapId, force) {
@@ -6578,18 +6567,6 @@
   #sre-agent-app .sre-cot:empty { display: none; }
   /* The run card sheds its own chrome once nested: the bubble owns it. */
 
-  #sre-agent-app .sre-cot .sre-run-card {
-    border: 0 !important; background: transparent !important;
-    box-shadow: none !important; border-radius: 0 !important;
-    margin: 0 !important; overflow: visible !important; width: auto !important;
-  }
-  #sre-agent-app .sre-cot .sre-run-head { display: none !important; }
-  #sre-agent-app .sre-cot .sre-run-body {
-    border: 0 !important; background: transparent !important;
-    box-shadow: none !important; border-radius: 0 !important;
-    margin: 0 !important; padding: 2px 0 8px !important;
-    max-height: none !important; overflow: visible !important;
-  }
   #sre-agent-app .sre-art-locate {
     cursor: pointer; transition: background .15s ease, color .15s ease;
   }
