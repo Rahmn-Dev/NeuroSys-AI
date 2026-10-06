@@ -2164,7 +2164,9 @@
                         </div>
                     </details>
                 `;
-          messagesDiv.insertAdjacentHTML('beforeend', auditHtml);
+          if (!window.attachRunAudit(currentAIMsg, auditHtml)) {
+            messagesDiv.insertAdjacentHTML('beforeend', auditHtml);
+          }
           window.normalizeRunCards();
 
           currentAIMsg = null;
@@ -2653,6 +2655,38 @@
     // from history split in exactly the same place. Narration folds away once
     // the answer exists, and stays one click away.
     window.SRE_FINAL_MARKER = '<!--sre-final-->';
+    // The completion summary belongs to the reply it explains, so it lives
+    // inside that bubble's column directly under the panel instead of floating
+    // in the transcript as a separate block.
+    window.attachRunAudit = function (bubble, html) {
+      try {
+        if (!bubble || !html) return false;
+        let column = null;
+        for (const child of bubble.children) {
+          if (child.classList && child.classList.contains('agent-msg-body')) { column = child; break; }
+        }
+        if (!column) {
+          const panel = bubble.querySelector('.sre-panel');
+          if (!panel) return false;
+          column = document.createElement('div');
+          column.className = 'agent-msg-body';
+          column.style.cssText = 'flex:1; min-width:0; display:flex; flex-direction:column;';
+          bubble.insertBefore(column, panel);
+          column.appendChild(panel);
+        }
+        const stale = column.querySelector(':scope > .sre-run-audit');
+        if (stale) stale.remove();
+        const holder = document.createElement('div');
+        holder.innerHTML = html;
+        const audit = holder.querySelector('.sre-run-audit');
+        if (!audit) return false;
+        const panel = column.querySelector(':scope > .sre-panel');
+        if (panel) column.insertBefore(audit, panel.nextSibling);
+        else column.appendChild(audit);
+        return true;
+      } catch (err) { return false; }
+    };
+
     window.renderAnswerContent = function (rawText) {
       const text = String(rawText == null ? '' : rawText);
       const at = text.indexOf(window.SRE_FINAL_MARKER);
@@ -2921,8 +2955,8 @@
     // Chain-of-thought status rings: blue while a step is working, emerald
     // once it lands, rose when it fails. Translated from the AgentPlanning
     // reference into CSS variables so both themes keep working.
-    window.__sreUiBuild = 'cardown-08';
-    console.log('[NeuroSysAI UI] build cardown-08');
+    window.__sreUiBuild = 'cardown-10';
+    console.log('[NeuroSysAI UI] build cardown-10');
 
     // Icons below never depend on the lucide name table: an unknown name used
     // to render an empty dot. These inline SVGs always paint.
@@ -5179,12 +5213,14 @@
                 messagesDiv.insertBefore(_wrap, _bubble);
               }
             }
-            // Reading order for a finished turn: run card, then the answer,
-            // then the completion summary underneath it.
+            // Reading order for a finished turn: run card, answer, and the
+            // completion summary tucked under that answer.
             if (window.pendingAuditHtml) {
-              messagesDiv.insertAdjacentHTML('beforeend', window.pendingAuditHtml);
+              const _audit = window.pendingAuditHtml;
               window.pendingAuditHtml = '';
-              window.normalizeRunCards();
+              if (!window.attachRunAudit(_bubble, _audit)) {
+                messagesDiv.insertAdjacentHTML('beforeend', _audit);
+              }
             }
             // Reloading history used to show a plain answer for a blocked
             // prompt while the live view showed a red security card.
@@ -6264,6 +6300,30 @@
   #sre-agent-app .sre-inv-more {
     color: var(--accent); font-size: 11px; cursor: pointer; white-space: nowrap;
     text-decoration: underline; text-underline-offset: 2px;
+  }
+  /* The completion summary reads as a badge tucked under the reply: same width
+     as the answer panel, rounded, attached instead of floating as its own
+     block. */
+  #sre-agent-app .sre-run-audit {
+    margin: 6px 0 2px;
+    border-radius: 12px !important;
+    overflow: hidden;
+    border: 1px solid var(--border-color) !important;
+    background: var(--bg-main) !important;
+    width: 100%;
+    box-sizing: border-box;
+    transition: border-color .18s ease;
+  }
+  #sre-agent-app .sre-run-audit:hover { border-color: var(--success-text) !important; }
+  #sre-agent-app .sre-run-audit > summary {
+    border-radius: 11px;
+    background: rgba(63, 185, 80, .12) !important;
+  }
+  #sre-agent-app .sre-run-audit > summary strong { color: var(--success-text) !important; }
+  #sre-agent-app .sre-run-audit > summary span { color: var(--success-text) !important; }
+  #sre-agent-app .sre-run-audit > div {
+    background: var(--bg-main) !important;
+    border-top: 1px solid var(--border-color) !important;
   }
   #sre-agent-app .sre-art-locate {
     cursor: pointer; transition: background .15s ease, color .15s ease;
