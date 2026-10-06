@@ -4111,9 +4111,19 @@
       } catch (err) { /* presence is best-effort */ }
     };
 
+    // Presence polling is adaptive, not constant: the live agent stream already
+    // arrives over the websocket, and this poll only exists to notice runs in
+    // OTHER chats. With nothing executing it backs off instead of asking the
+    // server every few seconds forever.
+    window._lastPresenceFetch = 0;
     if (!window._runPresenceTimer && typeof setInterval === 'function') {
       window._runPresenceTimer = setInterval(() => {
-        if (document.visibilityState === 'visible') window.refreshRunPresence();
+        if (document.visibilityState !== 'visible') return;
+        const anyActive = Object.keys(window.runsBySession || {}).length > 0;
+        const due = Date.now() - (window._lastPresenceFetch || 0) > (anyActive ? 8000 : 60000);
+        if (!due) return;
+        window._lastPresenceFetch = Date.now();
+        window.refreshRunPresence();
       }, 8000);
     }
 
@@ -7803,7 +7813,7 @@
           ${m.base_url ? m.base_url : '<span style="opacity: 0.5; font-style: italic;">Default</span>'}
         </td>
         <td style="padding: 10px 12px; white-space: nowrap;">
-          ${m.api_key ? '<span style="font-size: 10px; font-weight: 600; color: var(--success-text); background: rgba(45, 164, 78, 0.12); border: 1px solid rgba(45, 164, 78, 0.3); padding: 3px 8px; border-radius: 12px;"><i class="fa-solid fa-key me-1"></i>Set</span>' : '<span style="opacity: 0.5; font-style: italic;">Default/Env</span>'}
+          ${m.has_key ? '<span style="font-size: 10px; font-weight: 600; color: var(--success-text); background: rgba(45, 164, 78, 0.12); border: 1px solid rgba(45, 164, 78, 0.3); padding: 3px 8px; border-radius: 12px;"><i class="fa-solid fa-key me-1"></i>Set</span>' : '<span style="opacity: 0.5; font-style: italic;">Default/Env</span>'}
         </td>
         <td style="padding: 10px 12px; text-align: center; white-space: nowrap;">
           ${m.is_active
@@ -7916,7 +7926,11 @@
     setModelEndpointType(m.endpoint_type || 'openai');
     setModelToolChoice(m.tool_choice || 'any');
     document.getElementById('model-baseurl-input').value = m.base_url || '';
-    document.getElementById('model-apikey-input').value = m.api_key || '';
+    // The secret is write-only: the field stays empty and only a freshly
+    // typed value is ever sent. Untouched means keep the stored key.
+    document.getElementById('model-apikey-input').value = '';
+    document.getElementById('model-apikey-input').placeholder =
+      m.has_key ? '•••••••• (saved — leave blank to keep)' : 'sk-… (paste a key to set one)';
     document.getElementById('model-order-input').value = m.order;
     document.getElementById('model-active-input').checked = m.is_active;
     document.getElementById('ai-model-form-title').innerText = 'Edit Model: ' + m.name;
@@ -7938,11 +7952,13 @@
       provider: document.getElementById('model-provider-input').value,
       endpoint_type: getModelEndpointType(),
       base_url: document.getElementById('model-baseurl-input').value,
-      api_key: document.getElementById('model-apikey-input').value,
       order: parseInt(document.getElementById('model-order-input').value) || 0,
       is_active: document.getElementById('model-active-input').checked,
       tool_choice: getModelToolChoice()
     };
+
+    const _typedKey = document.getElementById('model-apikey-input').value.trim();
+    if (_typedKey) payload.api_key = _typedKey;
 
     const url = id ? `/api/v1/ai-models/${id}/` : '/api/v1/ai-models/';
     const method = id ? 'PUT' : 'POST';
@@ -7997,11 +8013,12 @@
     if (!testBtn || !resultDiv) return;
 
     const payload = {
+      id: document.getElementById('model-edit-id').value || '',
       model_id: document.getElementById('model-id-input').value,
       provider: document.getElementById('model-provider-input').value,
       endpoint_type: getModelEndpointType(),
       base_url: document.getElementById('model-baseurl-input').value,
-      api_key: document.getElementById('model-apikey-input').value,
+      api_key: document.getElementById('model-apikey-input').value.trim(),
     };
 
     if (!payload.model_id) {

@@ -834,9 +834,8 @@ def ai_models_api(request):
                 'provider': m.provider,
                 'endpoint_type': getattr(m, 'endpoint_type', 'openai') or 'openai',
                 'base_url': m.base_url or '',
-                'api_key': m.api_key or '',
-                # Never the secret itself, just enough for the composer to warn
-                # before a run fails with an opaque provider error.
+                # The secret itself never leaves the server. The UI only needs
+                # to know one exists.
                 'has_key': bool(m.api_key),
                 'tool_choice': getattr(m, 'tool_choice', 'any') or 'any',
                 'is_active': m.is_active,
@@ -888,7 +887,7 @@ def ai_models_api(request):
                 'endpoint_type': getattr(model_obj, 'endpoint_type', 'openai') or 'openai',
                     'endpoint_type': getattr(model_obj, 'endpoint_type', 'openai') or 'openai',
                     'base_url': model_obj.base_url or '',
-                    'api_key': model_obj.api_key or '',
+                    'has_key': bool(model_obj.api_key),
                     'is_active': model_obj.is_active,
                     'order': model_obj.order
                 }
@@ -916,7 +915,7 @@ def ai_model_detail_api(request, pk):
                 'provider': model_obj.provider,
                 'endpoint_type': getattr(model_obj, 'endpoint_type', 'openai') or 'openai',
                 'base_url': model_obj.base_url or '',
-                'api_key': model_obj.api_key or '',
+                'has_key': bool(model_obj.api_key),
                 'is_active': model_obj.is_active,
                 'order': model_obj.order
             }
@@ -952,7 +951,7 @@ def ai_model_detail_api(request, pk):
                 'endpoint_type': getattr(model_obj, 'endpoint_type', 'openai') or 'openai',
                     'endpoint_type': getattr(model_obj, 'endpoint_type', 'openai') or 'openai',
                     'base_url': model_obj.base_url or '',
-                    'api_key': model_obj.api_key or '',
+                    'has_key': bool(model_obj.api_key),
                     'is_active': model_obj.is_active,
                     'order': model_obj.order
                 }
@@ -979,6 +978,12 @@ def ai_model_test_api(request):
         provider = payload.get('provider', '9router').strip().lower()
         base_url = payload.get('base_url', '').strip() or None
         api_key = payload.get('api_key', '').strip() or None
+        if not api_key and payload.get('id'):
+            try:
+                api_key = AIModel.objects.filter(
+                    pk=int(payload.get('id'))).values_list('api_key', flat=True).first()
+            except Exception:
+                pass
 
         if not model_id:
             return JsonResponse({'status': 'error', 'message': 'Model ID is required for testing.'}, status=400)
