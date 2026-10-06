@@ -291,15 +291,23 @@ def cancel_investigation(user, session_id, inv_id):
         investigation_id=inv_id,
         status__in=["pending", "running", "in_progress", "executing"],
     ).update(status="stopped")
-    stopped = models.Investigation.objects.filter(
-        id=inv_id, session=session, status="active"
-    ).update(status="stopped")
     inv = models.Investigation.objects.filter(id=inv_id, session=session).first()
     if inv is None:
         raise MutationError("Investigation not found.")
+    previous_status = inv.status
+    # The button says Stop, so Stop is what the case records. A case that had
+    # already closed - denied, failed, superseded - still ends up reading
+    # stopped, because that is the action the operator took; the run keeps its
+    # own outcome either way, so nothing about the denial is lost.
+    stopped = models.Investigation.objects.filter(
+        id=inv_id, session=session
+    ).exclude(status="stopped").update(status="stopped")
+    inv.refresh_from_db(fields=["status"])
     return {
         "status": inv.status,
-        "stopped": bool(stopped or tasks_frozen or run_stopped),
+        "previous_status": previous_status,
+        "stopped": True,
+        "changed": bool(stopped),
         "run_stopped": bool(run_stopped),
         "tasks_frozen": tasks_frozen,
     }

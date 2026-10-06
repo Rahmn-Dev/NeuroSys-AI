@@ -3954,6 +3954,10 @@
         const finalState = String((data && data.status) || '').toLowerCase();
         if (investigations[invId] && finalState) {
           investigations[invId].status = finalState;
+          if (data && data.previous_status && data.previous_status !== finalState) {
+            // What the case was before the operator stopped it stays readable.
+            investigations[invId].stoppedFrom = data.previous_status;
+          }
           (investigations[invId].plan || []).forEach((p) => {
             const st = String(p.status || '').toLowerCase();
             if (['pending', 'running', 'in_progress', 'executing'].includes(st)) {
