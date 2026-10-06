@@ -5711,6 +5711,12 @@
                 case 'security_blocked': {
                   const _blocked = String(evt.type) === 'security_blocked';
                   updateRunStateCard(evt.run_id || `history-${msg.id || 'current'}`, evt.type);
+                  try { finalizeRunWrap(String(evt.type)); } catch (err) { /* best-effort */ }
+                  try {
+                    const _w = window.activeRunWrap
+                      || (window.lastRunBody && document.contains(window.lastRunBody) ? window.lastRunBody : null);
+                    if (_w && _w.dataset && _w.dataset.wrapId) window.paintRunWrap(_w.dataset.wrapId, String(evt.type), evt.duration || null);
+                  } catch (err) { /* best-effort */ }
                   // The saved plan events left the case with running/pending
                   // tasks; the final event decides how every still-open row
                   // ended. Without this the stopped/denied run kept a
