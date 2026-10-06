@@ -751,7 +751,7 @@
           <i class="fa-solid fa-bars" style="font-size: 16px;"></i>
         </button>
 
-        <h2 class="sre-text-strong" style="margin: 0; font-size: 16px; font-weight: 600;">NeuroSysAI SRE Workspace</h2>
+        <h2 class="sre-text-strong" style="margin: 0; font-size: 16px; font-weight: 600;">NeuroSysAI Workspace</h2>
         <span id="connection-badge"
           style="font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #1f6feb33; color: #58a6ff;">Connecting...</span>
 
@@ -1022,7 +1022,6 @@
               <span id="terminal-status-dot" style="width: 8px; height: 8px; border-radius: 50%; background: var(--warning);"></span>
               <span id="terminal-status-text">Connecting…</span>
             </button>
-            <span id="terminal-cwd-label" style="font-size: 10.5px; color: var(--text-secondary); font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
           </div>
           <div id="terminal-container" style="flex: 1; overflow: hidden;"></div>
         </div>
@@ -6377,8 +6376,6 @@
             } else if (msg.type === 'cwd') {
               if (window.currentTerminalCwd !== msg.cwd) {
                 window.currentTerminalCwd = msg.cwd;
-                const cwdLabel = document.getElementById('terminal-cwd-label');
-                if (cwdLabel) cwdLabel.textContent = msg.cwd;
                 localStorage.setItem('sre_terminal_cwd', msg.cwd);
                 if (window.workspaceFollow) {
                   const input = document.getElementById('workspace-path-input');
