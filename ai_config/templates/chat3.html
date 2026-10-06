@@ -3790,6 +3790,18 @@
       } catch (err) { /* best-effort */ }
     };
 
+    window.paintSendButton = function () {
+      const btn = document.getElementById('send-btn');
+      const input = document.getElementById('chat-input');
+      if (!btn) return;
+      const running = btn.dataset.state === 'running';
+      const empty = !input || !input.value.trim();
+      // A running agent can always be stopped; an empty box sends nothing.
+      btn.disabled = !running && empty;
+      btn.style.opacity = btn.disabled ? '0.45' : '1';
+      btn.style.cursor = btn.disabled ? 'not-allowed' : 'pointer';
+    };
+
     window.setSendButtonState = function (state) {
       const btn = document.getElementById('send-btn');
       if (!btn) return;
@@ -3802,12 +3814,27 @@
         btn.innerHTML = STOP_ICON;
       } else {
         btn.dataset.state = 'idle';
-        btn.disabled = false;
-        btn.style.opacity = '1';
         btn.style.background = 'var(--accent)';
         btn.title = 'Send';
         btn.innerHTML = SEND_ICON;
       }
+      window.paintSendButton();
+    };
+
+    // Stop a run that belongs to another chat, from its history row. The
+    // current chat is never touched: only that session's task stops.
+    window.stopOtherRun = function (sid) {
+      if (!sid) return;
+      try {
+        if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'cancel', session_id: String(sid) }));
+      } catch (err) { /* socket closing */ }
+      try {
+        if (window.runsBySession) delete window.runsBySession[String(sid)];
+        window.refreshHistoryRowState(String(sid));
+        window.renderActiveRuns();
+        window.refreshSendButton();
+        addSystemMsg('Stop requested for that chat\u2019s run.', 'circle-info');
+      } catch (err) { /* best-effort */ }
     };
 
     window.stopCurrentRun = function () {
@@ -3826,6 +3853,12 @@
     };
 
     document.addEventListener('DOMContentLoaded', () => {
+      const input = document.getElementById('chat-input');
+      if (input && !input.dataset.sendPaint) {
+        input.dataset.sendPaint = '1';
+        input.addEventListener('input', () => window.paintSendButton());
+        window.paintSendButton();
+      }
       const btn = document.getElementById('send-btn');
       if (!btn) return;
       btn.addEventListener('click', (e) => {
@@ -4040,7 +4073,8 @@
         slot.innerHTML =
           '<i class="fa-solid fa-spinner spin-anim" title="Run in progress" style="color:var(--accent); font-size:11px; flex-shrink:0;"></i>' +
           '<span style="font-size:10px; color:var(--accent); font-weight:700;">' + escapeHtml(phase) + '</span>' +
-          '<span data-run-elapsed="' + (run.startedAt || Date.now()) + '" style="font-size:10px; color:var(--text-secondary);"></span>';
+          '<span data-run-elapsed="' + (run.startedAt || Date.now()) + '" style="font-size:10px; color:var(--text-secondary);"></span>' +
+          '<button type="button" title="Stop the run in this chat" onclick="event.stopPropagation(); window.stopOtherRun(\'' + escapeHtml(String(sid)) + '\')" style="flex:none; width:20px; height:20px; border-radius:6px; border:1px solid var(--border-color); background:rgba(248,81,73,.12); color:var(--error); cursor:pointer; display:inline-flex; align-items:center; justify-content:center;"><i class="fa-solid fa-stop" style="font-size:8px; pointer-events:none;"></i></button>';
       } else if (unread && unread.ok === false) {
         slot.innerHTML = '<i class="fa-solid fa-circle-dot" title="Finished with an error while you were away" style="color:var(--error); font-size:11px; flex-shrink:0;"></i>';
       } else if (unread) {

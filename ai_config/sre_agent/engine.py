@@ -1372,38 +1372,8 @@ Output strictly the category name."""
                 # labelled, on the case, on its in-flight tasks, and as a
                 # finding, so the audit trail is complete.
                 _outcome = str(getattr(react_engine, "outcome", "") or "").lower()
-                _terminal_case = {
-                    "security_blocked": "security_blocked",
-                    "blocked": "blocked",
-                    "denied": "denied",
-                    "denied_timeout": "denied_timeout",
-                    "failed": "failed",
-                    "cancelled": "cancelled",
-                }.get(_outcome, "")
-                if inv_id and _terminal_case and not run_completed:
-                    await sync_to_async(lambda _i=inv_id, _s=_terminal_case: Investigation.objects.filter(id=_i).update(status=_s))()
-                    await sync_to_async(lambda _i=inv_id, _s=_terminal_case: InvestigationTask.objects.filter(
-                        investigation_id=_i,
-                        status__in=["pending", "running", "in_progress", "executing"]).update(status=_s))()
-                    _block_reason = ""
-                    for _ev in reversed(events_history or []):
-                        if str((_ev or {}).get("type", "")).lower() in {
-                                "security_blocked", "denied", "denied_timeout",
-                                "blocked", "error", "failed", "cancelled"}:
-                            _block_reason = str((_ev or {}).get("content", "") or "").strip()[:500]
-                            break
-                    _finding_text = (
-                        f"Stopped by security policy ({_terminal_case}): "
-                        f"{_block_reason or 'no further detail recorded.'}"
-                    )
-                    await sync_to_async(InvestigationFinding.objects.create)(
-                        investigation_id=inv_id, content=_finding_text)
-                    if artifact_mgr:
-                        import json as _fjson2
-                        await artifact_mgr.upsert_artifact(
-                            f".neurosys/sessions/{self.session_id}/investigations/{inv_id}/findings.json",
-                            _fjson2.dumps({"findings": [_finding_text]}, indent=2),
-                            action_type="finding", case_id=inv_id)
+                _terminal_case = await self._label_case_terminal(
+                    inv_id, _outcome, events_history, artifact_mgr)
                 if inv_id and run_completed:
                     await sync_to_async(lambda _i=inv_id: Investigation.objects.filter(id=_i).update(status="completed"))()
                     # The split marker is a front-end contract. It must be
@@ -1973,6 +1943,18 @@ Output strictly the category name."""
                             "timestamp": _now_ms(),
                         }))
                     await self._persist_run_history(events_history)
+                    # The case must say so too, even on this early exit: without
+                    # it a denied run left its investigation ACTIVE with a task
+                    # that reads as still running.
+                    try:
+                        _case = getattr(self, "_active_case_id", "") or ""
+                        if _case and _ending in {"denied", "denied_timeout",
+                                                  "cancelled", "security_blocked",
+                                                  "blocked", "failed"}:
+                            await self._label_case_terminal(
+                                _case, _ending, events_history, artifact_mgr)
+                    except Exception:
+                        pass
             except Exception:
                 pass
             if isinstance(exc, asyncio.CancelledError):
@@ -2125,6 +2107,52 @@ Output strictly the category name."""
                 return ChatSession.objects.create().id
 
         return await _db()
+
+    async def _label_case_terminal(self, inv_id, outcome, events_history, artifact_mgr):
+        """Label a stopped case everywhere it shows: the case, its in-flight
+        tasks, and a finding with the reason.
+
+        Returns the terminal status applied, or "" when the outcome is not a
+        stop. A normal completion is handled by the caller, never here.
+        """
+        from asgiref.sync import sync_to_async
+        from chatbot.models import Investigation, InvestigationTask, InvestigationFinding
+
+        terminal_case = {
+            "security_blocked": "security_blocked",
+            "blocked": "blocked",
+            "denied": "denied",
+            "denied_timeout": "denied_timeout",
+            "failed": "failed",
+            "cancelled": "cancelled",
+        }.get(str(outcome or "").lower(), "")
+        if not inv_id or not terminal_case:
+            return ""
+        await sync_to_async(lambda _i=inv_id, _s=terminal_case: Investigation.objects.filter(id=_i).update(status=_s))()
+        await sync_to_async(lambda _i=inv_id, _s=terminal_case: InvestigationTask.objects.filter(
+            investigation_id=_i,
+            status__in=["pending", "running", "in_progress", "executing"]).update(status=_s))()
+        block_reason = ""
+        for _ev in reversed(events_history or []):
+            if str((_ev or {}).get("type", "")).lower() in {
+                    "security_blocked", "denied", "denied_timeout",
+                    "blocked", "error", "failed", "cancelled"}:
+                block_reason = str((_ev or {}).get("content", "") or "").strip()[:500]
+                break
+        finding_text = (
+            f"Stopped by security policy ({terminal_case}): "
+            f"{block_reason or 'no further detail recorded.'}"
+        )
+        await sync_to_async(InvestigationFinding.objects.create)(
+            investigation_id=inv_id, content=finding_text)
+        if artifact_mgr:
+            import json as _fjson2
+            await artifact_mgr.upsert_artifact(
+                f".neurosys/sessions/{self.session_id}/investigations/{inv_id}/findings.json",
+                _fjson2.dumps({"findings": [finding_text]}, indent=2),
+                action_type="finding", case_id=inv_id)
+        return terminal_case
+
 
     async def _persist_run_history(self, events_history: list, final: bool = True):
         """Attach the run timeline to the terminal AI message.
