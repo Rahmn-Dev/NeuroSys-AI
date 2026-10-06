@@ -3879,6 +3879,11 @@
       window.stoppingRuns = window.stoppingRuns || {};
       window.stoppingRuns[String(sid)] = Date.now();
       window.refreshHistoryRowState(String(sid));
+      // Settle immediately instead of waiting for the backstop poll: one direct
+      // read of the server truth right after the stop.
+      try {
+        Promise.resolve().then(() => window.refreshRunPresence());
+      } catch (err) { /* best-effort */ }
       setTimeout(() => window.refreshInvestigations(), 1500);
       try {
         if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'cancel', session_id: String(sid) }));
@@ -4028,6 +4033,9 @@
       window.stoppingRuns = window.stoppingRuns || {};
       window.stoppingRuns[String(sid)] = Date.now();
       window.refreshHistoryRowState(String(sid));
+      try {
+        Promise.resolve().then(() => window.refreshRunPresence());
+      } catch (err) { /* best-effort */ }
       document.querySelectorAll('.sre-run-actions').forEach((block) => {
         if (String(block.dataset.sessionId) === String(sid)) {
           block.innerHTML = '<span style="font-size:11px; color:var(--text-secondary);">Cancelled.</span>';
