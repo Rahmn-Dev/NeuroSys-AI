@@ -682,7 +682,7 @@ class SREAgentEngine:
         for expired_pk in expired_ids:
             # Too old to resume: close it out so it can never be picked again.
             await sync_to_async(
-                lambda _pk=expired_pk: Investigation.objects.filter(pk=_pk).update(status="expired")
+                lambda _pk=expired_pk: Investigation.objects.filter(pk=_pk).update(status="stopped")
             )()
         if refusal:
             yield evt_error(refusal)
@@ -738,7 +738,7 @@ class SREAgentEngine:
                 from chatbot.models import Investigation as _Inv
                 await sync_to_async(
                     lambda: _Inv.objects.filter(session_id=db_session_id, status="active")
-                    .update(status="superseded")
+                    .update(status="stopped")
                 )()
             except Exception:
                 pass

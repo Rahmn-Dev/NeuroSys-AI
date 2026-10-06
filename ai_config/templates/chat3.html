@@ -4669,7 +4669,11 @@
       invKeys.forEach((key) => {
         const inv = investigations[key] || {};
         const isOpen = inv.id === activeInvestigationId;
-        const status = String(inv.status || 'pending').toLowerCase();
+        const rawStatus = String(inv.status || 'pending').toLowerCase();
+        // A case that was superseded or expired never reached an outcome either;
+        // what the operator needs to see is that it is stopped. Historical rows
+        // written with those words fold into the same red stop badge.
+        const status = ['superseded', 'expired', 'cancelled'].includes(rawStatus) ? 'stopped' : rawStatus;
         const tone = sreInvTone(status);
         const plan = Array.isArray(inv.plan) ? inv.plan : [];
         const findings = Array.isArray(inv.findings) ? inv.findings : [];
