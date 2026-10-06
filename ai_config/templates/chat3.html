@@ -3943,7 +3943,9 @@
       try {
         const data = await window.wsCall('investigation.cancel',
           { session_id: sid, inv_id: invId });
-        if (data && investigations[invId]) {
+        try { await window.refreshRunPresence(); } catch (err) { /* best-effort */ }
+        window.refreshHistoryRowState(String(sid));
+        if (data && data.status === 'cancelled' && investigations[invId]) {
           investigations[invId].status = 'cancelled';
           (investigations[invId].plan || []).forEach((p) => {
             const st = String(p.status || '').toLowerCase();
