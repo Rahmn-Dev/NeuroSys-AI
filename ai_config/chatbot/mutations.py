@@ -258,3 +258,27 @@ def test_ai_model(user, data):
         "reply": str(reply)[:100],
         "available_models": fetched_models,
     }
+
+
+def cancel_investigation(user, session_id, inv_id):
+    require_user_id(user)
+    from sre_agent.canonical_lifecycle import cancel_run_now
+
+    try:
+        session = models.ChatSession.objects.get(pk=session_id)
+    except (models.ChatSession.DoesNotExist, ValueError, TypeError):
+        raise MutationError("Chat session not found.")
+    try:
+        cancel_run_now(str(session.pk), str(user.pk))
+    except Exception:
+        pass
+    updated = models.Investigation.objects.filter(
+        id=inv_id, session=session, status="active"
+    ).update(status="cancelled")
+    if not updated:
+        return {"status": "unchanged"}
+    models.InvestigationTask.objects.filter(
+        investigation_id=inv_id,
+        status__in=["pending", "running", "in_progress", "executing"],
+    ).update(status="cancelled")
+    return {"status": "cancelled"}
