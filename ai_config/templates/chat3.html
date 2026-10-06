@@ -5122,16 +5122,16 @@
               }
             });
           }
-          // If a card was opened for this turn but nothing landed in it, drop
-          // it. An empty run card must never be presented as if there were
-          // something to look at.
+          // An empty card is never deleted: deleting it silently removed real
+          // runs, and a card that truthfully says it recorded nothing is far
+          // more useful than a missing one.
           if (window.historyReplayWrap && document.contains(window.historyReplayWrap)
               && window.historyReplayWrap.childElementCount === 0) {
-            window.removeRunCard(window.historyReplayWrap);
-            const _map = window.historyRunWraps || {};
-            Object.keys(_map).forEach((runId) => {
-              if (_map[runId] === window.historyReplayWrap.dataset.wrapId) delete _map[runId];
-            });
+            const _note = document.createElement('div');
+            _note.className = 'sre-run-empty-note';
+            _note.style.cssText = 'padding: 10px 12px; font-size: 12px; color: var(--text-secondary); font-style: italic;';
+            _note.textContent = 'This turn recorded no agent steps.';
+            window.historyReplayWrap.appendChild(_note);
           }
           window.historyReplayWrap = null;
           window.activeRunWrap = null;
