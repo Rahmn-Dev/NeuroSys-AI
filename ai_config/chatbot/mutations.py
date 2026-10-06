@@ -90,9 +90,11 @@ def delete_message(user, message_id):
         raise MutationError("Message not found.")
     session = msg.session
     deleted = 0
-    if str(msg.sender).lower() == "user":
-        # A private prompt carries its reply with it: delete everything the
-        # agent answered before the next human turn.
+    is_user = str(msg.sender).lower() == "user"
+
+    # Gather every message we are about to remove so the Investigation tied
+    # to this turn(s) can be deleted with it.
+    if is_user:
         later_user = models.ChatMessage.objects.filter(
             session=session, created_at__gt=msg.created_at, sender="user"
         ).order_by("created_at").first()
@@ -101,11 +103,44 @@ def delete_message(user, message_id):
         )
         if later_user is not None:
             qs = qs.filter(created_at__lt=later_user.created_at)
+        target_messages = list(qs.values_list('id', 'metadata'))
+        target_messages.append((msg.id, msg.metadata))
         count, _ = qs.delete()
         deleted += count
+    else:
+        target_messages = [(msg.id, msg.metadata)]
+
+    # Collect investigation IDs from the messages' metadata events.
+    inv_ids = set()
+    for _, meta in target_messages:
+        if not isinstance(meta, dict):
+            continue
+        inv_id = str(meta.get('case_id') or '').strip()
+        if inv_id:
+            inv_ids.add(inv_id)
+        for ev in meta.get('events', []) or []:
+            if isinstance(ev, dict):
+                case_id = str(ev.get('case_id') or '').strip()
+                if case_id:
+                    inv_ids.add(case_id)
+
+    # Delete the ChatMessage row(s) themselves.
     msg.delete()
     deleted += 1
-    return {"deleted": deleted}
+
+    # Delete each investigation with its tasks / findings / artifacts and
+    # any AgentRun that references its id in metadata.
+    for inv_id in inv_ids:
+        try:
+            inv = models.Investigation.objects.get(id=inv_id, session=session)
+            inv.tasks.all().delete()
+            inv.findings.all().delete()
+            models.AgentArtifact.objects.filter(session_id=str(session.id), case_id=inv_id).delete()
+            inv.delete()
+        except models.Investigation.DoesNotExist:
+            pass
+
+    return {"deleted": deleted, "investigations_deleted": len(inv_ids)}
 
 
 def bulk_delete_chats(user, session_ids):
