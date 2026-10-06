@@ -9,8 +9,10 @@ function extract(name) {
 }
 const elements={};
 const ctx={document:{getElementById(id){return elements[id] ||= {style:{},hidden:true,disabled:false};}},
- window:{sreAgentWs:{readyState:1, send(x){ctx.sent.push(JSON.parse(x));}}},WebSocket:{OPEN:1},
- sent:[],steps:[],stepTimers:{running:{}},stopStep(id){delete ctx.stepTimers[id];},
+ window:{sreAgentWs:{readyState:1, send(x){ctx.sent.push(JSON.parse(x));}},setRunPhase(){},setSendButtonState(state){ctx.sendBtn.disabled=state==='running';},refreshInvestigations(){},markRunFinished(){},closeTurn(){},paintBlockedBubble(){},quarantineUserBubble(){}},WebSocket:{OPEN:1},
+ sent:[],steps:[],sessionId:'',stepTimers:{running:{}},stopStep(id){delete ctx.stepTimers[id];},
+ stopAllAgentStepTimers(){ctx.stepTimers={};},
+ updateRunStateCard(){},finalizeRunWrap(){},addAIMessage(){return {};},
  setInterval(){return 1;},clearInterval(){},Date,Number,JSON,Math,
  addAgentStep(...x){ctx.steps.push(x);},addSystemMsg(){},scrollToBottom(){},escapeHtml:x=>x,
  isProcessing:true,sendBtn:{disabled:true,style:{}},pendingApproval:null,approvalTimer:null,
@@ -36,4 +38,27 @@ assert.match(html, /if \(!isProcessing\) await loadSession\(sessionId\);/);
 passed++;
 assert.match(html, /workerTerminal[\s\S]*fa-circle-check/);
 passed++;
+const submitStart = html.indexOf("form.addEventListener('submit'");
+const submitEnd = html.indexOf('// Auto-resize textarea', submitStart);
+const submitHandler = html.slice(submitStart, submitEnd);
+assert.match(submitHandler, /window\.openTurn\(\)/);
+assert.match(submitHandler, /window\.openTurn\(\)[\s\S]*startRunWrap\(\)/);
+passed++;
+const directStart = html.indexOf("case 'direct_chat':");
+const directEnd = html.indexOf("case 'exploring':", directStart);
+const directHandler = html.slice(directStart, directEnd);
+assert.doesNotMatch(directHandler, /startRunWrap\(|ensureRunWrap\(|paintRunWrap\(/);
+assert.doesNotMatch(directHandler, /closeTurn\(\)/);
+const exploringEnd = html.indexOf("case 'discovering_tools':", directEnd);
+assert.match(html.slice(directEnd, exploringEnd), /startRunWrap\(\)|addAgentStep\(/);
+const completedStart = html.indexOf("case 'completed':", directEnd);
+const completedEnd = html.indexOf("case 'error':", completedStart);
+const completedHandler = html.slice(completedStart, completedEnd);
+assert.match(completedHandler, /completedRunId = data\.run_id \|\| \(directTurn \? currentDirectRunId/);
+assert.match(completedHandler, /updateRunStateCard\(completedRunId, 'completed'/);
+assert.match(completedHandler, /attachRunAudit/);
+const thinkingStart = html.indexOf("case 'thinking':", directEnd);
+const thinkingEnd = html.indexOf("case 'hypothesis':", thinkingStart);
+assert.match(html.slice(thinkingStart, thinkingEnd), /currentTurnWasDirect\) updateRunStateCard\(currentDirectRunId, 'thinking'\)/);
+passed += 5;
 console.log(JSON.stringify({passed,failed:0,scope:'actual template handlers; deterministic DOM stubs, not browser screenshots'}));

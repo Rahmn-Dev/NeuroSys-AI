@@ -1667,11 +1667,6 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
         ) if permission_mode == "full_access" else []
         approval_id = None
         print(f"[CONSUMER DEBUG] WS received model='{model_name}', mode='{mode}', session_id='{session_id}'", flush=True)
-        if permission_mode == "full_access":
-            await self.send(text_data=json.dumps({
-                "type": "status",
-                "content": "Full Access mode: server-side operational scope is enforced; unscoped and hard-blocked actions still require/receive denial."
-            }))
 
         from sre_agent.approval_lifecycle import (ApprovalLifecycle, ApprovalStopped,
             active_lifecycle, register_session_lifecycle, unregister_session_lifecycle)

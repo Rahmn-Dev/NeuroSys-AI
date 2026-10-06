@@ -42,6 +42,8 @@ ROUTER_SYSTEM_PROMPT = (
     "operator asks to continue, retry, verify or resume previous work, when "
     "they ask where something is or what the current time, host, directory or "
     "user is, or when you are unsure.\n\n"
+    "Casual wording and short length do not change this rule: requests like "
+    "'cek nginx dong', 'is nginx running?', or 'check disk' are agent requests.\n\n"
     "When a message mixes both (small talk plus a real task), choose agent. "
     "Never choose direct for anything that reads or mutates state.\n\n"
     "Thread tracking (same call, no extra cost): compare the message against "
@@ -112,9 +114,6 @@ def parse_route(raw: str) -> tuple[str, str, str, bool]:
                 return route, reason, topic, switched
         except Exception:
             pass
-    lowered = text.lower()
-    if "direct" in lowered:
-        return "direct", "router keyword", "", False
     return "agent", "unparsable router response", "", False
 
 
@@ -169,8 +168,9 @@ DIRECT_CHAT_SYSTEM_PROMPT = (
     "human tone of a teammate. Never invent findings that are not in the "
     "conversation. Answer only the latest message: if the operator switched "
     "topic, follow the new topic and never resume earlier work unless they "
-    "ask for it. If the operator actually needs something checked or changed, "
-    "say what you would need and let them send the real request."
+    "ask for it. Never emit pseudo tool calls, function-call markup, or commands "
+    "as if they had been executed. If the operator actually needs something "
+    "checked or changed, say what you would need and let them send the real request."
 )
 
 

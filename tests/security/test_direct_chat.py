@@ -33,11 +33,7 @@ def test_router_verdict_carries_the_thread_fields():
     assert (route, topic, switched) == ("agent", "cek disk", True)
 
 
-def test_router_verdict_from_plain_keyword():
-    assert parse_route("direct")[0] == "direct"
-
-
-@pytest.mark.parametrize("raw", ["", "   ", "garbage", '{"route":"weird"}', "{}"])
+@pytest.mark.parametrize("raw", ["", "   ", "garbage", "direct", '{"route":"weird"}', "{}"])
 def test_unusable_router_output_falls_back_to_the_agent(raw):
     route, reason, topic, switched = parse_route(raw)
     assert route == "agent"
@@ -261,6 +257,10 @@ def test_run_direct_chat_imports_every_helper_it_calls():
     source = inspect.getsource(SREAgentEngine._run_direct_chat)
     for helper in ("direct_chat_prompt", "relevant_prior_turns"):
         assert f"import {helper}" in source, f"{helper} is used but never imported"
+    assert source.index("yield evt_direct_chat") < source.index("yield evt_thinking") < source.index("llm.astream")
+    assert "evt_planning(" not in source
+    assert "evt_discovering(" not in source
+    assert "evt_task_plan(" not in source
 
 
 def test_conversation_branch_imports_its_domain_clamp():
@@ -269,6 +269,15 @@ def test_conversation_branch_imports_its_domain_clamp():
     # the router call lives in a tuple import, so match the module import
     assert "from .direct_chat import" in source
     assert "route_turn(" in source
+    assert "len(simple) <= 20" not in source
+
+
+def test_router_prompt_keeps_short_operational_requests_on_the_agent_path():
+    from sre_agent.direct_chat import ROUTER_SYSTEM_PROMPT
+
+    assert "'cek nginx dong'" in ROUTER_SYSTEM_PROMPT
+    assert "short length do not change this rule" in ROUTER_SYSTEM_PROMPT
+    assert "pseudo tool calls" in direct_chat_prompt()
 
 
 def test_saved_message_notifications_follow_the_typed_agent_event_contract():
@@ -280,6 +289,16 @@ def test_saved_message_notifications_follow_the_typed_agent_event_contract():
 
     source = inspect.getsource(SREAgentEngine)
     assert 'yield {"type": "message_saved"' not in source
+
+
+def test_verified_graph_report_survives_noncritical_finalization_exception():
+    source = inspect.getsource(SREAgentEngine._run_internal)
+    verified_branch = source.index("if run_completed and final_message:")
+    failure_branch = source.index("else:", verified_branch)
+    verified_handling = source[verified_branch:failure_branch]
+    assert "terminal_failure = True" not in verified_handling
+    assert 'final_message = ""' not in verified_handling
+    assert "yield evt_error" not in verified_handling
 
 
 @pytest.mark.asyncio

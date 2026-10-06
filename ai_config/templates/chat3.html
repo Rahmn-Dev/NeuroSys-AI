@@ -475,27 +475,9 @@
     display: none !important;
   }
 
-  @keyframes neuro-orb-rotate {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-
-  @keyframes neuro-orb-pulse {
-    0%, 100% { opacity: 0.72; }
-    50% { opacity: 1; }
-  }
-
   /* Phase label in the Agent Run header: a shimmer sweep over the word so the
      current agent phase (observing / exploring / planning / ...) reads as
      live instead of a static "running" pill. */
-  /* Light mode: white dots need a dark disc, the same way the dark theme uses
-     a grey one. The orb itself stays white so it reads identically in both. */
-  body.active-light-mode [data-orb-only="1"] {
-    background: #11161d !important;
-    border-color: rgba(255, 255, 255, 0.18) !important;
-    box-shadow: 0 0 0 1px rgba(9, 105, 218, 0.18), 0 2px 8px rgba(9, 105, 218, 0.22) !important;
-  }
-
   /* The status dot keeps its meaning on a light surface. */
   body.active-light-mode .sre-agent-dot {
     background: #6e7781;
@@ -1524,6 +1506,8 @@
     let ws = null;
     let sessionId = null;
     let currentAIMsg = null;
+    let currentTurnWasDirect = false;
+    let currentDirectRunId = '';
     let isProcessing = false;
     let pendingApproval = null;
     let approvalTimer = null;
@@ -1839,8 +1823,7 @@
               _inv.status = data.status === 'error' ? 'failed' : data.status;
               renderInvestigationTimeline();
             }
-            // Any terminal state brings the bot avatar back.
-            window.setProgressOrb('done');
+            window.setRunPhase('done');
           } else if (!window.isLoadingHistory) {
             var phase = {
               starting: ['exploring', 'starting'],
@@ -1854,13 +1837,13 @@
               running: ['working', 'executing'],
               awaiting_approval: ['listening', 'awaiting approval'],
             }[data.status] || ['working', data.status || 'executing'];
-            window.setProgressOrb(phase[0], phase[1]);
+            window.setRunPhase(phase[0], phase[1]);
           }
           break;
 
         case 'verifying':
           addAgentStep('Verifying', data.content || 'Checking postconditions...', '#79c0ff', 'shield-check');
-          window.setProgressOrb('thinking', 'verifying');
+          window.setRunPhase('thinking', 'verifying');
           break;
 
         case 'provider_fallback':
@@ -1919,23 +1902,13 @@
           break;
 
         case 'direct_chat':
-          // Plain conversation: no tool ran, but the turn still belongs to a
-          // run. The card is marked completed and stays in place, and the
-          // container is deliberately kept live so trailing run-state events
-          // land inside the card instead of loose at the bottom.
-          window.markStreaming(false);
-          window.closeTurn();
-          if (window.activeRunWrap) {
-            paintRunWrap(window.activeRunWrap.dataset.wrapId, 'answered');
-            window.activeRunOrb = null;
-            // A plain answer ran no chain, so there is nothing to open: the
-            // pill stays hidden instead of claiming "completed".
-            const _wrap = document.getElementById(window.activeRunWrap.dataset.wrapId);
-            const _bubble = _wrap && _wrap.dataset.bubbleId && document.getElementById(_wrap.dataset.bubbleId);
-            const _toggle = _bubble && _bubble.querySelector('.sre-run-toggle');
-            if (_toggle) _toggle.classList.add('sre-hidden');
+          // Direct chat has a lightweight run trace (Thinking only), but no
+          // tool-discovery or planning phases. The following thinking event
+          // creates the card before the answer starts streaming.
+          currentTurnWasDirect = true;
+          if (!currentDirectRunId) {
+            currentDirectRunId = 'direct-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
           }
-          setBeamRunning(false);
           break;
 
         case 'exploring':
@@ -1943,7 +1916,7 @@
           // without a fresh submit), open one so steps stay grouped.
           if (!window.isLoadingHistory && !window.activeRunWrap) startRunWrap();
           addAgentStep('Exploring', data.content, 'var(--accent)', 'search');
-          window.setProgressOrb('exploring');
+          window.setRunPhase('exploring');
           break;
 
         case 'discovering_tools':
@@ -1957,13 +1930,13 @@
             toolsHtml += '</div>';
           }
           addAgentStep('Discovering Tools', toolsHtml, 'var(--purple)', 'wrench');
-          window.setProgressOrb('search');
+          window.setRunPhase('search');
           break;
 
         case 'planning':
           window.ensureRunWrap();
           addAgentStep('Planning', data.content, '#dac654', 'list-todo');
-          window.setProgressOrb('planning');
+          window.setRunPhase('planning');
           break;
 
         case 'thinking':
@@ -1977,8 +1950,9 @@
             }
           }
           window.ensureRunWrap();
+          if (currentTurnWasDirect) updateRunStateCard(currentDirectRunId, 'thinking');
           addAgentStep('Thinking', data.content, '#ff69b4', 'brain');
-          window.setProgressOrb('thinking');
+          window.setRunPhase('thinking');
           break;
 
         case 'hypothesis':
@@ -1997,7 +1971,7 @@
         case 'tool_start':
           window.ensureRunWrap();
           addAgentStep('Executing', window.sreToolChip(escapeHtml(data.tool || 'tool'), data.command ? escapeHtml(data.command) : ''), 'var(--warning)', 'zap', data.step_id, false);
-          window.setProgressOrb('working');
+          window.setRunPhase('working');
           break;
 
         case 'tool_end':
@@ -2010,7 +1984,7 @@
 
         case 'approval_required':
           addAgentStep('Approval Required', data.content, 'var(--warning)', 'lock');
-          window.setProgressOrb('listening');
+          window.setRunPhase('listening');
           showApprovalCard(data);
           break;
 
@@ -2125,7 +2099,7 @@
           }
           if (!window.isLoadingHistory && activeInvestigationId && investigations[activeInvestigationId]) {
             investigations[activeInvestigationId].status = 'completed';
-            window.setProgressOrb('done');
+            window.setRunPhase('done');
           }
           const invId = data.investigation_id || (data.metadata && data.metadata.investigation_id);
           if (invId) {
@@ -2207,9 +2181,8 @@
           if (!currentAIMsg) {
             currentAIMsg = addAIMessage('');
           }
-          // Reply is streaming: the bubble keeps the bot avatar, the header
-          // orb steps aside until the next agent phase.
-          window.setProgressOrb('composing');
+          // Reply is streaming; keep the phase label in sync.
+          window.setRunPhase('composing');
 
           let rawData = data.content;
           if (typeof rawData !== 'string') {
@@ -2245,14 +2218,16 @@
 
 
         case 'completed':
+          const directTurn = currentTurnWasDirect;
+          const completedRunId = data.run_id || (directTurn ? currentDirectRunId : '');
           window.agentCompletedRuns = window.agentCompletedRuns || new Set();
-          if (data.run_id && window.agentCompletedRuns.has(data.run_id)) {
+          if (completedRunId && window.agentCompletedRuns.has(completedRunId)) {
             window.stopAllStreaming();
             window.closeTurn();
             window.setSendButtonState('idle');
             break;
           }
-          if (data.run_id) window.agentCompletedRuns.add(data.run_id);
+          if (completedRunId) window.agentCompletedRuns.add(completedRunId);
           window.markRunFinished(window.liveRunSessionId || sessionId, true);
           window.markStreaming(false);
           window.stopAllStreaming();
@@ -2272,11 +2247,11 @@
               (data.duration != null) ? data.duration
                 : ((new Date() - (window.sessionStartTime || new Date())) / 1000));
           }
-          updateRunStateCard(data.run_id, 'completed', data.duration);
+          updateRunStateCard(completedRunId, 'completed', data.duration);
           finalizeRunWrap('completed', data.duration);
-          if (activeInvestigationId && investigations[activeInvestigationId]) {
+          if (!directTurn && activeInvestigationId && investigations[activeInvestigationId]) {
             investigations[activeInvestigationId].status = 'completed';
-            window.setProgressOrb('done');
+            window.setRunPhase('done');
             if (sessionId) {
               loadHistory();
             }
@@ -2305,17 +2280,20 @@
           window.normalizeRunCards();
 
           currentAIMsg = null;
+          currentTurnWasDirect = false;
+          currentDirectRunId = '';
           window.sessionStartTime = null;
           isProcessing = false;
           window.setSendButtonState('idle');
           break;
 
         case 'error':
+          const failedRunId = data.run_id || (currentTurnWasDirect ? currentDirectRunId : '');
           window.markRunFinished(window.liveRunSessionId || sessionId, false);
           window.markStreaming(false);
           window.setAgentDotState('idle');
           stopAllAgentStepTimers();
-          updateRunStateCard(data.run_id, 'failed');
+          updateRunStateCard(failedRunId, 'failed');
           finalizeRunWrap('failed');
           addAgentStep('Error', data.content, 'var(--error)', 'x-circle', null, true);
           {
@@ -2330,6 +2308,8 @@
           window.closeTurn();
           window.setSendButtonState('idle');
           currentAIMsg = null;
+          currentTurnWasDirect = false;
+          currentDirectRunId = '';
           break;
       }
 
@@ -2629,140 +2609,6 @@
       </svg>`;
     };
 
-    // --- Thinking Orb: a particle sphere (dots on a fibonacci sphere) that
-    // spins and twinkles while the agent works. Front and back hemispheres
-    // counter-rotate so the orb reads as a woven ball of light instead of a
-    // flat spinning disc. State changes the dot count, radius, spin speed and
-    // tint; 'thinking' swaps the dots for a striped globe lattice.
-    window.activeProgressState = null;
-
-    // White dots on every state: the phase reads from motion and structure,
-    // not hue, which is what keeps the orb visible on a dark surface.
-    window.orbStates = {
-      exploring: { count: 78, r: 19, spin: 7.0, tint: '#ffffff', dot: 1.35 },
-      search:    { count: 62, r: 18, spin: 5.4, tint: '#ffffff', dot: 1.3, ring: 20 },
-      planning:  { count: 44, r: 16, spin: 9.5, tint: '#ffffff', dot: 1.4, ring: 14 },
-      thinking:  { count: 90, r: 20, spin: 12.0, tint: '#ffffff', dot: 1.1, globe: true },
-      working:   { count: 72, r: 19, spin: 3.8, tint: '#ffffff', dot: 1.35 },
-      listening: { count: 54, r: 13, spin: 8.0, tint: '#ffffff', dot: 1.3 },
-      composing: { count: 64, r: 21, spin: 6.0, tint: '#ffffff', dot: 1.3, ring: 26 },
-    };
-
-    window.orbSpherePoints = function (count, radius) {
-      var pts = [];
-      var golden = Math.PI * (3 - Math.sqrt(5));
-      for (var i = 0; i < count; i++) {
-        var y = count === 1 ? 0 : 1 - (i / (count - 1)) * 2;
-        var r = Math.sqrt(Math.max(0, 1 - y * y));
-        var th = golden * i;
-        pts.push({ x: Math.cos(th) * r * radius, y: y * radius, z: Math.sin(th) * r });
-      }
-      return pts;
-    };
-
-    window.orbDot = function (p, i, cfg) {
-      var depth = (p.z + 1) / 2;
-      var rr = (cfg.dot * (0.45 + 0.6 * depth)).toFixed(2);
-      var op = (0.18 + 0.72 * depth).toFixed(2);
-      var dur = (1.5 + (i % 7) * 0.24).toFixed(2);
-      var off = -((i % 13) * 0.19).toFixed(2);
-      return '<circle cx="' + p.x.toFixed(2) + '" cy="' + p.y.toFixed(2) + '" r="' + rr +
-        '" fill="' + cfg.tint + '" opacity="' + op + '">' +
-        '<animate attributeName="opacity" values="' + op + ';0.12;' + op + '" dur="' + dur + 's" begin="' + off + 's" repeatCount="indefinite"/>' +
-        '<animate attributeName="r" values="' + rr + ';' + (cfg.dot * 1.5).toFixed(2) + ';' + rr + '" dur="' + dur + 's" begin="' + off + 's" repeatCount="indefinite"/>' +
-        '</circle>';
-    };
-
-    window.orbRingDots = function (count, radius, cfg, i) {
-      var out = '';
-      for (var k = 0; k < count; k++) {
-        var a = (k / count) * Math.PI * 2;
-        var rr = (cfg.dot * 0.85).toFixed(2);
-        var dur = (2 + (k % 5) * 0.3).toFixed(2);
-        out += '<circle cx="' + (Math.cos(a) * radius).toFixed(2) + '" cy="' + (Math.sin(a) * radius * 0.92).toFixed(2) +
-          '" r="' + rr + '" fill="' + cfg.tint + '" opacity="0.7">' +
-          '<animate attributeName="opacity" values="0.7;0.15;0.7" dur="' + dur + 's" begin="-' + (k * 0.16).toFixed(2) + 's" repeatCount="indefinite"/>' +
-          '</circle>';
-      }
-      return out;
-    };
-
-    window.orbGlobe = function (cfg) {
-      var R = cfg.r;
-      var out = '<g fill="none" stroke="' + cfg.tint + '" stroke-width="0.85">';
-      for (var k = -3; k <= 3; k++) {
-        var y = (k / 3.4) * R;
-        var rx = Math.sqrt(Math.max(0, R * R - y * y));
-        var op = (0.85 - Math.abs(k) * 0.08).toFixed(2);
-        out += '<ellipse cx="0" cy="' + y.toFixed(2) + '" rx="' + rx.toFixed(2) + '" ry="' + (rx * 0.16).toFixed(2) + '" opacity="' + op + '"/>';
-      }
-      var arcs = [1, 0.72, 0.42];
-      arcs.forEach(function (f, idx) {
-        out += '<ellipse cx="0" cy="0" rx="' + (R * 0.98).toFixed(2) + '" ry="' + (R * 0.98 * f).toFixed(2) +
-          '" opacity="' + (0.75 - idx * 0.12).toFixed(2) + '">' +
-          '<animateTransform attributeName="transform" type="rotate" values="0 0 0;360 0 0" dur="' + (cfg.spin * (1 + idx * 0.35)).toFixed(1) + 's" repeatCount="indefinite"/>' +
-          '</ellipse>';
-      });
-      out += '</g>';
-      return out;
-    };
-
-    // In light mode the white glow is invisible against the dark disc, so the
-    // halo colour flips with the theme.
-    window.orbGlowStyle = function () {
-      return document.body.classList.contains('active-light-mode')
-        ? 'filter:drop-shadow(0 0 2px rgba(120, 200, 255, 0.85));'
-        : 'filter:drop-shadow(0 0 3px rgba(255,255,255,0.45));';
-    };
-
-    window.neuroOrbAvatar = function (state, size) {
-      var s = size || 42;
-      var cfg = window.orbStates[state] || window.orbStates.thinking;
-      var pts = window.orbSpherePoints(cfg.count, cfg.r);
-      var front = '', back = '';
-      pts.forEach(function (p, i) {
-        (p.z >= 0 ? front += window.orbDot(p, i, cfg) : back += window.orbDot(p, i + 3, cfg));
-      });
-
-      var body;
-      if (cfg.globe) {
-        body = window.orbGlobe(cfg);
-      } else {
-        body =
-          '<g><animateTransform attributeName="transform" type="rotate" values="0 0 0;360 0 0" dur="' + cfg.spin.toFixed(1) + 's" repeatCount="indefinite"/>' + front + '</g>' +
-          '<g><animateTransform attributeName="transform" type="rotate" values="0 0 0;-360 0 0" dur="' + (cfg.spin * 1.45).toFixed(1) + 's" repeatCount="indefinite"/>' + back + '</g>';
-        if (cfg.ring) {
-          body += '<g opacity="0.8"><animateTransform attributeName="transform" type="rotate" values="0 0 0;-360 0 0" dur="' + (cfg.spin * 2.1).toFixed(1) + 's" repeatCount="indefinite"/>' +
-            window.orbRingDots(cfg.ring, cfg.r + 7, cfg) + '</g>';
-        }
-      }
-
-      return '<svg width="' + s + '" height="' + s + '" viewBox="-32 -32 64 64" aria-hidden="true" ' +
-        'style="display:block; ' + window.orbGlowStyle() + '">' + body + '</svg>';
-    };
-
-    // While the run is in flight the orb belongs to the Agent Run header. Only
-    // once the reply actually starts streaming does the avatar move down into
-    // the message bubble (orbInRun flips to false on the first chunk).
-    window.orbInRun = false;
-
-    window.applyOrbTo = function (box, state) {
-      if (!box) return;
-      var done = !state || state === 'done';
-      if (box.dataset.orbOnly === '1') {
-        box.style.display = done ? 'none' : '';
-        if (done) return;
-      } else {
-        if (!box.dataset.botHtml) box.dataset.botHtml = box.innerHTML;
-        if (done) {
-          box.innerHTML = box.dataset.botHtml;
-          return;
-        }
-      }
-      var orbSize = parseInt(box.dataset.orbSize || '42', 10);
-      box.innerHTML = window.neuroOrbAvatar(state, orbSize);
-    };
-
     // A phase event must never be dropped because the run wrap is missing
     // (resumed socket, run started before the wrap existed, ...).
     // Where does a step of the current turn belong? Answered in one place so a
@@ -2822,7 +2668,7 @@
       return window.activeRunWrap;
     };
 
-    window.orbPhaseLabels = {
+    window.runPhaseLabels = {
       starting: 'starting',
       resuming: 'resuming',
       exploring: 'observing',
@@ -2841,26 +2687,13 @@
     window.setRunPhaseLabel = function (state, label) {
       var wrapId = window.activeRunWrap ? window.activeRunWrap.dataset.wrapId : null;
       if (!wrapId) return;
-      var text = label || window.orbPhaseLabels[state];
+      var text = label || window.runPhaseLabels[state];
       if (!text) return;
       window.paintBubblePill(wrapId, text, { spinner: true, working: true });
     };
 
-    // Re-render the live orb after a theme switch so the glow matches.
-    window.observeThemeForOrb = function () {
-      if (window._orbThemeObserver || typeof MutationObserver === 'undefined') return;
-      window._orbThemeObserver = new MutationObserver(() => {
-        const slot = window.activeRunOrb;
-        if (!slot || !window.activeProgressState || window.activeProgressState === 'done') return;
-        slot.innerHTML = window.neuroOrbAvatar(window.activeProgressState,
-          parseInt(slot.dataset.orbSize || '46', 10));
-      });
-      window._orbThemeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
-    };
-
     // The dot mirrors the run state: informative, and it never washes out text.
     window.setAgentDotState = function (state) {
-      window.observeThemeForOrb();
       document.querySelectorAll('.sre-agent-dot').forEach((dot) => {
         dot.dataset.state = state;
         dot.title = state === 'running' ? 'Agent working' : (state === 'done' ? 'Run finished' : 'Agent idle');
@@ -3007,25 +2840,14 @@
       }
     };
 
-    window.setProgressOrb = function (state, label) {
-      window.activeProgressState = state;
-      if (state !== 'done') window.setAgentDotState('running');
-      // History replay must never mutate stored avatars.
-      if (window.isLoadingHistory) return;
-      window.setRunPhaseLabel(state, label);
-      var slot = window.activeRunOrb;
-      if (!slot) return;
-      // The Agent Run header owns the orb for the whole run. While the reply is
-      // streaming the bubble shows the bot avatar instead, so the header orb
-      // steps aside; the next agent phase brings it back.
-      var composing = state === 'composing';
-      window.orbInRun = !composing;
-      if (composing) {
-        slot.style.display = 'none';
+    window.setRunPhase = function (state, label) {
+      if (state === 'done') {
+        window.setAgentDotState('done');
         return;
       }
-      slot.style.display = '';
-      window.applyOrbTo(slot, state);
+      if (window.isLoadingHistory) return;
+      window.setAgentDotState('running');
+      window.setRunPhaseLabel(state, label);
     };
 
     // The run card is the trace of the work that produced this answer, so it
@@ -3177,7 +2999,7 @@
       // One card per turn: header with the status pill, the chain of thought,
       // then the answer. The pill opens the chain.
       div.innerHTML = `
-            <div data-avatar="agent" data-orb-size="42" style="flex-shrink:0; width:56px; height:56px; border-radius:50%; background:rgba(31, 111, 235, 0.12); border:1px solid var(--border-color); display:flex; align-items:center; justify-content:center; box-shadow: 0 4px 12px rgba(0,0,0,0.08); flex-wrap: nowrap; overflow: hidden;">
+            <div data-avatar="agent" style="flex-shrink:0; width:56px; height:56px; border-radius:50%; background:rgba(31, 111, 235, 0.12); border:1px solid var(--border-color); display:flex; align-items:center; justify-content:center; box-shadow: 0 4px 12px rgba(0,0,0,0.08); flex-wrap: nowrap; overflow: hidden;">
                 ${window.neuroBotAvatar(42)}
             </div>
             <div class="agent-msg-body" style="flex:1; min-width: 0; display:flex; flex-direction:column;">
@@ -3466,11 +3288,8 @@
           livePill.style.color = 'var(--text-secondary)';
         }
       }
-      window.activeRunOrb = null;
-      window.orbInRun = false;
-      // Live runs are born packaged: avatar + run card together from the first
-      // moment, exactly as the finished turn reads. The answer panel joins the
-      // same column when it arrives (addAIMessage claims the skeleton).
+      // Every submitted turn starts with the same packaged card and avatar;
+      // subsequent events add Thinking or the full tool workflow as needed.
       if (!window.isLoadingHistory) {
         window.ensureLiveBubble(String(sessionId || ''), wrap);
         window.paintBubblePill(wrapId, 'starting', { spinner: true, working: true });
@@ -3681,9 +3500,6 @@
       if (!body) return;
       const wrapId = body.dataset.wrapId;
       paintRunWrap(wrapId, status, duration);
-      if (window.activeRunOrb) window.applyOrbTo(window.activeRunOrb, 'done');
-      window.activeRunOrb = null;
-      window.orbInRun = false;
       // Finished run folds itself away: the header (status icon, duration and
       // phase label) stays visible, the step list does not compete with the
       // reply that is about to arrive.
@@ -3719,7 +3535,6 @@
           histPill.textContent = 'archived run';
           histPill.style.color = 'var(--text-secondary)';
         }
-        window.activeRunOrb = null;
       }
       return window.activeRunWrap;
     }
@@ -3728,7 +3543,7 @@
       const safeRunId = String(runId || window.activeAgentRunId || 'current').replace(/[^a-zA-Z0-9_-]/g, '-');
       const stepId = `run-state-${safeRunId}`;
       const terminal = window.SRE_TERMINAL.includes(String(status).toLowerCase());
-      // The Run State row is part of the run too, so it feeds the header orb.
+      // The Run State row also keeps the phase label and status dot in sync.
       if (!window.isLoadingHistory) {
         const phase = {
           starting: ['exploring', 'starting'],
@@ -3742,7 +3557,7 @@
           running: ['working', 'executing'],
           awaiting_approval: ['listening', 'awaiting approval'],
         }[String(status).toLowerCase()];
-        if (phase && !terminal) window.setProgressOrb(phase[0], phase[1]);
+        if (phase && !terminal) window.setRunPhase(phase[0], phase[1]);
       }
       const successful = String(status).toLowerCase() === 'completed';
       const blocked = String(status).toLowerCase() === 'security_blocked';
@@ -4202,9 +4017,7 @@
         isProcessing = false;
         if (String(window.processingSid || '') === String(sid)) window.processingSid = '';
         window.setSendButtonState && window.setSendButtonState('idle');
-        if (window.activeRunOrb) window.applyOrbTo(window.activeRunOrb, 'done');
-        window.activeRunOrb = null;
-        // The cancelled card leaves with the run: error UI, steps and orb.
+        // The cancelled card leaves with the run: error UI and steps.
         if (window.activeRunWrap && String(window.activeRunWrap.dataset.sessionId || '') === String(sid)) {
           window.removeRunCard(window.activeRunWrap);
         }
@@ -4322,7 +4135,7 @@
 
     window.phaseLabelForEvent = function (payload) {
       const type = String(payload.type || '');
-      if (window.orbPhaseLabels && window.orbPhaseLabels[type]) return window.orbPhaseLabels[type];
+      if (window.runPhaseLabels && window.runPhaseLabels[type]) return window.runPhaseLabels[type];
       if (type === 'tool_start' || type === 'tool_end') return 'executing';
       if (type === 'message_chunk') return 'composing';
       if (type === 'lifecycle') return payload.status || 'executing';
@@ -4402,7 +4215,7 @@
       const count = document.getElementById('active-runs-count');
       if (!bar || !list) return;
       // Only runs in OTHER chats appear here. The open chat shows its own run
-      // card with orb and phase, so listing it again is noise - and it was the
+      // card with its phase, so listing it again is noise - and it was the
       // source of the flickering bar.
       const runs = Object.values(window.runsBySession || {})
         .filter((run) => String(run.id) !== String(sessionId));
@@ -5051,10 +4864,12 @@
       input.style.height = 'auto';
       stopAllAgentStepTimers();
       window.openTurn();
+      currentTurnWasDirect = false;
+      currentDirectRunId = '';
+      // Create the run card, avatar and starting pill immediately for every
+      // turn. A direct reply later adds only Thinking; tool runs add their phases.
       startRunWrap();
-      // Sending means following: jump to the bottom and stay pinned so the
-      // run's starting and reasoning are visible instead of happening off
-      // screen while the viewport sits on old history.
+      // Sending means following so the live card and reply stay in view.
       window.agentAutoScroll = true;
       scrollToBottom(true);
       window.sessionStartTime = new Date();
@@ -5324,8 +5139,8 @@
           if (evt.event_type === 'provider_fallback') handleEvent({ type: 'provider_fallback', content: 'Provider fallback recorded', ...evt.payload });
           else if (evt.event_type === 'task_verified') handleEvent({ type: 'verifying', content: 'Task verification recorded' });
         });
-        // Adopt a still-running run: reopen its card live so the orb, phase
-        // and steps keep updating here instead of freezing at the replay.
+        // Adopt a still-running run: reopen its card live so its phase and
+        // steps keep updating here instead of freezing at the replay.
         if (!runIsTerminal && !window.activeRunWrap) {
           let adopted = null;
           const knownWrap = window.historyRunWraps && window.historyRunWraps[run.id];
@@ -5344,8 +5159,6 @@
             const body = document.getElementById(adopted + '-body');
             if (body) {
               window.activeRunWrap = body;
-              window.activeRunOrb = document.getElementById(adopted + '-orb');
-              window.orbInRun = true;
               toggleRunWrap(adopted, true);
               isProcessing = true;
               window.setSendButtonState('running');
@@ -5986,8 +5799,6 @@
         addSystemMsg('Switched chats. The run in the previous chat keeps going - watch it in History.', 'arrow-right');
         isProcessing = false;
         window.setSendButtonState && window.setSendButtonState('idle');
-        if (window.activeRunOrb) window.applyOrbTo(window.activeRunOrb, 'done');
-        window.activeRunOrb = null;
         window.activeRunWrap = null;
         setBeamRunning(false);
       }
@@ -5999,7 +5810,6 @@
       window.continueCaseId = null;
       window.pendingResumeCaseId = '';
       window.activeRunWrap = null;
-      window.activeRunOrb = null;
       currentAIMsg = null;
       window.renderActiveRuns && window.renderActiveRuns();
       stopAllAgentStepTimers();
@@ -6697,7 +6507,6 @@
           window.removeRunCard(window.activeRunWrap);
         }
         window.activeRunWrap = null;
-        window.activeRunOrb = null;
         window.silentSubmit = true;
         inputEl.value = retryText;
         if (formEl.requestSubmit) formEl.requestSubmit();

@@ -510,6 +510,10 @@ class SREAgentEngine:
         history = await sync_to_async(relevant_prior_turns)(user_message, raw_history)
         _mid = await self._save_message(db_session_id, "user", user_message)
         yield evt_message_saved("user", _mid)
+        # Direct chat still has a lightweight run trace: Thinking only, with
+        # no tool discovery, planning, or task-plan phases.
+        yield evt_direct_chat("Direct response; no tools required")
+        yield evt_thinking("Thinking through the request")
         await record_turn(db_session_id, user_message,
                             topic_hint=getattr(self, "_router_topic", ""),
                             switched_hint=getattr(self, "_router_switched", None))
@@ -567,7 +571,6 @@ class SREAgentEngine:
 
         _mid = await self._save_message(db_session_id, "ai", answer)
         yield evt_message_saved("ai", _mid)
-        yield evt_direct_chat("Direct answer, no tools needed")
         yield evt_message_chunk(answer)
         yield evt_completed(answer, duration=time.time() - start_time)
         from .thread_memory import maybe_refresh_digest
@@ -623,16 +626,8 @@ class SREAgentEngine:
             thread_label = ""
         self._router_topic = ""
         self._router_switched = False
-        # Simple greetings, acknowledgments and one-word replies do not need
-        # a router round-trip or an approval token; they always go direct.
-        simple = str(user_message or '').strip().lower()
-        if simple and len(simple) <= 20 and not is_secret_or_destructive(user_message):
-            async for event in self._run_direct_chat(
-                user_message, terminal_cwd, active_workspace, selected_file,
-            ):
-                yield event
-            return
-
+        # Do not route by message length. Short operational asks such as
+        # "cek nginx" still need the model router and, when appropriate, tools.
         if not is_lookup_turn(user_message) and not is_secret_or_destructive(user_message):
             router_llm = await self._get_llm()
             route, route_reason, router_topic, router_switched = await route_turn(
@@ -1712,10 +1707,19 @@ Output strictly the category name."""
         except Exception as e:
             import traceback
             tb = traceback.format_exc()
-            print(f"[SRE ENGINE ERROR] guided loop failed: {type(e).__name__}: {e}\n{tb}", flush=True)
-            terminal_failure = True
-            yield evt_error("Agent execution failed; no successful completion was recorded.")
-            final_message = ""
+            if run_completed and final_message:
+                # Once the graph has produced a verified final report, failures
+                # in non-critical bookkeeping (artifact/DB sync, event handling)
+                # must not turn the actual task result into a failed run. Keep
+                # the verified answer and let the terminal lifecycle close it.
+                print(
+                    f"[SRE ENGINE WARNING] post-completion bookkeeping failed: "
+                    f"{type(e).__name__}: {e}\n{tb}", flush=True)
+            else:
+                print(f"[SRE ENGINE ERROR] guided loop failed: {type(e).__name__}: {e}\n{tb}", flush=True)
+                terminal_failure = True
+                yield evt_error("Agent execution failed; no successful completion was recorded.")
+                final_message = ""
 
         finally:
             # --- Phase 8: Save results and update memory ---
