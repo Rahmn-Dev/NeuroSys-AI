@@ -623,7 +623,8 @@ Do NOT stop calling tools until you are ready to call `finish_task`.
                         self.completed = True
                         self.outcome = "completed"
                         self.completion_summary = str(summary)
-                        yield evt_message_chunk(f"\n\n✅ **Task Completed**: {summary}")
+                        from .events import FINAL_ANSWER_MARKER
+                        yield evt_message_chunk(f"\n\n{FINAL_ANSWER_MARKER}✅ **Task Completed**: {summary}")
                         history.append(ToolMessage(content="Task completed successfully.", name=tool_name, tool_call_id=tool_call_id))
                         if single_plan is not None:
                             for t in single_plan["tasks"]:
@@ -806,7 +807,8 @@ Do NOT stop calling tools until you are ready to call `finish_task`.
                 self.completed = True
                 self.completion_summary = summary.strip()
                 yield evt_status(f"Step budget reached ({max_iterations}); answering from the evidence gathered.")
-                yield evt_message_chunk(summary.strip())
+                from .events import FINAL_ANSWER_MARKER
+                yield evt_message_chunk(FINAL_ANSWER_MARKER + summary.strip())
                 if lifecycle:
                     await lifecycle.atransition("finalization", "completed", "budget_synthesis", {"iterations": iteration})
                 return

@@ -238,6 +238,12 @@ def evt_observing(msg: str) -> AgentEvent:
 def evt_analyzing(msg: str) -> AgentEvent:
     return AgentEvent(type=AgentEventType.ANALYZING, content=msg)
 
+# Marks where the reasoning narration ends and the answer begins. It travels in
+# the stored message text, so a live turn and the same turn replayed from
+# history split at exactly the same place instead of guessing.
+FINAL_ANSWER_MARKER = "<!--sre-final-->"
+
+
 def evt_message_chunk(accumulated: str) -> AgentEvent:
     return AgentEvent(type=AgentEventType.MESSAGE_CHUNK, content=accumulated)
 
