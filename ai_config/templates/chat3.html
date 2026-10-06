@@ -3338,6 +3338,13 @@
       wrap.style.display = _live ? '' : 'none';
       wrap.dataset.open = _live ? '1' : '0';
       window.activeRunWrap = body;
+      body.dataset.follow = '1';
+      body.addEventListener('scroll', () => {
+        try {
+          const nearBottom = body.scrollHeight - body.scrollTop - body.clientHeight <= 60;
+          body.dataset.follow = nearBottom ? '1' : '0';
+        } catch (err) { /* best-effort */ }
+      }, { passive: true });
       // Only a run that is actually executing gets a spinner. A card built
       // while replaying history is finished by definition, and a spinning glyph
       // on a stored run made it look like the agent was still working.
@@ -3787,14 +3794,19 @@
         }
       }
 
-      // Scroll the run container itself when the step lives inside one,
-      // so reading the runner never yanks the whole chat history.
-      // Never fight the operator while they are reviewing an old run.
+      // Each run card follows its own newest step while its run is live, so
+      // watching the agent work reads top-to-bottom inside the card instead of
+      // freezing on the first step. Scrolling up inside the card pauses just
+      // that card; scrolling back to its bottom resumes. Replays never move.
       const _host = stepDiv.parentElement;
-      const _pinned = _host ? (_host.scrollHeight - _host.scrollTop - _host.clientHeight <= 40) : true;
-      const _live = !window.isLoadingHistory && window.agentAutoScroll === true;
-      if (_host && _host.id && /-body$/.test(_host.id)) {
-        if (_live && _pinned) _host.scrollTop = _host.scrollHeight;
+      const _isRunBody = !!(_host && _host.id && /-body$/.test(_host.id));
+      if (_isRunBody) {
+        const _ownerOk = String(_host.dataset.sessionId || '') === String(sessionId || '');
+        const _mine = _host === window.activeRunWrap || _host === window.lastRunBody;
+        const _follow = _host.dataset.follow !== '0';
+        if (!window.isLoadingHistory && !window.replayActive && _ownerOk && _mine && _follow) {
+          _host.scrollTop = _host.scrollHeight;
+        }
       } else {
         scrollToBottom();
       }
