@@ -2176,30 +2176,12 @@
           const startTime = window.sessionStartTime || new Date(Date.now() - (data.duration || 0) * 1000);
           const dur = data.duration ? data.duration.toFixed(1) : ((endTime - startTime) / 1000).toFixed(1);
 
-          const auditHtml = `
-                   <details class="sre-agent-step sre-run-audit" style="border: 1px solid var(--border-color); border-radius: 14px; overflow: hidden;">
-                        <summary style="cursor: pointer; padding: 12px 16px; background: rgba(46,160,67,0.1); border: none; width: 100%; display: flex; align-items: center; user-select: none; list-style: none;">
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <span style="color: var(--success);">${getIcon('check-all')}</span>
-                                <strong style="color: var(--success);">Task Execution Completed</strong>
-                            </div>
-                            <i class="fa-solid fa-chevron-down" style="margin-left: auto; color: var(--success); font-size: 10px; transition: transform 0.2s;"></i>
-                        </summary>
-                        <div style="padding: 16px; font-size: 13px; background: var(--bg-panel); border-top: 1px solid var(--border-color);">
-                            <details style="margin-bottom: 12px;">
-                                <summary style="cursor: pointer; font-size: 12px; color: var(--text-secondary);">View result summary (already shown in the message above)</summary>
-                                <p style="margin: 8px 0 0 0;">${escapeHtml(data.content || "")}</p>
-                            </details>
-                            <table style="width: 100%; border-collapse: collapse; font-size: 12px; border: 1px solid var(--border-color);">
-                                <tr style="background: var(--bg-panel);"><th style="color: var(--success); padding: 6px; border: 1px solid var(--border-color); text-align: left;">Audit Trail</th><th style="color: var(--success); padding: 6px; border: 1px solid var(--border-color); text-align: left;">Details</th></tr>
-                                <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Status</td><td style="padding: 6px; border: 1px solid var(--border-color); color: var(--success);"><strong>COMPLETED</strong></td></tr>
-                                <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Start Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${startTime.toLocaleTimeString()}</td></tr>
-                                <tr><td style="padding: 6px; border: 1px solid var(--border-color);">End Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${endTime.toLocaleTimeString()}</td></tr>
-                                <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Total Execution Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${dur} seconds</td></tr>
-                            </table>
-                        </div>
-                    </details>
-                `;
+          const auditHtml = window.buildAuditHtml({
+            summary: data.content || '',
+            started: startTime.toLocaleTimeString(),
+            finished: endTime.toLocaleTimeString(),
+            total: dur + ' seconds',
+          });
           if (!window.attachRunAudit(currentAIMsg, auditHtml)) {
             messagesDiv.insertAdjacentHTML('beforeend', auditHtml);
           }
@@ -2710,6 +2692,35 @@
     // The completion summary belongs to the reply it explains, so it lives
     // inside that bubble's column directly under the panel instead of floating
     // in the transcript as a separate block.
+    // One audit card for live and replay alike: a green check, the title, a
+    // one-line summary of what was achieved, and the trail underneath.
+    window.buildAuditHtml = function (opts) {
+      const o = opts || {};
+      const sub = String(o.summary || '').replace(/\s+/g, ' ').trim();
+      const short = sub.length > 140 ? sub.slice(0, 140).trimEnd() + '…' : sub;
+      const row = (k, v) => '<div style="display:flex; gap:10px; padding:7px 0; border-top:1px solid var(--border-color); font-size:12px;">'
+        + '<span style="flex:none; width:110px; color:var(--text-secondary);">' + k + '</span>'
+        + '<span style="flex:1; min-width:0; color:var(--text-primary); word-break:break-word;">' + v + '</span></div>';
+      return '<details class="sre-agent-step sre-run-audit">'
+        + '<summary style="cursor:pointer; list-style:none; display:flex; align-items:center; gap:12px; padding:12px 14px; user-select:none;">'
+        + '<span style="flex:none; width:36px; height:36px; border-radius:50%; background:var(--success-text); display:flex; align-items:center; justify-content:center; color:#fff;">'
+        + window.sreCheckSvg(18) + '</span>'
+        + '<span style="flex:1; min-width:0;">'
+        + '<span style="display:block; font-size:14px; font-weight:700; color:var(--success-text);">Task Execution Completed</span>'
+        + (short ? '<span style="display:block; font-size:12px; color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + escapeHtml(short) + '</span>' : '')
+        + '</span>'
+        + '<i class="fa-solid fa-chevron-down" style="flex:none; color:var(--success-text); font-size:12px; transition:transform .2s;"></i>'
+        + '</summary>'
+        + '<div style="padding:4px 14px 12px 62px; font-size:12.5px;">'
+        + (sub ? '<p style="margin:0 0 8px; color:var(--text-primary); line-height:1.6;">' + escapeHtml(sub) + '</p>' : '')
+        + '<div style="border-top:0;">'
+        + row('Status', '<strong style="color:var(--success-text);">COMPLETED</strong>')
+        + row('Started', escapeHtml(o.started || '-'))
+        + row('Finished', escapeHtml(o.finished || '-'))
+        + row('Total time', escapeHtml(o.total || '-'))
+        + '</div></div></details>';
+    };
+
     window.attachRunAudit = function (bubble, html) {
       try {
         if (!bubble || !html) return false;
@@ -5293,30 +5304,12 @@
                   const startTime = new Date(endTime.getTime() - ((evt.duration || 0) * 1000));
                   const dur = (evt.duration || 0).toFixed(1);
 
-                  const auditHtml = `
-                                <details class="sre-agent-step sre-run-audit" style="border: 1px solid var(--border-color); border-radius: 14px; overflow: hidden;">
-                                    <summary style="cursor: pointer; padding: 12px 16px; background: rgba(46,160,67,0.1); border: none; width: 100%; display: flex; align-items: center; user-select: none; list-style: none;">
-                                        <div style="display: flex; align-items: center; gap: 8px;">
-                                            <span style="color: var(--success);">${getIcon('check-all')}</span>
-                                            <strong style="color: var(--success);">Task Execution Completed</strong>
-                                        </div>
-                                        <i class="fa-solid fa-chevron-down" style="margin-left: auto; color: var(--success); font-size: 10px; transition: transform 0.2s;"></i>
-                                    </summary>
-                                    <div style="padding: 16px; font-size: 13px; background: var(--bg-panel); border-top: 1px solid var(--border-color);">
-                                        <details style="margin-bottom: 12px;">
-                                            <summary style="cursor: pointer; font-size: 12px; color: var(--text-secondary);">View result summary (already shown in the message above)</summary>
-                                            <p style="margin: 8px 0 0 0;">${escapeHtml(evt.content || "")}</p>
-                                        </details>
-                                        <table style="width: 100%; border-collapse: collapse; font-size: 12px; border: 1px solid var(--border-color);">
-                                            <tr style="background: var(--bg-panel);"><th style="color: var(--success); padding: 6px; border: 1px solid var(--border-color); text-align: left;">Audit Trail</th><th style="color: var(--success); padding: 6px; border: 1px solid var(--border-color); text-align: left;">Details</th></tr>
-                                            <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Status</td><td style="padding: 6px; border: 1px solid var(--border-color); color: var(--success);"><strong>COMPLETED</strong></td></tr>
-                                            <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Start Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${startTime.toLocaleTimeString()}</td></tr>
-                                            <tr><td style="padding: 6px; border: 1px solid var(--border-color);">End Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${endTime.toLocaleTimeString()}</td></tr>
-                                            <tr><td style="padding: 6px; border: 1px solid var(--border-color);">Total Execution Time</td><td style="padding: 6px; border: 1px solid var(--border-color);">${dur} seconds</td></tr>
-                                        </table>
-                                    </div>
-                                </details>
-                            `;
+                  const auditHtml = window.buildAuditHtml({
+                    summary: evt.content || '',
+                    started: startTime.toLocaleTimeString(),
+                    finished: endTime.toLocaleTimeString(),
+                    total: dur + ' seconds',
+                  });
                   // Held until the reply exists so the summary can sit under it.
                   window.pendingAuditHtml = auditHtml;
         window.normalizeRunCards();
@@ -6546,9 +6539,15 @@
   #sre-agent-app .sre-run-audit > summary strong { color: var(--success-text) !important; }
   #sre-agent-app .sre-run-audit > summary span { color: var(--success-text) !important; }
   #sre-agent-app .sre-run-audit > div {
-    background: var(--bg-main) !important;
+    background: transparent !important;
     border-top: 1px solid var(--border-color) !important;
   }
+  #sre-agent-app .sre-panel > .sre-run-audit,
+  #sre-agent-app .agent-msg-body > .sre-run-audit {
+    width: 100%;
+  }
+  #sre-agent-app .sre-run-audit > summary::-webkit-details-marker { display: none; }
+  #sre-agent-app .sre-run-audit[open] > summary .fa-chevron-down { transform: rotate(180deg); }
   /* --- Unified answer bubble: the agent's work lives inside the card -----
      One card per turn: avatar, header with the status pill, the collapsible
      chain of thought, the answer, then the audit. The pill opens the chain. */
