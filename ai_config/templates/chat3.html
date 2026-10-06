@@ -2921,8 +2921,8 @@
     // Chain-of-thought status rings: blue while a step is working, emerald
     // once it lands, rose when it fails. Translated from the AgentPlanning
     // reference into CSS variables so both themes keep working.
-    window.__sreUiBuild = 'cardown-07';
-    console.log('[NeuroSysAI UI] build cardown-07');
+    window.__sreUiBuild = 'cardown-08';
+    console.log('[NeuroSysAI UI] build cardown-08');
 
     // Icons below never depend on the lucide name table: an unknown name used
     // to render an empty dot. These inline SVGs always paint.
@@ -4862,11 +4862,11 @@
           'resolution_plan', 'hypothesis', 'findings', 'parallel_start', 'parallel_complete',
           'completed', 'error', 'failed', 'cancelled', 'blocked', 'denied',
           'denied_timeout', 'security_blocked'];
-        // Every agent turn keeps a card, including one that recorded no steps:
-        // a card that says so is clearer than a run that silently disappears
-        // from the transcript.
+        // A card is opened only for a turn that recorded something. An empty
+        // "archived run" card between every pair of turns is noise, and a run
+        // with no steps has nothing to open anyway.
         const _hasTrace = _evts.some((e) => e && _STEP_TYPES.includes(String(e.type)));
-        if (_evts.some((e) => e && e.run_id)) {
+        if (_evts.some((e) => e && e.run_id) || !_hasTrace) {
           window.historyReplayWrap = null;
         } else {
           const _own = ensureHistoryWrap('msg-' + (msg.id || 'orphan'));
@@ -5166,6 +5166,14 @@
           if (msg.message && msg.message.trim() !== "") {
             const _wasBlocked = _evts.some((e) => e && e.type === 'security_blocked');
             const _bubble = addAIMessage(msg.message, msg.created_at, msg.id);
+            // Reading order for a finished turn: the completion summary, then
+            // the card with the commands that produced it, then the answer.
+            if (_bubble && _bubble.parentElement === messagesDiv && window.activeRunWrap) {
+              const _wrap = window.activeRunWrap.parentElement;
+              if (_wrap && _wrap.parentElement === messagesDiv && _wrap.id.indexOf('runwrap-') === 0) {
+                messagesDiv.insertBefore(_wrap, _bubble);
+              }
+            }
             // Reloading history used to show a plain answer for a blocked
             // prompt while the live view showed a red security card.
             if (_wasBlocked && _bubble && _bubble.classList) {
