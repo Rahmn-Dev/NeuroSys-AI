@@ -5078,6 +5078,7 @@
                   paintRunWrap(window.historyReplayWrap.dataset.wrapId,
                     evt.type === 'completed' ? 'completed' : (evt.status || evt.type), evt.duration);
               }
+              if (evt.run_id) window.historyReplayRunId = evt.run_id;
               if (evt.event_id && window.agentSeenEvents.has(evt.event_id)) return;
               if (evt.event_id) window.agentSeenEvents.add(evt.event_id);
               if (evt.type === 'completed' && evt.run_id) {
@@ -5336,17 +5337,24 @@
             _note.textContent = 'This turn recorded no agent steps.';
             window.historyReplayWrap.appendChild(_note);
           }
+          // The owned chain has to be resolved here: activeRunWrap is cleared
+          // below on purpose, so reading it afterwards always missed.
+          let _ownedWrap = null;
+          if (window.historyReplayWrap && document.contains(window.historyReplayWrap)) {
+            _ownedWrap = window.historyReplayWrap.parentElement;
+          } else if (window.historyReplayRunId && (window.historyRunWraps || {})[window.historyReplayRunId]) {
+            const _body = document.getElementById(window.historyRunWraps[window.historyReplayRunId] + '-body');
+            if (_body && document.contains(_body)) _ownedWrap = _body.parentElement;
+          }
           window.historyReplayWrap = null;
+          window.historyReplayRunId = null;
           window.activeRunWrap = null;
           if (msg.message && msg.message.trim() !== "") {
             const _wasBlocked = _evts.some((e) => e && e.type === 'security_blocked');
             const _bubble = addAIMessage(msg.message, msg.created_at, msg.id);
             // The chain of thought seats inside the bubble's own slot.
-            if (_bubble && window.activeRunWrap) {
-              const _wrap = window.activeRunWrap.parentElement;
-              if (_wrap && _wrap.id && _wrap.id.indexOf('runwrap-') === 0) {
-                window.seatChain(_bubble, _wrap);
-              }
+            if (_bubble && _ownedWrap && _ownedWrap.id && _ownedWrap.id.indexOf('runwrap-') === 0) {
+              window.seatChain(_bubble, _ownedWrap);
             }
             // Reading order for a finished turn: run card, answer, and the
             // completion summary tucked under that answer.
