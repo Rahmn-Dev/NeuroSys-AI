@@ -2618,9 +2618,13 @@
         if (!owner || owner === sid) return last;
       }
       const skel = window.liveBubbleCurrent;
-      const skelWrap = skel && skel.wrap && document.contains(skel.wrap)
+      const skelBody = skel && skel.wrap && document.contains(skel.wrap)
         ? (skel.wrap.querySelector('[data-wrap-id]') || null) : null;
-      if (skelWrap && document.contains(skelWrap)) return skelWrap;
+      if (skelBody && document.contains(skelBody)) return skelBody;
+      if (skel && document.contains(skel.bubble)) {
+        const nested = skel.bubble.querySelector('.sre-cot [data-wrap-id]');
+        if (nested && document.contains(nested)) return nested;
+      }
       // While replaying, steps belong to the card currently being rebuilt.
       const replayWrap = window.historyReplayWrap;
       if (replayWrap && document.contains(replayWrap)) return replayWrap;
@@ -2872,11 +2876,12 @@
         if (prev && prevPanel && !prevPanel.textContent.trim()) {
           prev.wrap = wrap;
           window.seatChain(prev.bubble, wrap);
+          if (typeof currentAIMsg !== 'undefined' && !currentAIMsg) currentAIMsg = prev.bubble;
           return prev;
         }
         const bubble = buildAnswerBubble('', null, null);
         bubble.dataset.sessionId = sid;
-        messagesDiv.insertBefore(bubble, wrap);
+        messagesDiv.appendChild(bubble);
         window.seatChain(bubble, wrap);
         const column = bubble.querySelector(':scope > .agent-msg-body');
         const entry = { bubble: bubble, column: column, wrap: wrap, claimed: false, sid: sid };
@@ -2906,15 +2911,25 @@
     // header and above the answer. The bubble owns the status pill; the run
     // card's own header steps aside (its hooks keep working, they are just not
     // painted anymore).
-    // The chain is a card of its own sitting directly above its answer
-    // bubble. Nesting it inside the bubble is what kept breaking: every move
-    // risked orphaning the card or its steps. Placement is now a single
-    // insertBefore, so ownership is obvious and nothing can leak.
+    // The chain lives inside its bubble, under the header and above the
+    // answer; the bubble pill opens it. Placement is one append into the
+    // bubble's own slot, and every pointer (steps, pill, toggle) resolves
+    // through that same slot, so nothing can leak outside it.
     window.seatChain = function (bubble, wrap) {
       if (!bubble || !wrap) return false;
       try {
         if (String(wrap.dataset.sessionId || '') && String(bubble.dataset.sessionId || '')
             && String(wrap.dataset.sessionId) !== String(bubble.dataset.sessionId)) return false;
+        let slot = bubble.querySelector(':scope .agent-msg-body .sre-panel .sre-cot');
+        if (!slot) {
+          const panel = bubble.querySelector('.sre-panel');
+          if (!panel) return false;
+          slot = document.createElement('div');
+          slot.className = 'sre-cot';
+          slot.style.display = 'none';
+          const answer = panel.querySelector(':scope > .ai-content');
+          panel.insertBefore(slot, answer || null);
+        }
         const body = wrap.querySelector('[data-wrap-id]') || wrap.firstElementChild;
         const wrapId = (body && body.dataset.wrapId) || wrap.id;
         // A card painted before it met its bubble (replay) hands its latest
@@ -2933,16 +2948,16 @@
                 : { spinner: true, working: true });
           }
         }
-        if (wrap.parentElement === messagesDiv && wrap.nextElementSibling === bubble) {
+        if (slot.contains(wrap)) {
           if (wrapId) bubble.dataset.wrapId = wrapId;
           return true;
         }
-        messagesDiv.insertBefore(wrap, bubble);
+        slot.appendChild(wrap);
         wrap.dataset.bubbleId = bubble.id;
         if (wrapId) bubble.dataset.wrapId = wrapId;
         const toggle = bubble.querySelector('.sre-run-toggle');
         if (toggle) toggle.classList.remove('sre-hidden');
-        bubble.dataset.chainOpen = '1';
+        bubble.dataset.chainOpen = slot.style.display !== 'none' ? '1' : '0';
         return true;
       } catch (err) { return false; }
     };
@@ -6567,6 +6582,18 @@
   #sre-agent-app .sre-cot:empty { display: none; }
   /* The run card sheds its own chrome once nested: the bubble owns it. */
 
+  #sre-agent-app .sre-cot .sre-run-card {
+    border: 0 !important; background: transparent !important;
+    box-shadow: none !important; border-radius: 0 !important;
+    margin: 0 !important; overflow: visible !important; width: auto !important;
+  }
+  #sre-agent-app .sre-cot .sre-run-head { display: none !important; }
+  #sre-agent-app .sre-cot .sre-run-body {
+    border: 0 !important; background: transparent !important;
+    box-shadow: none !important; border-radius: 0 !important;
+    margin: 0 !important; padding: 2px 0 8px !important;
+    max-height: none !important; overflow: visible !important;
+  }
   #sre-agent-app .sre-art-locate {
     cursor: pointer; transition: background .15s ease, color .15s ease;
   }
