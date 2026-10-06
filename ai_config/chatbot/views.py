@@ -26,34 +26,33 @@ def system_status(request):
     return Response(status)
 
 
-# One @api_view only. Stacking a second one made the inner view receive an
-# already-wrapped DRF Request, which its dispatch refuses, so every poll of the
-# live-run list failed with a 500.
-@api_view(['GET'])
-@permission_classes([permissions.IsAuthenticated])
-def agent_runs_active(request):
-    """Every still-running agent run of this user, for the live history sidebar.
+def build_presence_payload(user_id):
+    """The presence snapshot: active runs plus the newest run of every chat.
 
-    Lets any chat see that another chat is executing right now, without having
-    witnessed its events. Terminal states are excluded; a finished run is
-    announced by its own events instead.
+    Built in one place so the polling view and the websocket push send byte
+    identical shapes, and the client merges them with one code path.
     """
     from .models import AgentRun
     terminal = ['completed', 'failed', 'cancelled', 'denied', 'denied_timeout',
                 'security_blocked', 'blocked', 'error', 'finalized']
-    try:
-        user_id = str(request.user.pk)
-    except Exception:
-        user_id = 'anonymous'
     runs = (AgentRun.objects.filter(user_id=user_id).exclude(status__in=terminal)
             .order_by('-updated_at')[:20])
     # The newest run of every chat, terminal ones included, so the sidebar can
     # paint a truthful state for a chat instead of guessing: previously a row
     # showed a status only while this tab happened to be watching it live.
-    latest = list(AgentRun.objects.filter(user_id=user_id)
-                  .order_by('session_id', '-updated_at')
-                  .distinct('session_id')[:60])
-    return Response({'runs': [{
+    # Done portably (DISTINCT ON is Postgres-only): scan recent runs, keep the
+    # first row seen per chat.
+    latest = []
+    seen_sessions = set()
+    for row in AgentRun.objects.filter(user_id=user_id).order_by('-updated_at')[:300]:
+        key = str(row.session_id)
+        if key in seen_sessions:
+            continue
+        seen_sessions.add(key)
+        latest.append(row)
+        if len(latest) >= 60:
+            break
+    return {'runs': [{
         'session_id': str(r.session_id),
         'status': r.status,
         'goal': (r.goal or '')[:120],
@@ -64,7 +63,27 @@ def agent_runs_active(request):
         'status': r.status,
         'goal': (r.goal or '')[:120],
         'updated_at': r.updated_at.isoformat(),
-    } for r in latest]})
+    } for r in latest]}
+
+
+# One @api_view only. Stacking a second one made the inner view receive an
+# already-wrapped DRF Request, which its dispatch refuses, so every poll of the
+# live-run list failed with a 500.
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def agent_runs_active(request):
+    """Every still-running agent run of this user, for the live history sidebar.
+
+    Lets any chat see that another chat is executing right now, without having
+    witnessed its events. Terminal states are excluded; a finished run is
+    announced by its own events instead. Kept as the consistency backstop now
+    that live changes arrive over the socket.
+    """
+    try:
+        user_id = str(request.user.pk)
+    except Exception:
+        user_id = 'anonymous'
+    return Response(build_presence_payload(user_id))
 
 
 @api_view(['GET'])

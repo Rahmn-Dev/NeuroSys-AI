@@ -1297,6 +1297,13 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
         self.lifecycles = {}
         self.run_group = None
         await self.accept()
+        # Every tab hears every run-state change of its user, live.
+        try:
+            from sre_agent.canonical_lifecycle import presence_group
+            user_id = str(getattr(self.scope.get("user"), "pk", None) or "anonymous")
+            await self.channel_layer.group_add(presence_group(user_id), self.channel_name)
+        except Exception:
+            pass
         
         # Generate RSA Key Pair for E2E Sudo Auth
         from sre_agent.crypto import generate_rsa_key_pair
@@ -1335,6 +1342,24 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
         # task; approval expiry remains server-owned.
         if self.run_group:
             await self.channel_layer.group_discard(self.run_group, self.channel_name)
+        try:
+            from sre_agent.canonical_lifecycle import presence_group
+            user_id = str(getattr(self.scope.get("user"), "pk", None) or "anonymous")
+            await self.channel_layer.group_discard(presence_group(user_id), self.channel_name)
+        except Exception:
+            pass
+
+    async def presence_update(self, event):
+        # A run changed state in one of this user's chats: every open tab hears
+        # it live, which is what retired the presence poll.
+        try:
+            await self.send(text_data=json.dumps({
+                "type": "presence",
+                "runs": event.get("runs", []),
+                "latest": event.get("latest", []),
+            }))
+        except Exception:
+            pass
 
     async def subscribe(self, session_id):
         from asgiref.sync import sync_to_async

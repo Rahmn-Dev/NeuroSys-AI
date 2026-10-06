@@ -20,6 +20,48 @@ from django.db import transaction
 
 ACTIVE_STATUSES = ("queued", "running", "awaiting_approval", "paused", "resuming", "planning", "executing", "verifying")
 
+
+def presence_group(user_id):
+    """The channel group carrying one user's run presence to every tab."""
+    safe = "".join(c if (c.isalnum() or c in "-_") else "_" for c in str(user_id or "anonymous"))
+    return f"presence-u-{safe or 'anonymous'}"
+
+
+def broadcast_presence(user_id):
+    """Push a fresh presence snapshot to all of the user's sockets.
+
+    Every run transition funnels through DurableAgentLifecycle, so one hook
+    here replaces polling: open, terminal and phase changes all arrive live.
+    Fire-and-forget from a daemon thread, because transitions run in sync code
+    that must never wait on the network. Anything failing here is silent - the
+    polling backstop still converges.
+    """
+    try:
+        import threading
+
+        def _push():
+            try:
+                from asgiref.sync import async_to_sync
+                from channels.layers import get_channel_layer
+                from chatbot.models import AgentRun
+                layer = get_channel_layer()
+                if layer is None:
+                    return
+                from chatbot.views import build_presence_payload
+                payload = build_presence_payload(str(user_id))
+                async_to_sync(layer.group_send)(presence_group(user_id), {
+                    "type": "presence.update",
+                    "runs": payload["runs"],
+                    "latest": payload["latest"],
+                })
+            except Exception:
+                pass
+
+        thread = threading.Thread(target=_push, daemon=True)
+        thread.start()
+    except Exception:
+        pass
+
 TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled", "denied", "denied_timeout",
                                "security_blocked", "blocked", "error", "finalized"})
 
@@ -278,12 +320,14 @@ class DurableAgentLifecycle:
                 status__in=ACTIVE_STATUSES).exclude(idempotency_key=self.idempotency_key).exists()
             if existing:
                 raise RunAlreadyActive("Conversation already has an active run")
-            self.run, _ = AgentRun.objects.get_or_create(
+            self.run, created = AgentRun.objects.get_or_create(
                 idempotency_key=self.idempotency_key,
                 defaults={"session": session, "user_id": self.user_id, "workspace_path": self.workspace_path,
                           "goal": self.goal, "provider": self.provider, "model": self.model, "mode": self.mode,
                           "status": "queued", "budget": {"max_attempts": 3, "max_tool_calls": 50}},
             )
+        if created:
+            broadcast_presence(self.user_id)
         return self.run
 
     def transition(self, node: str, to_status: str, event_type: str, payload: Mapping[str, Any] | None = None, *, correlation_id: str = ""):
@@ -311,6 +355,7 @@ class DurableAgentLifecycle:
             run.state = state
             run.save(update_fields=["status", "summary", "current_node", "checkpoint_version", "state", "updated_at"])
             self.run = run
+        broadcast_presence(self.user_id)
         return run
 
     def add_task(self, task_key: str, title: str, *, dependencies=None, required_capability: str = "", metadata=None):

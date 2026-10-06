@@ -1615,6 +1615,7 @@
       window.sreAgentWs = ws;
 
       ws.onopen = () => {
+        try { window.refreshRunPresence(); } catch (err) { /* best-effort */ }
         badge.textContent = 'Live';
         badge.style.background = '#23863633';
         badge.style.color = '#3fb950';
@@ -1671,6 +1672,10 @@
         agentLastActivity = Date.now();
         try {
           const payload = JSON.parse(e.data);
+          if (payload && payload.type === 'presence') {
+            window.applyPresence(payload);
+            return;
+          }
           if (payload.type === 'session_id') {
             window.liveRunSessionId = String(payload.content || '');
           } else {
@@ -4061,11 +4066,10 @@
 
     // Live presence: the sidebar reflects what the server is actually doing,
     // even for runs this page never saw start (reload mid-run, another tab).
-    window.refreshRunPresence = async function () {
+    // One merge for run presence, whoever delivers it: the socket pushes on
+    // every transition, and the poll below is only a consistency backstop.
+    window.applyPresence = function (data) {
       try {
-        const res = await fetch('/api/v1/agent-runs/active/', { credentials: 'same-origin' });
-        if (!res.ok) return;
-        const data = await res.json();
         const _latest = {};
         (data.latest || []).forEach((row) => {
           const sid = String(row.session_id || '');
@@ -4111,20 +4115,21 @@
       } catch (err) { /* presence is best-effort */ }
     };
 
-    // Presence polling is adaptive, not constant: the live agent stream already
-    // arrives over the websocket, and this poll only exists to notice runs in
-    // OTHER chats. With nothing executing it backs off instead of asking the
-    // server every few seconds forever.
-    window._lastPresenceFetch = 0;
+    window.refreshRunPresence = async function () {
+      try {
+        const res = await fetch('/api/v1/agent-runs/active/', { credentials: 'same-origin' });
+        if (!res.ok) return;
+        window.applyPresence(await res.json());
+      } catch (err) { /* presence is best-effort */ }
+    };
+
+    // The socket pushes presence on every run transition; this timer is only
+    // a consistency backstop in case a push was ever missed.
     if (!window._runPresenceTimer && typeof setInterval === 'function') {
       window._runPresenceTimer = setInterval(() => {
         if (document.visibilityState !== 'visible') return;
-        const anyActive = Object.keys(window.runsBySession || {}).length > 0;
-        const due = Date.now() - (window._lastPresenceFetch || 0) > (anyActive ? 8000 : 60000);
-        if (!due) return;
-        window._lastPresenceFetch = Date.now();
         window.refreshRunPresence();
-      }, 8000);
+      }, 300000);
     }
 
     if (!window._runElapsedTimer && typeof setInterval === 'function') {

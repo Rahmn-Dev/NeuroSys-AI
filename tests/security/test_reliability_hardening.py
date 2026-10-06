@@ -453,3 +453,30 @@ def test_readonly_logs_do_not_require_mutation_approval(source):
 def test_log_sources_are_scoped(source):
     meta = SimpleNamespace(name='log_reader', risk_level=0, required_permission='')
     assert evaluate(meta, {'source': source})[0] == 'blocked'
+
+
+def test_presence_payload_lists_active_and_latest(run_tables):
+    from chatbot.views import build_presence_payload
+    session = ChatSession.objects.create(title='presence')
+    live = AgentRun.objects.create(session=session, user_id='7', goal='live',
+                                   status='running', idempotency_key='t-live')
+    old = AgentRun.objects.create(session=session, user_id='7', goal='old',
+                                  status='completed', idempotency_key='t-old')
+    other = AgentRun.objects.create(
+        session=ChatSession.objects.create(title='other'),
+        user_id='7', goal='theirs', status='failed', idempotency_key='t-other')
+    from django.utils import timezone
+    AgentRun.objects.filter(pk=live.pk).update(updated_at=timezone.now())
+    payload = build_presence_payload('7')
+    assert {r['status'] for r in payload['runs']} == {'running'}
+    by_session = {r['session_id']: r['status'] for r in payload['latest']}
+    assert by_session[str(session.pk)] == 'running'
+    assert by_session[str(other.session_id)] == 'failed'
+    assert all('goal' in r and 'updated_at' in r for r in payload['runs'])
+
+
+def test_presence_group_name_is_safe():
+    from sre_agent.canonical_lifecycle import presence_group
+    assert presence_group('7') == 'presence-u-7'
+    assert presence_group('a/b.c@d') == 'presence-u-a_b_c_d'
+    assert presence_group('') == 'presence-u-anonymous'
