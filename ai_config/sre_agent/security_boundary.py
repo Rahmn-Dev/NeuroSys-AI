@@ -272,6 +272,26 @@ def evaluate(meta, args):
         return "approval_required", "Mutation or privileged tool requires explicit action authorization"
     return "approved", "Registered read-only tool"
 
+# A blocked prompt stays in the database (the audit trail is evidence), but it
+# must never steer a future turn: the same gate that blocks it also strips it
+# from anything the model will read. Consistent by construction, and it covers
+# every historical row without a migration.
+BLOCKED_CONTEXT_PLACEHOLDER = (
+    "[Withheld from model context: this turn was blocked as an "
+    "instruction-override attempt. It is preserved in the audit trail.]"
+)
+
+
+def quarantine_for_context(text):
+    """Replace a blocked prompt with a neutral placeholder for model input."""
+    try:
+        if text and INJECTION.search(text):
+            return BLOCKED_CONTEXT_PLACEHOLDER
+    except Exception:
+        pass
+    return text
+
+
 def enforce(meta, args):
     from .approvals import consume_for
     call_id = consume_for(meta, args)

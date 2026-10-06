@@ -525,6 +525,7 @@ class SREAgentEngine:
             activity = await build_activity_context(db_session_id)
             if activity:
                 prompt_text += "\n\n" + activity
+        from .security_boundary import quarantine_for_context
         messages = [SystemMessage(content=prompt_text)]
         for entry in history:
             text = (getattr(entry, "message", "") or "").strip()
@@ -533,7 +534,7 @@ class SREAgentEngine:
             if getattr(entry, "sender", "") == "ai":
                 messages.append(AIMessage(content=text[:4000]))
             else:
-                messages.append(HumanMessage(content=text[:4000]))
+                messages.append(HumanMessage(content=quarantine_for_context(text)[:4000]))
         messages.append(HumanMessage(content=user_message))
 
         answer = ""
@@ -1175,9 +1176,10 @@ Output strictly the category name."""
             environment={"workspace": active_workspace_str})
         system_prompt += "\nConversation context (bounded evidence): " + context_json.dumps(context_envelope)
         messages = [SystemMessage(content=system_prompt)]
+        from .security_boundary import quarantine_for_context
         for msg in history[-9:-1]:
             if msg.sender.lower() == "user":
-                messages.append(HumanMessage(content=msg.message[:1200]))
+                messages.append(HumanMessage(content=quarantine_for_context(msg.message)[:1200]))
             else:
                 messages.append(AIMessage(content=msg.message[:1200]))
         messages.append(HumanMessage(content=(f"Resume the existing case and continue this goal: {effective_goal}" if generic_continuation else effective_goal)))
