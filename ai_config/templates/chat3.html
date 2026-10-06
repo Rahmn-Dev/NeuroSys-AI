@@ -2705,7 +2705,7 @@
     // thirteenth entry matters: superseded and expired cases kept falling
     // through every check written before they existed, so dead cases rendered
     // as alive.
-    window.SRE_TERMINAL = ['completed', 'failed', 'cancelled', 'blocked', 'denied',
+    window.SRE_TERMINAL = ['completed', 'failed', 'cancelled', 'stopped', 'blocked', 'denied',
       'denied_timeout', 'security_blocked', 'error', 'finalized', 'expired', 'superseded'];
     window.turnState = window.turnState || 'idle';
     window.openTurn = function () { window.turnState = 'running'; };
@@ -3957,7 +3957,7 @@
           (investigations[invId].plan || []).forEach((p) => {
             const st = String(p.status || '').toLowerCase();
             if (['pending', 'running', 'in_progress', 'executing'].includes(st)) {
-              p.status = (data && data.stopped) ? 'cancelled' : finalState;
+              p.status = (data && data.stopped) ? 'stopped' : finalState;
             }
           });
           renderInvestigationTimeline();
@@ -3968,7 +3968,7 @@
         if (investigations[invId]) {
           investigations[invId].status = window.SRE_TERMINAL.includes(
             String(investigations[invId].status || '').toLowerCase())
-            ? investigations[invId].status : 'cancelled';
+            ? investigations[invId].status : 'stopped';
           renderInvestigationTimeline();
         }
       }
@@ -4635,16 +4635,16 @@
       denied: 'var(--error)',
       denied_timeout: 'var(--error)',
       security_blocked: 'var(--error)',
-      cancelled: 'var(--error)',
       expired: 'var(--text-secondary)',
       superseded: 'var(--text-secondary)',
-      security_blocked: 'var(--error)',
-      cancelled: 'var(--text-secondary)',
+      stopped: 'var(--error)',
+      cancelled: 'var(--error)',
     };
     const sreInvTone = (state) => SRE_INV_TONE[String(state || 'pending').toLowerCase()] || 'var(--text-secondary)';
     const sreInvGlyph = (state) => {
       const st = String(state || '').toLowerCase();
       if (st === 'completed' || st === 'success') return '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+      if (['stopped', 'cancelled'].includes(st)) return '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>';
       if (['failed', 'error', 'denied', 'denied_timeout', 'security_blocked'].includes(st)) return '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
       if (['blocked', 'awaiting_approval', 'warning'].includes(st)) return '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>';
       if (['running', 'in_progress', 'executing', 'thinking', 'planning'].includes(st)) return '<i class="fa-solid fa-circle-notch fa-spin" style="font-size:8px;"></i>';

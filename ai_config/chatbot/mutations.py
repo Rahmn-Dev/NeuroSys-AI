@@ -290,10 +290,10 @@ def cancel_investigation(user, session_id, inv_id):
     tasks_frozen = models.InvestigationTask.objects.filter(
         investigation_id=inv_id,
         status__in=["pending", "running", "in_progress", "executing"],
-    ).update(status="cancelled")
+    ).update(status="stopped")
     stopped = models.Investigation.objects.filter(
         id=inv_id, session=session, status="active"
-    ).update(status="cancelled")
+    ).update(status="stopped")
     inv = models.Investigation.objects.filter(id=inv_id, session=session).first()
     if inv is None:
         raise MutationError("Investigation not found.")
