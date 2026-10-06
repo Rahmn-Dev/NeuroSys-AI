@@ -3563,14 +3563,20 @@
         slot.innerHTML = '<i class="fa-solid fa-circle-dot" title="Finished while you were in another chat" style="color:var(--warning); font-size:11px; flex-shrink:0;"></i>';
       } else if (latest && latest.status) {
         // Every chat with a run shows how it ended, from the server's record.
-        const failed = ['failed', 'error', 'blocked', 'denied', 'denied_timeout', 'security_blocked', 'cancelled'].includes(String(latest.status));
-        const done = String(latest.status) === 'completed';
-        const label = String(latest.status).replace(/_/g, ' ');
+        // A run the operator stopped is not a failure, so it must not wear the
+        // error colour: red means the agent could not finish.
+        const state = String(latest.status);
+        const label = state.replace(/_/g, ' ');
+        const failed = ['failed', 'error', 'blocked', 'denied', 'denied_timeout', 'security_blocked'].includes(state);
+        const stopped = ['cancelled', 'finalized'].includes(state);
+        const done = state === 'completed';
         slot.innerHTML = failed
           ? '<i class="fa-solid fa-circle-exclamation" title="Last run: ' + escapeHtml(label) + '" style="color:var(--error); font-size:11px; flex-shrink:0;"></i>'
           : (done
             ? '<i class="fa-solid fa-circle-check" title="Last run completed" style="color:var(--success-text); font-size:11px; flex-shrink:0;"></i>'
-            : '<i class="fa-solid fa-circle-dot" title="Last run: ' + escapeHtml(label) + '" style="color:var(--text-secondary); font-size:11px; flex-shrink:0;"></i>');
+            : (stopped
+              ? '<i class="fa-solid fa-circle-minus" title="Last run: ' + escapeHtml(label) + '" style="color:var(--text-secondary); font-size:11px; flex-shrink:0;"></i>'
+              : '<i class="fa-solid fa-circle-dot" title="Last run: ' + escapeHtml(label) + '" style="color:var(--text-secondary); font-size:11px; flex-shrink:0;"></i>'));
       } else {
         slot.innerHTML = '';
       }
