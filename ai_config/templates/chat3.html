@@ -1857,6 +1857,7 @@
           // run. The card is marked completed and stays in place, and the
           // container is deliberately kept live so trailing run-state events
           // land inside the card instead of loose at the bottom.
+          window.markStreaming(false);
           if (window.activeRunWrap) {
             paintRunWrap(window.activeRunWrap.dataset.wrapId, 'answered');
             window.activeRunOrb = null;
@@ -2097,6 +2098,9 @@
           } catch (e) {
             contentDiv.innerHTML = fullText;
           }
+          // The reveal replays on every chunk, so each arrival settles in
+          // instead of the whole block blinking at once.
+          window.markStreaming(true, contentDiv);
           scrollToBottom();
           break;
 
@@ -2106,6 +2110,7 @@
           if (data.run_id && window.agentCompletedRuns.has(data.run_id)) break;
           if (data.run_id) window.agentCompletedRuns.add(data.run_id);
           window.markRunFinished(window.liveRunSessionId || sessionId, true);
+          window.markStreaming(false);
           window.setAgentDotState('done');
           updateRunStateCard(data.run_id, 'completed', data.duration);
           finalizeRunWrap('completed', data.duration);
@@ -2163,6 +2168,7 @@
 
         case 'error':
           window.markRunFinished(window.liveRunSessionId || sessionId, false);
+          window.markStreaming(false);
           window.setAgentDotState('idle');
           stopAllAgentStepTimers();
           updateRunStateCard(data.run_id, 'failed');
@@ -2625,6 +2631,44 @@
       });
     };
 
+    // Streaming presentation for the reply itself: newly arrived text is
+    // revealed, the tail of the answer carries a travelling highlight while it
+    // is still growing, and a caret shows the model is mid-sentence.
+    window.markStreaming = function (on, contentDiv) {
+      const box = contentDiv || (window.currentAIMsg && window.currentAIMsg.querySelector('.ai-content'));
+      if (!box) return;
+      if (on) {
+        box.classList.add('sre-streaming');
+        const fresh = box.querySelector('.sre-live-text');
+        if (!fresh) {
+          // Wrap the last block of text so only the new part is highlighted.
+          const blocks = Array.from(box.children);
+          const target = blocks.length ? blocks[blocks.length - 1] : null;
+          if (target && !target.querySelector('.sre-live-text')) {
+            const inner = target.innerHTML;
+            target.innerHTML = '<span class="sre-live-text">' + inner + '</span>';
+          }
+        }
+        if (!box.querySelector('.sre-caret')) {
+          const caret = document.createElement('span');
+          caret.className = 'sre-caret';
+          box.appendChild(caret);
+        }
+      } else {
+        box.classList.remove('sre-streaming');
+        const live = box.querySelector('.sre-live-text');
+        if (live) {
+          const span = live;
+          span.outerHTML = span.innerHTML;
+        }
+        const caret = box.querySelector('.sre-caret');
+        if (caret) caret.remove();
+        box.style.animation = 'none';
+        void box.offsetWidth;
+        box.style.animation = '';
+      }
+    };
+
     window.setProgressOrb = function (state, label) {
       window.activeProgressState = state;
       if (state !== 'done') window.setAgentDotState('running');
@@ -2789,6 +2833,7 @@
           return _skel.bubble;
         }
       }
+      window.markStreaming(false, div.querySelector('.ai-content'));
       messagesDiv.appendChild(div);
       window.seatRunCardAbove(div);
       const aiTime = document.createElement('div');
@@ -3232,7 +3277,7 @@
                 <div style="flex: 1 1 auto; min-width: 0; width: 100%; align-self: stretch; padding: 8px 0 24px;">
                     <div onclick="toggleStep('${stepId}', event)" onmouseover="this.style.background='rgba(127,140,160,.08)'" onmouseout="this.style.background='transparent'" style="display: flex; align-items: center; gap: 10px; padding: 1px 6px; margin: 0 -6px; border-radius: 6px; cursor: pointer; user-select: none;">
                         <span style="display: flex; align-items: baseline; gap: 8px; min-width: 0;">
-                            <span style="font-size: 14px; font-weight: ${tlStatus === 'active' ? '600' : '500'}; color: ${tlStatus === 'error' ? 'var(--error)' : 'var(--accent)'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${label}</span>
+                            <span class="sre-tl-title" style="font-size: 14px; font-weight: ${tlStatus === 'active' ? '600' : '500'}; color: ${tlStatus === 'error' ? 'var(--error)' : 'var(--accent)'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${label}</span>
                             ${initialTimer}
                         </span>
                         <span class="sre-tl-chev" style="display: flex; margin-left: auto; color: var(--text-secondary); opacity: .55; transition: transform .2s; transform: rotate(${tlOpen ? '0deg' : '-90deg'});">${window.sreChevSvg(14)}</span>
@@ -5843,6 +5888,61 @@
   @keyframes sreStepIn {
     from { opacity: 0; transform: translateY(6px); }
     to { opacity: 1; transform: none; }
+  }
+  /* Streaming reply: each arriving chunk settles in, and while the answer is
+     still being written the newest text carries a travelling highlight so it
+     reads as "still arriving" instead of a static block. */
+  @keyframes sreReveal {
+    from { opacity: .35; transform: translateY(3px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes sreSweep {
+    from { background-position: 200% 0; }
+    to { background-position: -60% 0; }
+  }
+  @keyframes sreCaret {
+    0%, 45% { opacity: 1; }
+    50%, 95% { opacity: 0; }
+    100% { opacity: 1; }
+  }
+  @keyframes srePulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(88, 166, 255, .45); }
+    50% { box-shadow: 0 0 0 6px rgba(88, 166, 255, 0); }
+  }
+  #sre-agent-app .ai-content.sre-streaming {
+    animation: sreReveal .5s ease both;
+  }
+  #sre-agent-app .sre-caret {
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    margin-left: 2px;
+    vertical-align: text-bottom;
+    background: var(--accent);
+    animation: sreCaret 1.05s steps(1, end) infinite;
+  }
+  @supports (-webkit-background-clip: text) or (background-clip: text) {
+    #sre-agent-app .ai-content.sre-streaming .sre-live-text {
+      background-image: linear-gradient(90deg,
+        var(--text-primary) 0%, var(--text-primary) 38%,
+        var(--accent) 52%, var(--text-primary) 66%, var(--text-primary) 100%);
+      background-size: 220% 100%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      animation: sreSweep 2.6s linear infinite;
+    }
+  }
+  /* The reasoning trace: the step being worked on is the only one that moves,
+     so the eye follows the run instead of scanning a static list. */
+  #sre-agent-app .sre-agent-step[data-status="active"] > .sre-tl-dot {
+    animation: srePulse 1.8s ease-out infinite;
+  }
+  #sre-agent-app .sre-agent-step[data-status="active"] .sre-tl-title {
+    animation: sreReveal .5s ease both;
+  }
+  #sre-agent-app .sre-agent-step[data-status="active"] [id^="step-content-"] {
+    animation: sreReveal .55s ease both;
   }
   .sre-agent-step { animation: sreStepIn 0.35s ease both; border: 0 !important; background: transparent !important; box-shadow: none !important; border-radius: 0 !important; }
   /* The run card is a real bordered box in live and in replay alike. Owned by
