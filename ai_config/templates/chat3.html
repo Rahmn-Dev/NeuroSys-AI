@@ -2118,6 +2118,7 @@
           const fullText = rawData || '';
 
           const contentDiv = currentAIMsg.querySelector('.ai-content');
+          try { contentDiv.dataset.fullText = fullText; } catch (err) { /* best-effort */ }
           contentDiv.innerHTML = window.renderAnswerContent(fullText);
           // The reveal replays on every chunk, so each arrival settles in
           // instead of the whole block blinking at once.
@@ -2128,10 +2129,25 @@
 
         case 'completed':
           window.agentCompletedRuns = window.agentCompletedRuns || new Set();
-          if (data.run_id && window.agentCompletedRuns.has(data.run_id)) break;
+          if (data.run_id && window.agentCompletedRuns.has(data.run_id)) {
+            window.stopAllStreaming();
+            window.closeTurn();
+            window.setSendButtonState('idle');
+            break;
+          }
           if (data.run_id) window.agentCompletedRuns.add(data.run_id);
           window.markRunFinished(window.liveRunSessionId || sessionId, true);
           window.markStreaming(false);
+          window.stopAllStreaming();
+          // The last chunk carries the final answer and the split marker. If it
+          // landed anywhere else, the bubble would keep showing narration, so
+          // settle the current bubble onto its newest text one final time.
+          try {
+            const _box = currentAIMsg && currentAIMsg.querySelector('.ai-content');
+            if (_box && _box.dataset.fullText) {
+              _box.innerHTML = window.renderAnswerContent(_box.dataset.fullText);
+            }
+          } catch (err) { /* best-effort */ }
           window.setAgentDotState('done');
           window.closeTurn();
           if (window.activeRunWrap) {
@@ -2602,10 +2618,9 @@
         if (!owner || owner === sid) return last;
       }
       const skel = window.liveBubbleCurrent;
-      if (skel && document.contains(skel.bubble)) {
-        const card = skel.column.querySelector(':scope > [id^="runwrap-"] > .sre-run-body');
-        if (card) return card;
-      }
+      const skelWrap = skel && skel.wrap && document.contains(skel.wrap)
+        ? (skel.wrap.querySelector('[data-wrap-id]') || null) : null;
+      if (skelWrap && document.contains(skelWrap)) return skelWrap;
       // While replaying, steps belong to the card currently being rebuilt.
       const replayWrap = window.historyReplayWrap;
       if (replayWrap && document.contains(replayWrap)) return replayWrap;
@@ -2749,6 +2764,24 @@
 
     // While the answer is still arriving, narration is shown open; the split
     // collapses by itself the moment the marker shows up.
+    // A finished turn leaves no trace of motion behind: every caret comes
+    // down and every highlight settles, in every bubble, not just the one the
+    // pointer happens to reference. A duplicate terminal event used to skip
+    // all of this and leave the blue caret blinking forever.
+    window.stopAllStreaming = function () {
+      try {
+        document.querySelectorAll('#chat-messages .sre-caret').forEach((c) => c.remove());
+        document.querySelectorAll('#chat-messages .ai-content.sre-streaming').forEach((box) => {
+          box.classList.remove('sre-streaming');
+          const live = box.querySelector('.sre-live-text');
+          if (live) live.outerHTML = live.innerHTML;
+          box.style.animation = 'none';
+          void box.offsetWidth;
+          box.style.animation = '';
+        });
+      } catch (err) { /* best-effort */ }
+    };
+
     window.markStreaming = function (on, contentDiv) {
       const box = contentDiv || (window.currentAIMsg && window.currentAIMsg.querySelector('.ai-content'));
       if (!box) return;
@@ -2837,6 +2870,7 @@
         const prevPanel = prev && document.contains(prev.bubble)
           ? prev.bubble.querySelector('.sre-panel .ai-content') : null;
         if (prev && prevPanel && !prevPanel.textContent.trim()) {
+          prev.wrap = wrap;
           window.seatChain(prev.bubble, wrap);
           return prev;
         }
@@ -2845,7 +2879,7 @@
         messagesDiv.insertBefore(bubble, wrap);
         window.seatChain(bubble, wrap);
         const column = bubble.querySelector(':scope > .agent-msg-body');
-        const entry = { bubble: bubble, column: column, claimed: false, sid: sid };
+        const entry = { bubble: bubble, column: column, wrap: wrap, claimed: false, sid: sid };
         window.liveBubbles[sid] = entry;
         window.liveBubbleCurrent = entry;
         if (typeof currentAIMsg !== 'undefined' && !currentAIMsg) currentAIMsg = bubble;
@@ -2872,21 +2906,15 @@
     // header and above the answer. The bubble owns the status pill; the run
     // card's own header steps aside (its hooks keep working, they are just not
     // painted anymore).
+    // The chain is a card of its own sitting directly above its answer
+    // bubble. Nesting it inside the bubble is what kept breaking: every move
+    // risked orphaning the card or its steps. Placement is now a single
+    // insertBefore, so ownership is obvious and nothing can leak.
     window.seatChain = function (bubble, wrap) {
       if (!bubble || !wrap) return false;
       try {
         if (String(wrap.dataset.sessionId || '') && String(bubble.dataset.sessionId || '')
             && String(wrap.dataset.sessionId) !== String(bubble.dataset.sessionId)) return false;
-        let slot = bubble.querySelector(':scope .agent-msg-body .sre-panel .sre-cot');
-        if (!slot) {
-          const panel = bubble.querySelector('.sre-panel');
-          if (!panel) return false;
-          slot = document.createElement('div');
-          slot.className = 'sre-cot';
-          slot.style.display = 'none';
-          const answer = panel.querySelector(':scope > .ai-content');
-          panel.insertBefore(slot, answer || null);
-        }
         const body = wrap.querySelector('[data-wrap-id]') || wrap.firstElementChild;
         const wrapId = (body && body.dataset.wrapId) || wrap.id;
         // A card painted before it met its bubble (replay) hands its latest
@@ -2905,16 +2933,16 @@
                 : { spinner: true, working: true });
           }
         }
-        if (slot.contains(wrap)) {
+        if (wrap.parentElement === messagesDiv && wrap.nextElementSibling === bubble) {
           if (wrapId) bubble.dataset.wrapId = wrapId;
           return true;
         }
-        slot.appendChild(wrap);
+        messagesDiv.insertBefore(wrap, bubble);
         wrap.dataset.bubbleId = bubble.id;
         if (wrapId) bubble.dataset.wrapId = wrapId;
         const toggle = bubble.querySelector('.sre-run-toggle');
         if (toggle) toggle.classList.remove('sre-hidden');
-        bubble.dataset.chainOpen = slot.style.display !== 'none' ? '1' : '0';
+        bubble.dataset.chainOpen = '1';
         return true;
       } catch (err) { return false; }
     };
@@ -2930,9 +2958,9 @@
       try {
         document.querySelectorAll('[id^="runwrap-"]').forEach((wrap) => {
           const linked = wrap.dataset.bubbleId && document.getElementById(wrap.dataset.bubbleId);
-          if (linked) { window.seatChain(linked, wrap); return; }
+          if (linked && document.contains(linked)) { window.seatChain(linked, wrap); return; }
           const bubble = wrap.closest('.agent-msg.sre-msg-ai');
-          if (bubble) window.seatWrapAbove(wrap, bubble);
+          if (bubble && document.contains(bubble)) window.seatChain(bubble, wrap);
         });
       } catch (err) { /* best-effort */ }
     };
@@ -6538,18 +6566,7 @@
   #sre-agent-app .sre-run-toggle .sre-run-chev { display: flex; opacity: .7; transition: transform .2s ease; }
   #sre-agent-app .sre-cot:empty { display: none; }
   /* The run card sheds its own chrome once nested: the bubble owns it. */
-  #sre-agent-app .sre-cot .sre-run-card {
-    border: 0 !important; background: transparent !important;
-    box-shadow: none !important; border-radius: 0 !important;
-    margin: 0 !important; overflow: visible !important; width: auto !important;
-  }
-  #sre-agent-app .sre-cot .sre-run-head { display: none !important; }
-  #sre-agent-app .sre-cot .sre-run-body {
-    border: 0 !important; background: transparent !important;
-    box-shadow: none !important; border-radius: 0 !important;
-    margin: 0 !important; padding: 2px 0 8px !important;
-    max-height: none !important; overflow: visible !important;
-  }
+
   #sre-agent-app .sre-art-locate {
     cursor: pointer; transition: background .15s ease, color .15s ease;
   }
