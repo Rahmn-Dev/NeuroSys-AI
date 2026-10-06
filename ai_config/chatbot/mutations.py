@@ -82,6 +82,32 @@ def delete_chat_session(user, session_id):
     return {"deleted": True}
 
 
+def delete_message(user, message_id):
+    require_user_id(user)
+    try:
+        msg = models.ChatMessage.objects.get(pk=message_id)
+    except (models.ChatMessage.DoesNotExist, ValueError, TypeError):
+        raise MutationError("Message not found.")
+    session = msg.session
+    deleted = 0
+    if str(msg.sender).lower() == "user":
+        # A private prompt carries its reply with it: delete everything the
+        # agent answered before the next human turn.
+        later_user = models.ChatMessage.objects.filter(
+            session=session, created_at__gt=msg.created_at, sender="user"
+        ).order_by("created_at").first()
+        qs = models.ChatMessage.objects.filter(
+            session=session, created_at__gte=msg.created_at, sender__in=["ai", "tool"]
+        )
+        if later_user is not None:
+            qs = qs.filter(created_at__lt=later_user.created_at)
+        count, _ = qs.delete()
+        deleted += count
+    msg.delete()
+    deleted += 1
+    return {"deleted": deleted}
+
+
 def bulk_delete_chats(user, session_ids):
     require_user_id(user)
     if not isinstance(session_ids, list):

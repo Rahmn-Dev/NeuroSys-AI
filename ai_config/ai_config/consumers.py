@@ -1296,6 +1296,7 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
         "aimodel.delete",
         "aimodel.test",
         "investigation.cancel",
+        "message.delete",
     }
 
     async def _handle_rpc(self, data):
@@ -1351,6 +1352,9 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
             elif msg_type == "investigation.cancel":
                 result = await call(mutations.cancel_investigation)(
                     user, data.get("session_id"), data.get("inv_id"))
+            elif msg_type == "message.delete":
+                result = await call(mutations.delete_message)(
+                    user, data.get("id"))
             else:
                 await answer(False, error="Unknown call.")
                 return

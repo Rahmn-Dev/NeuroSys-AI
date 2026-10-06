@@ -2371,19 +2371,25 @@
         ` style="background:rgba(0, 0, 0, 0.18); border:1px solid rgba(255,255,255,0.35);` +
         ` color:#ffffff; border-radius:6px; padding:3px 8px; font-size:10px; cursor:pointer;` +
         ` font-weight:600; display:inline-flex; align-items:center; gap:4px; transition:background 0.15s ease;">` +
-        `<i class="fa-solid fa-pen" style="font-size:9px;"></i> Edit</button>`;
+        `<i class="fa-solid fa-pen" style="font-size:9px;"></i> Edit</button>` +
+        `<button title="Delete this message" class="sre-msg-delete-btn" onclick="window.deleteChatMessage(event,this)"` +
+        ` style="background:rgba(0, 0, 0, 0.18); border:1px solid rgba(255,255,255,0.35);` +
+        ` color:#ffffff; border-radius:6px; padding:3px 8px; font-size:10px; cursor:pointer;` +
+        ` font-weight:600; display:inline-flex; align-items:center; gap:4px; transition:background 0.15s ease;">` +
+        `<i class="fa-solid fa-trash-can" style="font-size:9px;"></i> Delete</button>`;
       div.appendChild(actions);
       div.onmouseenter = () => { actions.style.opacity = '1'; };
       div.onmouseleave = () => { actions.style.opacity = '0'; };
       return div;
     };
 
-    function addUserMessage(text, ts) {
+    function addUserMessage(text, ts, msgId) {
       const div = document.createElement('div');
       div.className = 'sre-msg-user';
       // Messages remember their timestamp so an artifact can point back at the
       // exact turn that produced it.
       if (ts) div.dataset.created = String(ts);
+      if (msgId) div.dataset.msgId = String(msgId);
       div.style.cssText = 'align-self: flex-end; border-radius: 16px; padding: 12px 16px; max-width: 70%; font-size: 14px; line-height: 1.5; margin-bottom: 2px;';
 
       const contextRegex = /\n\n\[Context Attached: (file:\/\/[^\]]+)\]/g;
@@ -2422,6 +2428,39 @@
       messagesDiv.appendChild(timeDiv);
       scrollToBottom();
     }
+
+    // --- Delete a message (user messages cascade to their AI reply) -------
+    window.deleteChatMessage = async function (event, btn) {
+      event.preventDefault();
+      event.stopPropagation();
+      const el = btn.closest('[data-msg-id], .sre-msg-user, .agent-msg.sre-msg-ai');
+      if (!el) return;
+      const msgId = el.dataset.msgId;
+      if (!msgId) {
+        addSystemMsg('Message still loading, try again in a moment.', 'circle-info');
+        return;
+      }
+      if (!confirm('Delete this message?')) return;
+      try {
+        const data = await window.wsCall('message.delete', { id: msgId });
+        if (data && data.deleted) {
+          // Remove the bubble and its paired reply from the DOM.
+          el.remove();
+          const isUser = el.classList.contains('sre-msg-user');
+          if (isUser) {
+            // The AI response that immediately followed this user message
+            // belongs to the same turn and goes away too.
+            const nextAi = el.nextElementSibling;
+            if (nextAi && nextAi.classList.contains('agent-msg')) {
+              nextAi.remove();
+            }
+          }
+          addSystemMsg('Message deleted.', 'check');
+        }
+      } catch (e) {
+        addSystemMsg('Delete failed: ' + (e.message || e), 'circle-alert');
+      }
+    };
 
     // --- Revise a prompt before it is sent on -------------------------------
     window.editUserMessage = function (btn) {
@@ -3111,6 +3150,7 @@
             <div class="sre-panel p-3 my-2" style="background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 14px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); min-width: 0;">
                 <div class="sre-bubble-head">
                     <strong style="font-size: 13px;"><span class="theme-gradient">NeuroSysAI</span><i class="sre-agent-dot" data-state="idle" title="Agent idle"></i></strong>
+                    <button type="button" class="sre-msg-delete" title="Delete this message" onclick="window.deleteChatMessage(event,this)" style="margin-left:auto; background:none; border:none; color:var(--error); cursor:pointer; font-size:11px;"><i class="fa-solid fa-trash-can"></i></button>
                     <button type="button" class="sre-run-toggle sre-hidden" id="${bubbleId}-toggle" title="Show the agent's work" onclick="window.toggleBubbleChain('${bubbleId}')">
                         <span class="sre-run-glyph"></span><span class="sre-run-title"></span><span class="sre-run-dur"></span><span class="sre-run-chev">${window.sreChevSvg(12)}</span>
                     </button>
