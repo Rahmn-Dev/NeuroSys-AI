@@ -1346,6 +1346,12 @@ Output strictly the category name."""
                         pass
                 if inv_id and run_completed:
                     await sync_to_async(lambda _i=inv_id: Investigation.objects.filter(id=_i).update(status="completed"))()
+                    # The split marker is a front-end contract. It must be
+                    # stripped before the answer is stored as a finding, a
+                    # report or a case summary, or it shows up verbatim in the
+                    # investigation panel.
+                    from .events import FINAL_ANSWER_MARKER as _FAM
+                    final_message = (final_message or "").replace(_FAM, "").strip()
                     if final_message:
                         await sync_to_async(lambda _i=inv_id: InvestigationFinding.objects.filter(investigation_id=_i).delete())()
                         await sync_to_async(InvestigationFinding.objects.create)(investigation_id=inv_id, content=final_message)

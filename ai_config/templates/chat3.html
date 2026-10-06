@@ -5001,17 +5001,24 @@
                 case 'blocked':
                 case 'denied':
                 case 'denied_timeout':
-                case 'security_blocked':
+                case 'security_blocked': {
+                  const _blocked = String(evt.type) === 'security_blocked';
                   updateRunStateCard(evt.run_id || `history-${msg.id || 'current'}`, evt.type);
                   addAgentStep(
-                    String(evt.type) === 'cancelled' ? 'Cancelled' : 'Error',
+                    _blocked ? 'Blocked by Security Policy'
+                      : String(evt.type) === 'cancelled' ? 'Cancelled' : 'Error',
                     escapeHtml(evt.content || String(evt.type)),
-                    'var(--error)', 'x-circle', null, true,
+                    'var(--error)', _blocked ? 'shield-alert' : 'x-circle', null, true,
                   );
-                  // Same affordances as the live run, bound to this chat and case.
-                  messagesDiv.appendChild(window.renderRunFailureActions(sessionId, evt.case_id));
+                  // A blocked prompt is not something to retry, so it gets no
+                  // Retry/Cancel bar. Every other stop keeps the same
+                  // affordances the live run offered.
+                  if (!_blocked) {
+                    messagesDiv.appendChild(window.renderRunFailureActions(sessionId, evt.case_id));
+                  }
                   scrollToBottom();
                   break;
+                }
 
                 case 'investigation_started': {
                   // Live runs print their investigation id in the card header;
@@ -5066,7 +5073,21 @@
             });
           }
           if (msg.message && msg.message.trim() !== "") {
-            addAIMessage(msg.message, msg.created_at, msg.id);
+            const _wasBlocked = _evts.some((e) => e && e.type === 'security_blocked');
+            const _bubble = addAIMessage(msg.message, msg.created_at, msg.id);
+            // Reloading history used to show a plain answer for a blocked
+            // prompt while the live view showed a red security card.
+            if (_wasBlocked && _bubble && _bubble.classList) {
+              _bubble.classList.add('sre-blocked-turn');
+              const _panel = _bubble.querySelector('.sre-panel');
+              if (_panel) {
+                _panel.style.background = 'rgba(248,81,73,0.08)';
+                _panel.style.borderColor = 'rgba(248,81,73,0.45)';
+                _panel.style.boxShadow = '0 4px 18px rgba(248,81,73,0.10)';
+              }
+              const _head = _bubble.querySelector('.sre-panel strong');
+              if (_head) _head.style.color = 'var(--error)';
+            }
           }
         }
       });
