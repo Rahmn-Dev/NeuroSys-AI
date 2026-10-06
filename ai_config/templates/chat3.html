@@ -1981,6 +1981,11 @@
             : data.type === 'denied_timeout' ? 'denied_timeout' : 'denied';
           finalizeRunWrap(_stopStatus);
           addAgentStep(_stopLabel, escapeHtml(data.content || ''), 'var(--warning)', 'ban', null, true);
+          if (data.type === 'security_blocked') {
+            const _blockedBubble = addAIMessage(data.content || '', new Date());
+            window.paintBlockedBubble(_blockedBubble);
+            currentAIMsg = null;
+          }
           window.sessionStartTime = null;
           // The prompt that triggered the block is quarantined in place.
           try {
@@ -3357,6 +3362,14 @@
           + '</button></div>';
         return true;
       } catch (err) { return false; }
+    };
+
+    window.paintBlockedBubble = function (bubble) {
+      if (!bubble || !bubble.classList) return false;
+      bubble.classList.add('sre-blocked-turn');
+      const toggle = bubble.querySelector('.sre-run-toggle');
+      if (toggle) toggle.classList.remove('sre-hidden');
+      return true;
     };
 
     window.toggleBubbleChain = function (bubbleId, force) {
@@ -5520,6 +5533,7 @@
               } catch (err) { /* best-effort */ }
             }
             const _bubble = addAIMessage(msg.message, msg.created_at, msg.id);
+            if (_wasBlocked) window.paintBlockedBubble(_bubble);
             if (_bubble) window.syncBubblePill(_bubble);
             // The chain of thought seats inside the bubble's own slot.
             if (_bubble && _ownedWrap && _ownedWrap.id && _ownedWrap.id.indexOf('runwrap-') === 0) {
@@ -6762,6 +6776,14 @@
     position: static; margin-top: 8px; padding: 4px 10px;
     background: transparent; border-style: solid; width: auto;
   }
+  /* A blocked turn reads red on both bubbles. The AI bubble keeps its
+     status pill: the chain is still openable, only its colours change. */
+  #sre-agent-app .sre-blocked-turn .sre-panel {
+    background: rgba(248, 81, 73, .08) !important;
+    border-color: rgba(248, 81, 73, .45) !important;
+    box-shadow: 0 4px 18px rgba(248, 81, 73, .10) !important;
+  }
+  #sre-agent-app .sre-blocked-turn .sre-panel strong { color: var(--error) !important; }
   #sre-agent-app .sre-inv-empty {
     padding: 12px; font-size: 12px; color: var(--text-secondary); font-style: italic;
   }
