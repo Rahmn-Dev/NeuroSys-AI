@@ -580,6 +580,16 @@ class SREAgentEngine:
         if INJECTION.search(user_message):
             audit("direct_injection", verdict="blocked", session_id=self.session_id, user_id=self.user_id)
             audit("security_blocked", verdict="direct_injection", session_id=self.session_id, user_id=self.user_id)
+            # A blocked prompt is still history: the request that triggered the
+            # block and the block itself are both stored, so a reload shows the
+            # red security card instead of a gap in the transcript.
+            try:
+                db_session_id = await self._get_or_create_session()
+                await self._save_message(db_session_id, "user", user_message)
+                blocked_text = "Request blocked: instruction override detected."
+                await self._save_blocked_message(db_session_id, blocked_text)
+            except Exception:
+                pass
             yield evt_security_blocked("Request blocked: instruction override detected.")
             return
         bind_context(self.session_id, self.user_id,
@@ -1353,6 +1363,45 @@ Output strictly the category name."""
                                 action_type="plan", case_id=inv_id)
                     except Exception:
                         pass
+                # A run stopped by policy or by the operator must say so on the
+                # case itself. Leaving the investigation ACTIVE with tasks that
+                # look running is exactly how a blocked run passed as healthy;
+                # for a security-first product every one of these states is
+                # labelled, on the case, on its in-flight tasks, and as a
+                # finding, so the audit trail is complete.
+                _outcome = str(getattr(react_engine, "outcome", "") or "").lower()
+                _terminal_case = {
+                    "security_blocked": "security_blocked",
+                    "blocked": "blocked",
+                    "denied": "denied",
+                    "denied_timeout": "denied_timeout",
+                    "failed": "failed",
+                    "cancelled": "cancelled",
+                }.get(_outcome, "")
+                if inv_id and _terminal_case and not run_completed:
+                    await sync_to_async(lambda _i=inv_id, _s=_terminal_case: Investigation.objects.filter(id=_i).update(status=_s))()
+                    await sync_to_async(lambda _i=inv_id, _s=_terminal_case: InvestigationTask.objects.filter(
+                        investigation_id=_i,
+                        status__in=["pending", "running", "in_progress", "executing"]).update(status=_s))()
+                    _block_reason = ""
+                    for _ev in reversed(events_history or []):
+                        if str((_ev or {}).get("type", "")).lower() in {
+                                "security_blocked", "denied", "denied_timeout",
+                                "blocked", "error", "failed", "cancelled"}:
+                            _block_reason = str((_ev or {}).get("content", "") or "").strip()[:500]
+                            break
+                    _finding_text = (
+                        f"Stopped by security policy ({_terminal_case}): "
+                        f"{_block_reason or 'no further detail recorded.'}"
+                    )
+                    await sync_to_async(InvestigationFinding.objects.create)(
+                        investigation_id=inv_id, content=_finding_text)
+                    if artifact_mgr:
+                        import json as _fjson2
+                        await artifact_mgr.upsert_artifact(
+                            f".neurosys/sessions/{self.session_id}/investigations/{inv_id}/findings.json",
+                            _fjson2.dumps({"findings": [_finding_text]}, indent=2),
+                            action_type="finding", case_id=inv_id)
                 if inv_id and run_completed:
                     await sync_to_async(lambda _i=inv_id: Investigation.objects.filter(id=_i).update(status="completed"))()
                     # The split marker is a front-end contract. It must be
@@ -1374,9 +1423,11 @@ Output strictly the category name."""
                             response_path = f".neurosys/sessions/{self.session_id}/investigations/{inv_id}/response.md"
                             await artifact_mgr.upsert_artifact(
                                 response_path, final_message, action_type="report", case_id=inv_id)
-                elif inv_id:
+                elif inv_id and not _terminal_case:
                     # Provider limits, iteration bounds, and interrupted loops are
-                    # resumable. They must never close the semantic case.
+                    # resumable. They must never close the semantic case - but a
+                    # case already labelled with a terminal security outcome
+                    # stays labelled.
                     await sync_to_async(lambda _i=inv_id: Investigation.objects.filter(id=_i).update(status="active"))()
 
 
@@ -2135,6 +2186,27 @@ Output strictly the category name."""
                                 "model_rotation": self._rotation_metadata()}
                 msg.save(update_fields=["metadata"] + (["message"] if final else []))
 
+            await _db()
+        except Exception:
+            pass
+
+    async def _save_blocked_message(self, session_id, text: str):
+        """Store a blocked turn the replay renders as a red security card."""
+        from asgiref.sync import sync_to_async
+        from chatbot.models import ChatMessage
+        from .events import evt_security_blocked as _evt_blocked
+
+        @sync_to_async
+        def _db():
+            event = _evt_blocked(text).to_history_dict()
+            event.setdefault("case_id", str(getattr(self, "_active_case_id", "") or ""))
+            message_obj = ChatMessage.objects.create(
+                session_id=session_id, sender="ai", message=text,
+                metadata={"events": [event]})
+            self._assistant_message_id = message_obj.pk
+            return message_obj.pk
+
+        try:
             await _db()
         except Exception:
             pass

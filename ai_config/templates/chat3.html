@@ -4340,6 +4340,8 @@
       denied_timeout: 'var(--error)',
       security_blocked: 'var(--error)',
       cancelled: 'var(--text-secondary)',
+      security_blocked: 'var(--error)',
+      cancelled: 'var(--text-secondary)',
     };
     const sreInvTone = (state) => SRE_INV_TONE[String(state || 'pending').toLowerCase()] || 'var(--text-secondary)';
     const sreInvGlyph = (state) => {
