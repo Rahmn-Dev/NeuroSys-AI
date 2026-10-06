@@ -1953,8 +1953,15 @@
           pendingApproval = null;
           stopAllAgentStepTimers();
           updateRunStateCard(data.run_id, data.type === 'security_blocked' ? 'security_blocked' : data.type);
-          finalizeRunWrap(data.type === 'security_blocked' ? 'security_blocked' : 'failed');
-          addAgentStep(data.type === 'security_blocked' ? 'Blocked by Security Policy' : data.type === 'denied_timeout' ? 'Denied — Approval Timeout' : 'Approval Denied', escapeHtml(data.content || ''), 'var(--error)', 'shield-alert', null, true);
+          // Each way of stopping says what it was. Calling a denial a failure
+          // told the operator the agent broke when they simply said no.
+          const _stopLabel = data.type === 'security_blocked' ? 'Blocked by Security Policy'
+            : data.type === 'denied_timeout' ? 'Denied — no decision before the deadline'
+            : 'Denied by you';
+          const _stopStatus = data.type === 'security_blocked' ? 'security_blocked'
+            : data.type === 'denied_timeout' ? 'denied_timeout' : 'denied';
+          finalizeRunWrap(_stopStatus);
+          addAgentStep(_stopLabel, escapeHtml(data.content || ''), 'var(--warning)', 'ban', null, true);
           window.sessionStartTime = null;
           if (activeInvestigationId && investigations[activeInvestigationId]) {
             investigations[activeInvestigationId].status = data.type;

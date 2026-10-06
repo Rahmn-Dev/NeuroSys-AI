@@ -1623,7 +1623,22 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
                     await self.subscribe(str(engine.session_id))
                 await send_event(event.to_dict())
 
-        except ApprovalStopped:
+        except ApprovalStopped as stopped:
+            # A denial is a final outcome. Without this the client kept a live
+            # run spinning until the operator reloaded the page.
+            _ending = getattr(stopped, "ending", "denied")
+            try:
+                await send_event({
+                    "type": "denied" if _ending == "denied" else "denied_timeout",
+                    "status": _ending,
+                    "content": ("Denied by the operator: the requested action was not authorized."
+                                if _ending == "denied"
+                                else "No decision was made before the approval expired."),
+                    "run_id": str(engine._lifecycle.run.pk) if getattr(engine, "_lifecycle", None) else "",
+                })
+                await send_event({"type": "lifecycle", "status": _ending, "run_id": str(engine._lifecycle.run.pk) if getattr(engine, "_lifecycle", None) else ""})
+            except Exception:
+                pass
             return
         except asyncio.CancelledError:
             await send_event({"type": "lifecycle", "status": "cancelled", "run_id": str(engine._lifecycle.run.pk) if getattr(engine, "_lifecycle", None) else ""})

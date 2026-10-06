@@ -33,6 +33,15 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 # Opt-in LangGraph event tracing (off by default). Enable with SRE_GRAPH_TRACE=1.
 # It goes to the service log - never to a file inside the project tree.
 _GRAPH_TRACE_ENABLED = os.environ.get("SRE_GRAPH_TRACE", "").strip().lower() in {"1", "true", "yes", "on"}
+# A run that ends any of these ways is over; its turn must be readable from
+# history. Denying an action is an outcome, not an error.
+_TERMINAL_HISTORY_TYPES = {"completed", "error", "security_blocked", "denied",
+                          "denied_timeout", "cancelled"}
+
+
+def _now_ms() -> int:
+    import time as _t
+    return int(_t.time() * 1000)
 _GRAPH_LOGGER = logging.getLogger("neurosys.sre.graph")
 
 from datetime import timedelta
@@ -1893,6 +1902,26 @@ Output strictly the category name."""
                     pass
         except BaseException as exc:
             lifecycle = getattr(self, "_lifecycle", None)
+            # A denied or cancelled run leaves the loop early, so the normal
+            # persist never ran and the turn was stored with zero events: a
+            # refresh then showed an empty "archived run" with the agent
+            # runner details gone. Whatever the agent managed to do is what the
+            # operator must still be able to read.
+            try:
+                if events_history:
+                    _ending = getattr(exc, "ending", None) or (
+                        "cancelled" if isinstance(exc, asyncio.CancelledError) else "denied")
+                    if not any(e.get("type") in _TERMINAL_HISTORY_TYPES for e in events_history):
+                        events_history.append(_stamp_event({
+                            "type": _ending,
+                            "content": ("Denied by the operator: the requested action was not authorized."
+                                        if _ending == "denied" else
+                                        "Stopped by the operator before it finished."),
+                            "timestamp": _now_ms(),
+                        }))
+                    await self._persist_run_history(events_history)
+            except Exception:
+                pass
             if isinstance(exc, asyncio.CancelledError):
                 if lifecycle is not None:
                     await lifecycle.atransition("finalization", "cancelled", "cancelled", {})
@@ -2087,7 +2116,7 @@ Output strictly the category name."""
                         self._placeholder_message_id = msg.pk
                     else:
                         terminal = next((e for e in reversed(kept)
-                                         if e.get("type") in {"completed", "error", "security_blocked"}), None)
+                                         if e.get("type") in _TERMINAL_HISTORY_TYPES), None)
                         status = terminal.get("type", "ended") if terminal else "ended"
                         text = str((terminal or {}).get("content", "") or "")[:1500]
                         if not text:
@@ -2098,7 +2127,7 @@ Output strictly the category name."""
                         self._assistant_message_id = msg.pk
                 elif final and getattr(self, "_placeholder_message_id", None) == msg.pk:
                     terminal = next((e for e in reversed(kept)
-                                     if e.get("type") in {"completed", "error", "security_blocked"}), None)
+                                     if e.get("type") in _TERMINAL_HISTORY_TYPES), None)
                     if terminal:
                         msg.message = str(terminal.get("content", "") or "")[:1500] or msg.message
                     self._placeholder_message_id = None

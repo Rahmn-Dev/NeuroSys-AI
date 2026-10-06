@@ -42,7 +42,15 @@ def resolve_lifecycle():
     return _BY_SESSION.get(str(session_id))
 
 class ApprovalStopped(asyncio.CancelledError):
-    pass
+    """Raised when the operator denies an action.
+
+    Carries the ending so the run can be persisted as a denial instead of a
+    generic cancellation, which is what left denied turns empty on reload.
+    """
+
+    def __init__(self, message: str = "", ending: str = "denied"):
+        super().__init__(message or ending)
+        self.ending = ending
 
 class ApprovalLifecycle:
     def __init__(self, send):
@@ -91,7 +99,8 @@ class ApprovalLifecycle:
                 await self.send({'type':'approval_approved' if result.status == 'approved' else result.status,
                                  'status':result.status, 'approval_id':obj.pk, 'content':result.status})
                 if result.status != 'approved':
-                    raise ApprovalStopped()
+                    ending = 'denied_timeout' if result.status == 'denied_timeout' else 'denied'
+                    raise ApprovalStopped(ending)
                 return obj.pk
             finally:
                 self.pending = None
