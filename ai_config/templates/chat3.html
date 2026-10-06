@@ -5711,6 +5711,26 @@
                 case 'security_blocked': {
                   const _blocked = String(evt.type) === 'security_blocked';
                   updateRunStateCard(evt.run_id || `history-${msg.id || 'current'}`, evt.type);
+                  // The saved plan events left the case with running/pending
+                  // tasks; the final event decides how every still-open row
+                  // ended. Without this the stopped/denied run kept a
+                  // task plan that never stopped.
+                  try {
+                    const _cid = String(evt.case_id || evt.investigation_id || '');
+                    const _term = String(evt.type || '').toLowerCase();
+                    if (_cid && investigations[_cid]) {
+                      const _inv = investigations[_cid];
+                      _inv.status = _term === 'error' ? 'failed' : _term;
+                      (_inv.plan || []).forEach((p) => {
+                        const _p = String(p.status || '').toLowerCase();
+                        if (['pending', 'running', 'in_progress', 'executing'].includes(_p)) {
+                          p.status = _term === 'security_blocked' ? 'blocked'
+                            : _term === 'error' ? 'failed' : _term;
+                        }
+                      });
+                      renderInvestigationTimeline();
+                    }
+                  } catch (err) { /* best-effort */ }
                   addAgentStep(
                     _blocked ? 'Blocked by Security Policy'
                       : String(evt.type) === 'cancelled' ? 'Cancelled' : 'Error',
