@@ -2451,6 +2451,15 @@
       event.stopPropagation();
       const el = btn.closest('[data-msg-id], .sre-msg-user, .agent-msg.sre-msg-ai');
       if (!el) return;
+      // Only the newest user message can be deleted, which keeps the
+      // cascade to its direct AI reply predictable.
+      if (el.classList.contains('sre-msg-user')) {
+        const all = Array.from(messagesDiv.querySelectorAll('.sre-msg-user'));
+        if (el !== all[all.length - 1]) {
+          addSystemMsg('Only the latest message can be deleted.', 'circle-info');
+          return;
+        }
+      }
       const msgId = el.dataset.msgId;
       if (!msgId) {
         addSystemMsg('Message still loading, try again in a moment.', 'circle-info');
@@ -3173,7 +3182,6 @@
             <div class="sre-panel p-3 my-2" style="background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 14px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); min-width: 0;">
                 <div class="sre-bubble-head">
                     <strong style="font-size: 13px;"><span class="theme-gradient">NeuroSysAI</span><i class="sre-agent-dot" data-state="idle" title="Agent idle"></i></strong>
-                    <button type="button" class="sre-msg-delete" title="Delete this message" onclick="window.deleteChatMessage(event,this)" style="margin-left:auto; background:rgba(248,81,73,.12); border:1px solid rgba(248,81,73,.4); color:var(--error); cursor:pointer; font-size:11px; border-radius:6px; padding:3px 8px;"><i class="fa-solid fa-trash-can" style="font-size:9px;"></i></button>
                     <button type="button" class="sre-run-toggle sre-hidden" id="${bubbleId}-toggle" title="Show the agent's work" onclick="window.toggleBubbleChain('${bubbleId}')">
                         <span class="sre-run-glyph"></span><span class="sre-run-title"></span><span class="sre-run-dur"></span><span class="sre-run-chev">${window.sreChevSvg(12)}</span>
                     </button>
