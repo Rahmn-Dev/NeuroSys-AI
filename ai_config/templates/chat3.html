@@ -3000,7 +3000,7 @@
             <i class="fa-solid fa-chevron-down" id="${wrapId}-chev" style="font-size: 12px; color: var(--text-secondary); transition: transform .2s; transform: rotate(-90deg);"></i>
           </span>
         </div>
-        <div id="${wrapId}-body" class="sre-run-body" style="padding: 20px 20px 20px; display: flex; flex-direction: column; align-items: stretch; max-height: 420px; overflow-y: auto;"></div>
+        <div id="${wrapId}-body" class="sre-run-body" style="padding: 18px 20px 20px; display: flex; flex-direction: column; align-items: stretch; max-height: 420px; overflow-y: auto;"></div>
       `;
       messagesDiv.appendChild(wrap);
       window.agentAutoScroll = window.isPinnedToBottom();
@@ -5739,6 +5739,21 @@
     background: rgba(127, 140, 160, .12);
     border-bottom: 1px solid var(--border-color);
     border-radius: 12px 12px 0 0;
+  }
+  /* The timeline surface inside the run card is its own bordered, rounded
+     panel, in both live and replayed runs. Colours come from the app
+     variables, so light and dark each read correctly instead of a hardcoded
+     white. While the card is open the top corners tuck under the header. */
+  #sre-agent-app .sre-run-card > .sre-run-body {
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    margin: 8px;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, .04);
+  }
+  #sre-agent-app .sre-run-card[data-open="1"] > .sre-run-body {
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
   }
   .sre-tl-dot svg { display: block; }
   .sre-tl-chev svg { display: block; }
