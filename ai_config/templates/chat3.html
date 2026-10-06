@@ -1211,6 +1211,13 @@
       opts.headers = Object.assign({}, opts.headers || {}, {
         'X-CSRFToken': getCSRFToken() || '', 'X-Requested-With': 'XMLHttpRequest'
       });
+      // A JSON body without a content type arrives as application/octet-stream
+      // and the server answers 415 before reading it, which the UI could only
+      // report as "rejected". Set it unless the caller chose one.
+      if (opts.body != null && typeof opts.body === 'string'
+          && !Object.keys(opts.headers).some((k) => k.toLowerCase() === 'content-type')) {
+        opts.headers['Content-Type'] = 'application/json';
+      }
     }
     let res = await fetch(url, opts);
     if (res.status === 403 && !safe) {
