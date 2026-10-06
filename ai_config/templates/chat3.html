@@ -4828,6 +4828,10 @@
       messages.forEach(msg => {
         if (msg.id && replayMessages.has(msg.id)) return;
         if (msg.id) replayMessages.add(msg.id);
+        // A message that owns no run must not inherit the previous one. The
+        // active card was still pointing at the earlier run, so the answer for a
+        // turn that never ran dragged that run's card down to sit beside it.
+        window.activeRunWrap = null;
         const _evts = (msg.metadata && Array.isArray(msg.metadata.events)) ? msg.metadata.events : [];
         // Older messages were recorded before run grouping existed and carry no
         // run_id. They still belong to a card: opening one here is what stops
@@ -5121,8 +5125,13 @@
           if (window.historyReplayWrap && document.contains(window.historyReplayWrap)
               && window.historyReplayWrap.childElementCount === 0) {
             window.removeRunCard(window.historyReplayWrap);
+            const _map = window.historyRunWraps || {};
+            Object.keys(_map).forEach((runId) => {
+              if (_map[runId] === window.historyReplayWrap.dataset.wrapId) delete _map[runId];
+            });
           }
           window.historyReplayWrap = null;
+          window.activeRunWrap = null;
           if (msg.message && msg.message.trim() !== "") {
             const _wasBlocked = _evts.some((e) => e && e.type === 'security_blocked');
             const _bubble = addAIMessage(msg.message, msg.created_at, msg.id);
