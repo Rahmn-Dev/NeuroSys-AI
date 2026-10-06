@@ -1756,6 +1756,22 @@
           window.serverRsaPublicKey = data.public_key;
           break;
 
+        case 'message_saved': {
+          const _sid = (data.content || data.session_id || sessionId || '');
+          const _mid = String(data.msg_id || '');
+          if (_mid) {
+            let _el = null;
+            if (String(data.sender).toLowerCase() === 'user') {
+              const _list = messagesDiv.querySelectorAll('.sre-msg-user');
+              _el = _list[_list.length - 1];
+            } else {
+              _el = (window.liveBubbleCurrent && window.liveBubbleCurrent.bubble)
+                || messagesDiv.querySelector('.agent-msg.sre-msg-ai:last-of-type');
+            }
+            if (_el) _el.dataset.msgId = _mid;
+          }
+          break;
+        }
         case 'session_id':
           const oldSessionId = sessionId;
           // Adopt the id only when this chat asked for a run and is still
