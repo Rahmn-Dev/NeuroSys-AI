@@ -1862,6 +1862,7 @@
           // container is deliberately kept live so trailing run-state events
           // land inside the card instead of loose at the bottom.
           window.markStreaming(false);
+          window.closeTurn();
           if (window.activeRunWrap) {
             paintRunWrap(window.activeRunWrap.dataset.wrapId, 'answered');
             window.activeRunOrb = null;
@@ -1904,9 +1905,14 @@
           break;
 
         case 'thinking':
+          if (!window.turnIsOpen()) break;
           if (currentAIMsg) {
-            currentAIMsg.remove();
-            currentAIMsg = null;
+            const _hasAnswer = currentAIMsg.querySelector('.ai-content')
+              && currentAIMsg.querySelector('.ai-content').textContent.trim();
+            if (!_hasAnswer) {
+              currentAIMsg.remove();
+              currentAIMsg = null;
+            }
           }
           window.ensureRunWrap();
           addAgentStep('Thinking', data.content, '#ff69b4', 'brain');
@@ -1974,6 +1980,7 @@
             renderInvestigationTimeline();
           }
           isProcessing = false;
+          window.closeTurn();
           window.setSendButtonState('idle');
           break;
 
@@ -2096,6 +2103,7 @@
 
         case 'message_chunk':
           if (currentAIMsg && currentAIMsg.dataset.sessionId !== String(sessionId || '')) break;
+          if (!window.turnIsOpen()) break;
           if (!currentAIMsg) {
             currentAIMsg = addAIMessage('');
           }
@@ -2125,6 +2133,12 @@
           window.markRunFinished(window.liveRunSessionId || sessionId, true);
           window.markStreaming(false);
           window.setAgentDotState('done');
+          window.closeTurn();
+          if (window.activeRunWrap) {
+            paintRunWrap(window.activeRunWrap.dataset.wrapId, 'completed',
+              (data.duration != null) ? data.duration
+                : ((new Date() - (window.sessionStartTime || new Date())) / 1000));
+          }
           updateRunStateCard(data.run_id, 'completed', data.duration);
           finalizeRunWrap('completed', data.duration);
           if (activeInvestigationId && investigations[activeInvestigationId]) {
@@ -2198,6 +2212,7 @@
           }
           window.sessionStartTime = null;
           isProcessing = false;
+          window.closeTurn();
           window.setSendButtonState('idle');
           currentAIMsg = null;
           break;
@@ -2605,8 +2620,18 @@
       return null;
     };
 
+    // A turn is open from submit until its terminal event. Anything arriving
+    // after it closed is a straggler: adopting it is what left a second empty
+    // bubble with a spinner, a stuck caret, and a run that could never send
+    // again. Closed turns ignore run content and never open new containers.
+    window.turnState = window.turnState || 'idle';
+    window.openTurn = function () { window.turnState = 'running'; };
+    window.closeTurn = function () { window.turnState = 'idle'; };
+    window.turnIsOpen = function () { return window.turnState !== 'idle'; };
+
     window.ensureRunWrap = function () {
       if (window.replayActive) return null;
+      if (!window.turnIsOpen()) return window.activeRunWrap;
       if (!window.activeRunWrap) startRunWrap();
       return window.activeRunWrap;
     };
@@ -3628,6 +3653,7 @@
       window.cancelRunForSession(sid);
       addAgentStep('Cancelled', 'Stopped by the operator before it finished.', 'var(--warning)', 'circle-xmark', null, true);
       isProcessing = false;
+      window.closeTurn();
       window.setSendButtonState('idle');
       window.renderActiveRuns();
     };
@@ -4513,6 +4539,7 @@
       input.value = '';
       input.style.height = 'auto';
       stopAllAgentStepTimers();
+      window.openTurn();
       startRunWrap();
       window.sessionStartTime = new Date();
       isProcessing = true;
