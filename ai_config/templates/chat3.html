@@ -2449,11 +2449,18 @@
           const isUser = el.classList.contains('sre-msg-user');
           if (isUser) {
             // The AI response that immediately followed this user message
-            // belongs to the same turn and goes away too.
-            const nextAi = el.nextElementSibling;
-            if (nextAi && nextAi.classList.contains('agent-msg')) {
-              nextAi.remove();
+            // belongs to the same turn and goes away too. Skip the timestamp
+            // div that sits between the two bubbles.
+            let sib = el.nextElementSibling;
+            while (sib) {
+              if (sib.classList.contains('sre-msg-time')) { sib = sib.nextElementSibling; continue; }
+              if (sib.classList.contains('agent-msg')) { sib.remove(); }
+              else if (sib.classList.contains('sre-msg-user')) { break; }
+              sib = sib.nextElementSibling;
             }
+            // Also remove the timestamp of the deleted user bubble.
+            const prevTime = el.previousElementSibling;
+            if (prevTime && prevTime.classList.contains('sre-msg-time')) prevTime.remove();
           }
           addSystemMsg('Message deleted.', 'check');
         }
