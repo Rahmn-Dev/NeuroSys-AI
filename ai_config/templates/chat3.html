@@ -1789,7 +1789,7 @@
 
         case 'resuming':
         case 'lifecycle':
-          if (!['completed', 'failed', 'cancelled', 'blocked', 'denied', 'denied_timeout', 'security_blocked', 'error', 'finalized'].includes(data.status)) {
+          if (!window.SRE_TERMINAL.includes(data.status)) {
             updateRunStateCard(data.run_id, data.status || 'running');
             addAgentStep('Progress', lifecycleNarration(data.status), '#79c0ff', 'activity');
           } else {
@@ -1798,7 +1798,7 @@
             window.sessionStartTime = null;
           }
           if (data.status === 'awaiting_approval') isProcessing = true;
-          if (['completed', 'failed', 'cancelled', 'blocked', 'denied', 'denied_timeout', 'security_blocked', 'error', 'finalized'].includes(data.status)) {
+          if (window.SRE_TERMINAL.includes(data.status)) {
             isProcessing = false;
             window.setSendButtonState('idle');
             window.markRunFinished(window.liveRunSessionId || sessionId, data.status === 'completed');
@@ -2701,6 +2701,12 @@
     // after it closed is a straggler: adopting it is what left a second empty
     // bubble with a spinner, a stuck caret, and a run that could never send
     // again. Closed turns ignore run content and never open new containers.
+    // Every status that means "this will never run again", in one place. The
+    // thirteenth entry matters: superseded and expired cases kept falling
+    // through every check written before they existed, so dead cases rendered
+    // as alive.
+    window.SRE_TERMINAL = ['completed', 'failed', 'cancelled', 'blocked', 'denied',
+      'denied_timeout', 'security_blocked', 'error', 'finalized', 'expired', 'superseded'];
     window.turnState = window.turnState || 'idle';
     window.openTurn = function () { window.turnState = 'running'; };
     window.closeTurn = function () { window.turnState = 'idle'; };
@@ -3019,7 +3025,7 @@
           if (_last) {
             const _dur = _w.dataset.lastDuration !== '' ? Number(_w.dataset.lastDuration) : null;
             const _low = _last.toLowerCase();
-            const _terminal = ['completed', 'failed', 'cancelled', 'blocked', 'denied', 'denied_timeout', 'security_blocked', 'error', 'finalized'].includes(_low);
+            const _terminal = window.SRE_TERMINAL.includes(_low);
             const _status = _terminal ? _last : 'working';
             window.paintBubblePill(wrapId, _status,
               _terminal
@@ -3519,7 +3525,7 @@
         const dur = (rawDur !== '' && rawDur != null) ? Number(rawDur) : null;
         if (last) {
           const low = last.toLowerCase();
-          const terminal = ['completed', 'failed', 'cancelled', 'blocked', 'denied', 'denied_timeout', 'security_blocked', 'error', 'finalized'].includes(low);
+          const terminal = window.SRE_TERMINAL.includes(low);
           window.paintBubblePill(wrapId, terminal ? last : 'working',
             terminal
               ? { done: low === 'completed', failed: low !== 'completed', duration: dur }
@@ -3549,7 +3555,7 @@
       const dur = document.getElementById(wrapId + '-dur');
       const spin = document.getElementById(wrapId + '-spin');
       const ok = String(status || '').toLowerCase() === 'completed';
-      const terminal = ['completed', 'failed', 'cancelled', 'blocked', 'denied', 'denied_timeout', 'security_blocked', 'error', 'finalized'].includes(String(status || '').toLowerCase());
+      const terminal = window.SRE_TERMINAL.includes(String(status || '').toLowerCase());
       if (pill && (terminal || status)) {
         pill.textContent = status || (ok ? 'completed' : 'failed');
         pill.style.backgroundColor = '';
@@ -3625,7 +3631,7 @@
     function updateRunStateCard(runId, status, duration = null) {
       const safeRunId = String(runId || window.activeAgentRunId || 'current').replace(/[^a-zA-Z0-9_-]/g, '-');
       const stepId = `run-state-${safeRunId}`;
-      const terminal = ['completed', 'failed', 'cancelled', 'blocked', 'denied', 'denied_timeout', 'security_blocked', 'error', 'finalized'].includes(String(status).toLowerCase());
+      const terminal = window.SRE_TERMINAL.includes(String(status).toLowerCase());
       // The Run State row is part of the run too, so it feeds the header orb.
       if (!window.isLoadingHistory) {
         const phase = {
@@ -4087,9 +4093,7 @@
         const run = data.run;
         if (!run) { delete window.runsBySession[String(sid)]; }
         else {
-          const terminal = ['completed', 'failed', 'cancelled', 'blocked', 'denied',
-            'denied_timeout', 'security_blocked', 'error', 'finalized'];
-          if (terminal.includes(String(run.status))) {
+          if (window.SRE_TERMINAL.includes(String(run.status))) {
             window.markRunFinished(String(sid), run.status === 'completed');
           }
         }
@@ -4138,9 +4142,7 @@
         // Chats without a live run still need their state, from the same poll.
         Object.keys(_latest).forEach((sid) => {
           const st = String((_latest[sid] || {}).status || '');
-          if (['completed', 'failed', 'cancelled', 'blocked', 'denied',
-               'denied_timeout', 'security_blocked', 'error', 'finalized'].includes(st)
-              && window.stoppingRuns) {
+          if (window.SRE_TERMINAL.includes(st) && window.stoppingRuns) {
             delete window.stoppingRuns[String(sid)];
           }
           if (!(window.runsBySession || {})[sid]) window.refreshHistoryRowState(sid);
@@ -4189,10 +4191,8 @@
     window.noteForeignRunEvent = function (payload, explicitSid) {
       const sid = explicitSid || window.liveRunSessionId;
       if (!sid) return;
-      const terminal = ['completed', 'failed', 'cancelled', 'blocked', 'denied',
-        'denied_timeout', 'security_blocked', 'error', 'finalized'];
       const status = String(payload.status || '');
-      if (payload.type === 'lifecycle' && terminal.includes(status)) {
+      if (payload.type === 'lifecycle' && window.SRE_TERMINAL.includes(status.toLowerCase())) {
         window.markRunFinished(sid, status === 'completed');
         return;
       }
@@ -4619,6 +4619,8 @@
       denied_timeout: 'var(--error)',
       security_blocked: 'var(--error)',
       cancelled: 'var(--text-secondary)',
+      expired: 'var(--text-secondary)',
+      superseded: 'var(--text-secondary)',
       security_blocked: 'var(--error)',
       cancelled: 'var(--text-secondary)',
     };
@@ -5141,7 +5143,7 @@
         if (!run || (window.activeAgentRunId === run.id && run.checkpoint_version <= lastSnapshotCheckpoint)) return;
         lastSnapshotCheckpoint = run.checkpoint_version;
         window.activeAgentRunId = run.id;
-        const terminalRunStates = ['completed', 'failed', 'cancelled', 'blocked', 'denied', 'denied_timeout', 'security_blocked', 'error', 'finalized'];
+        const terminalRunStates = window.SRE_TERMINAL;
         const runIsTerminal = terminalRunStates.includes(run.status);
         if (runIsTerminal) {
           // The replay already carries that run's steps and its outcome. Adding

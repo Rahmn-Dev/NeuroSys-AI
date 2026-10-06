@@ -275,6 +275,13 @@ def cancel_investigation(user, session_id, inv_id):
     updated = models.Investigation.objects.filter(
         id=inv_id, session=session, status="active"
     ).update(status="cancelled")
+    # Tasks that read as running on a case that will never run again are
+    # frozen whatever the outcome: a superseded or expired case keeps no live
+    # tasks either.
+    models.InvestigationTask.objects.filter(
+        investigation_id=inv_id,
+        status__in=["pending", "running", "in_progress", "executing"],
+    ).update(status="cancelled")
     if not updated:
         return {"status": "unchanged"}
     models.InvestigationTask.objects.filter(
