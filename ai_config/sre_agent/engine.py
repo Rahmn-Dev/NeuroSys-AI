@@ -1340,7 +1340,8 @@ Output strictly the category name."""
                             _md_path = (f".neurosys/sessions/{self.session_id}/investigations/"
                                         f"{inv_id}/task_plan.md")
                             await artifact_mgr.upsert_artifact(
-                                _md_path, render_task_plan_markdown(_sp), action_type="plan")
+                                _md_path, render_task_plan_markdown(_sp),
+                                action_type="plan", case_id=inv_id)
                     except Exception:
                         pass
                 if inv_id and run_completed:
@@ -1351,9 +1352,13 @@ Output strictly the category name."""
                         if artifact_mgr:
                             findings_path = f".neurosys/sessions/{self.session_id}/investigations/{inv_id}/findings.json"
                             import json as _fjson
-                            await artifact_mgr.upsert_artifact(findings_path, _fjson.dumps({"findings": [final_message]}, indent=2), action_type="finding")
+                            await artifact_mgr.upsert_artifact(
+                                findings_path,
+                                _fjson.dumps({"findings": [final_message]}, indent=2),
+                                action_type="finding", case_id=inv_id)
                             response_path = f".neurosys/sessions/{self.session_id}/investigations/{inv_id}/response.md"
-                            await artifact_mgr.upsert_artifact(response_path, final_message, action_type="report")
+                            await artifact_mgr.upsert_artifact(
+                                response_path, final_message, action_type="report", case_id=inv_id)
                 elif inv_id:
                     # Provider limits, iteration bounds, and interrupted loops are
                     # resumable. They must never close the semantic case.
@@ -1386,7 +1391,9 @@ Output strictly the category name."""
 
                                 # Dump execution history if plan/tasks are present
                                 if artifact_mgr and "plan" in state_output and isinstance(state_output["plan"], dict):
-                                    await artifact_mgr.upsert_artifact(history_path, json.dumps(state_output["plan"].get("tasks", []), indent=2), action_type="history")
+                                    await artifact_mgr.upsert_artifact(
+                                        history_path, json.dumps(state_output["plan"].get("tasks", []), indent=2),
+                                        action_type="history", case_id=inv_id or "")
 
                                 # Handle Requires Approval
                                 if state_output.get("requires_approval"):
@@ -1431,7 +1438,9 @@ Output strictly the category name."""
                                         # Ensure artifact_name doesn't contain directory traversal
                                         safe_name = os.path.basename(artifact_name)
                                         artifact_path = f".neurosys/sessions/{self.session_id}/artifacts/{safe_name}"
-                                        await artifact_mgr.upsert_artifact(artifact_path, final_message, action_type="report")
+                                        await artifact_mgr.upsert_artifact(
+                                            artifact_path, final_message, action_type="report",
+                                            case_id=inv_id or "")
 
                                     # Mark Investigation and tasks as completed in DB
                                     # Bug #3 fix: also try resolving inv_id from state_output plan
@@ -1462,7 +1471,9 @@ Output strictly the category name."""
                                             findings_path = f".neurosys/sessions/{self.session_id}/investigations/{inv_id}/findings.json"
                                         else:
                                             findings_path = f".neurosys/sessions/{self.session_id}/artifacts/findings.json"
-                                        await artifact_mgr.upsert_artifact(findings_path, json.dumps(new_findings, indent=2), action_type="finding")
+                                        await artifact_mgr.upsert_artifact(
+                                            findings_path, json.dumps(new_findings, indent=2),
+                                            action_type="finding", case_id=inv_id or "")
 
                                     # Sync Findings to DB
                                     if inv_id:
@@ -1514,13 +1525,16 @@ Output strictly the category name."""
                                         yield evt_task_plan(new_plan)
 
                                     if artifact_mgr:
-                                        await artifact_mgr.upsert_artifact(task_plan_path, json.dumps(new_plan, indent=2), action_type="plan")
+                                        await artifact_mgr.upsert_artifact(
+                                            task_plan_path, json.dumps(new_plan, indent=2),
+                                            action_type="plan", case_id=inv_id or "")
                                         # Markdown mirror of the same state so the
                                         # checklist is human-readable and exportable.
                                         from .artifacts import render_task_plan_markdown
                                         md_path = task_plan_path.replace("task_plan.json", "task_plan.md")
                                         await artifact_mgr.upsert_artifact(
-                                            md_path, render_task_plan_markdown(new_plan), action_type="plan")
+                                            md_path, render_task_plan_markdown(new_plan),
+                                            action_type="plan", case_id=inv_id or "")
 
                                     # Sync Tasks to DB
                                     # Bug #2 fix: skip re-sync if already marked completed

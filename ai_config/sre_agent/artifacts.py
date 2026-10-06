@@ -67,28 +67,38 @@ class ArtifactManager:
         )
         return artifact
 
-    async def upsert_artifact(self, file_path: str, new_content: str, action_type: str = "active_state"):
-        """Upserts an artifact record, used for active task state to prevent duplicates."""
+    async def upsert_artifact(self, file_path: str, new_content: str, action_type: str = "active_state",
+                              case_id: str = ""):
+        """Upserts an artifact record, used for active task state to prevent duplicates.
+
+        The case id is stored as well: without it the report, findings and task
+        plan of every investigation landed in one undifferentiated "session
+        level" pile instead of under the investigation they belong to.
+        """
         from chatbot.models import AgentArtifact
         ws = await self._get_workspace()
-        
+        owner = case_id or self.case_id or ""
+
         def _do_upsert():
             artifact = AgentArtifact.objects.filter(workspace=ws, session_id=self.session_id, file_path=file_path, action_type=action_type).first()
             if artifact:
                 artifact.new_content = new_content
-                artifact.save(update_fields=['new_content', 'created_at'])
+                if owner and not artifact.case_id:
+                    artifact.case_id = owner
+                artifact.save(update_fields=['new_content', 'created_at', 'case_id'])
                 return artifact
             else:
                 return AgentArtifact.objects.create(
                     workspace=ws,
                     session_id=self.session_id,
+                    case_id=owner,
                     file_path=file_path,
                     action_type=action_type,
                     old_content="",
                     new_content=new_content,
                     diff=""
                 )
-                
+
         return await sync_to_async(_do_upsert)()
 
     async def rollback(self, artifact_id: int):
