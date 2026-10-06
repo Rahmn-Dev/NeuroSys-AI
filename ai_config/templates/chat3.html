@@ -2141,7 +2141,7 @@
           const dur = data.duration ? data.duration.toFixed(1) : ((endTime - startTime) / 1000).toFixed(1);
 
           const auditHtml = `
-                   <details class="sre-agent-step mb-3 mt-3" style="border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
+                   <details class="sre-agent-step sre-run-audit" style="border: 1px solid var(--border-color); border-radius: 14px; overflow: hidden;">
                         <summary style="cursor: pointer; padding: 12px 16px; background: rgba(46,160,67,0.1); border: none; width: 100%; display: flex; align-items: center; user-select: none; list-style: none;">
                             <div style="display: flex; align-items: center; gap: 8px;">
                                 <span style="color: var(--success);">${getIcon('check-all')}</span>
@@ -5045,7 +5045,7 @@
                   const dur = (evt.duration || 0).toFixed(1);
 
                   const auditHtml = `
-                                <details class="sre-agent-step mb-3 mt-3" style="border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
+                                <details class="sre-agent-step sre-run-audit" style="border: 1px solid var(--border-color); border-radius: 14px; overflow: hidden;">
                                     <summary style="cursor: pointer; padding: 12px 16px; background: rgba(46,160,67,0.1); border: none; width: 100%; display: flex; align-items: center; user-select: none; list-style: none;">
                                         <div style="display: flex; align-items: center; gap: 8px;">
                                             <span style="color: var(--success);">${getIcon('check-all')}</span>
@@ -5068,7 +5068,8 @@
                                     </div>
                                 </details>
                             `;
-                  messagesDiv.insertAdjacentHTML('beforeend', auditHtml);
+                  // Held until the reply exists so the summary can sit under it.
+                  window.pendingAuditHtml = auditHtml;
         window.normalizeRunCards();
                   break;
 
@@ -5149,6 +5150,10 @@
               }
             });
           }
+          if (!(msg.message || '').trim() && window.pendingAuditHtml) {
+            messagesDiv.insertAdjacentHTML('beforeend', window.pendingAuditHtml);
+            window.pendingAuditHtml = '';
+          }
           // An empty card is never deleted: deleting it silently removed real
           // runs, and a card that truthfully says it recorded nothing is far
           // more useful than a missing one.
@@ -5173,6 +5178,13 @@
               if (_wrap && _wrap.parentElement === messagesDiv && _wrap.id.indexOf('runwrap-') === 0) {
                 messagesDiv.insertBefore(_wrap, _bubble);
               }
+            }
+            // Reading order for a finished turn: run card, then the answer,
+            // then the completion summary underneath it.
+            if (window.pendingAuditHtml) {
+              messagesDiv.insertAdjacentHTML('beforeend', window.pendingAuditHtml);
+              window.pendingAuditHtml = '';
+              window.normalizeRunCards();
             }
             // Reloading history used to show a plain answer for a blocked
             // prompt while the live view showed a red security card.
