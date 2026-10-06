@@ -59,7 +59,7 @@ from .events import (
     evt_hypothesis, evt_resolution_plan,
     evt_parallel_start, evt_parallel_progress, evt_parallel_complete,
     evt_approval_required, evt_security_blocked, AgentEventType,
-    evt_lifecycle, evt_verifying, evt_direct_chat
+    evt_lifecycle, evt_verifying, evt_direct_chat, evt_message_saved
 )
 from .memory import LongTermMemory, ShortTermMemory, WorkspaceMemory
 from .safety import SafetyLayer, SafetyVerdict
@@ -509,7 +509,7 @@ class SREAgentEngine:
         raw_history = await self._fetch_history(db_session_id, limit=24)
         history = await sync_to_async(relevant_prior_turns)(user_message, raw_history)
         _mid = await self._save_message(db_session_id, "user", user_message)
-        yield {"type": "message_saved", "sender": "user", "msg_id": str(_mid)}
+        yield evt_message_saved("user", _mid)
         await record_turn(db_session_id, user_message,
                             topic_hint=getattr(self, "_router_topic", ""),
                             switched_hint=getattr(self, "_router_switched", None))
@@ -546,38 +546,27 @@ class SREAgentEngine:
                     answer += content
                     yield evt_message_chunk(answer)
         except Exception as exc:
-            # Provider down: show the error in the bubble instead of pretending
-            # the turn was denied. A denial implies an approval gate; there is
-            # none here.
+            # A direct-chat provider error is still a failed turn. Never emit
+            # completion here: the UI must keep Retry available and report the
+            # actual sanitized exception rather than a fake successful answer.
             from .canonical_lifecycle import normalize_provider_error
+            from .events import public_text
             error_info = normalize_provider_error(exc)
-            answer = (
-                f"That request could not be completed ({error_info['category']}). "
-                f"The model provider returned an error, so no answer could be fetched."
+            detail = public_text(error_info.get("message", ""))[:360]
+            yield evt_error(
+                f"The request could not be completed ({error_info['category']}). {detail}"
             )
-            _mid = await self._save_message(db_session_id, "ai", answer)
-            yield {"type": "message_saved", "sender": "ai", "msg_id": str(_mid)}
-            yield evt_direct_chat("Direct answer, provider unavailable")
-            yield evt_message_chunk(answer)
-            yield evt_completed(answer, duration=time.time() - start_time)
             return
 
         answer = (answer or "").strip()
         if not answer:
-            from .canonical_lifecycle import normalize_provider_error
-            answer = (
-                "That request could not be completed (provider_error). "
-                "The model returned an empty response, so no answer could be recorded."
+            yield evt_error(
+                "The request could not be completed (empty_response): the model returned no answer."
             )
-            _mid = await self._save_message(db_session_id, "ai", answer)
-            yield {"type": "message_saved", "sender": "ai", "msg_id": str(_mid)}
-            yield evt_direct_chat("Direct answer, empty response")
-            yield evt_message_chunk(answer)
-            yield evt_completed(answer, duration=time.time() - start_time)
             return
 
         _mid = await self._save_message(db_session_id, "ai", answer)
-        yield {"type": "message_saved", "sender": "ai", "msg_id": str(_mid)}
+        yield evt_message_saved("ai", _mid)
         yield evt_direct_chat("Direct answer, no tools needed")
         yield evt_message_chunk(answer)
         yield evt_completed(answer, duration=time.time() - start_time)
@@ -602,7 +591,7 @@ class SREAgentEngine:
             try:
                 db_session_id = await self._get_or_create_session()
                 _mid = await self._save_message(db_session_id, "user", user_message)
-                yield {"type": "message_saved", "sender": "user", "msg_id": str(_mid)}
+                yield evt_message_saved("user", _mid)
                 blocked_text = "Request blocked: instruction override detected."
                 await self._save_blocked_message(db_session_id, blocked_text)
             except Exception:
@@ -682,7 +671,7 @@ class SREAgentEngine:
         # Stored first: even a run cancelled a second later still shows the
         # request that started it when the chat is reopened.
         _mid = await self._save_message(db_session_id, "user", user_message)
-        yield {"type": "message_saved", "sender": "user", "msg_id": str(_mid)}
+        yield evt_message_saved("user", _mid)
 
         # Resolve the case boundary before loading any history. Unrelated turns
         # must never inherit the previous investigation's prompt or findings.
@@ -905,7 +894,7 @@ class SREAgentEngine:
                 answer = (f"File tersebut berada di `{resolved_file}`."
                           if resolved_file else "Lokasi file belum tersedia pada context case ini.")
             _mid = await self._save_message(db_session_id, "ai", answer)
-            yield {"type": "message_saved", "sender": "ai", "msg_id": str(_mid)}
+            yield evt_message_saved("ai", _mid)
             await sync_to_async(lambda: Investigation.objects.filter(id=self._active_case_id).update(status="completed"))()
             await self._lifecycle.atransition("finalization", "completed", "fast_lookup_completed", {
                 "summary": answer, "case_id": self._active_case_id,
@@ -950,7 +939,7 @@ Output strictly the category name."""
             # agent wander off executing unrelated commands.
             note = "There is no active case in this chat to continue. Describe what you want checked or fixed."
             _mid = await self._save_message(db_session_id, "ai", note)
-            yield {"type": "message_saved", "sender": "ai", "msg_id": str(_mid)}
+            yield evt_message_saved("ai", _mid)
             yield evt_direct_chat("Nothing to continue in this chat")
             yield evt_message_chunk(note)
             yield evt_completed(note, duration=time.time() - start_time)
@@ -1018,7 +1007,7 @@ Output strictly the category name."""
                     yield evt_message_chunk(full_response)
 
             _mid = await self._save_message(db_session_id, "ai", full_response)
-            yield {"type": "message_saved", "sender": "ai", "msg_id": str(_mid)}
+            yield evt_message_saved("ai", _mid)
             from .thread_memory import maybe_refresh_digest
             asyncio.create_task(maybe_refresh_digest(db_session_id, llm))
             await sync_to_async(lambda: Investigation.objects.filter(id=self._active_case_id).update(status="completed"))()
@@ -1732,7 +1721,7 @@ Output strictly the category name."""
             # --- Phase 8: Save results and update memory ---
             if final_message:
                 _mid = await self._save_message(db_session_id, "ai", final_message)
-                yield {"type": "message_saved", "sender": "ai", "msg_id": str(_mid)}
+                yield evt_message_saved("ai", _mid)
 
                 # Store in long-term memory if it looks like a resolved incident
                 if run_completed and any(kw in effective_goal.lower() for kw in ["error", "failed", "down", "issue", "problem", "fix", "why"]):
@@ -1965,14 +1954,24 @@ Output strictly the category name."""
             # operator must still be able to read.
             try:
                 if events_history:
-                    _ending = getattr(exc, "ending", None) or (
-                        "cancelled" if isinstance(exc, asyncio.CancelledError) else "denied")
+                    from .canonical_lifecycle import classify_early_run_exit
+                    _ending = classify_early_run_exit(exc)
                     if not any(e.get("type") in _TERMINAL_HISTORY_TYPES for e in events_history):
+                        if _ending == "denied":
+                            _stop_text = "Denied by the operator: the requested action was not authorized."
+                        elif _ending == "denied_timeout":
+                            _stop_text = "No decision was made before the approval expired."
+                        elif _ending == "cancelled":
+                            _stop_text = "Stopped before the run finished."
+                        elif _ending == "security_blocked":
+                            _stop_text = "Stopped by the security policy."
+                        else:
+                            _stop_text = "The agent run failed before completion."
                         events_history.append(_stamp_event({
-                            "type": _ending,
-                            "content": ("Denied by the operator: the requested action was not authorized."
-                                        if _ending == "denied" else
-                                        "Stopped by the operator before it finished."),
+                            # History replay consumes error rather than the
+                            # lifecycle-only state name `failed`.
+                            "type": "error" if _ending == "failed" else _ending,
+                            "content": _stop_text,
                             "timestamp": _now_ms(),
                         }))
                     await self._persist_run_history(events_history)
@@ -1994,15 +1993,20 @@ Output strictly the category name."""
                 pass
             if isinstance(exc, asyncio.CancelledError):
                 if lifecycle is not None:
-                    await lifecycle.atransition("finalization", "cancelled", "cancelled", {})
+                    from .canonical_lifecycle import classify_early_run_exit
+                    _cancel_state = classify_early_run_exit(exc)
+                    await lifecycle.atransition("finalization", _cancel_state, _cancel_state, {})
                 raise
 
             from .canonical_lifecycle import normalize_provider_error
             error_info = normalize_provider_error(exc)
+            from .events import public_text
+            safe_detail = public_text(error_info.get("message", ""))[:360]
             if lifecycle is not None:
                 await lifecycle.atransition("finalization", "failed", "failed", {
                     "category": error_info["category"],
                     "model_switches": len(self._model_switches),
+                    "detail": safe_detail,
                 })
 
             # A provider can fail before _run_internal yields its next event.
@@ -2022,12 +2026,13 @@ Output strictly the category name."""
                 yield switch_event
 
             if not terminal_sent:
+                detail_text = f" {safe_detail}" if safe_detail else ""
                 error_event = evt_error(
                     (f"Auto Models tried all {getattr(self, '_rotation_pool_size', 0)} configured model(s), but none completed "
-                     f"this request ({error_info['category']}). The case is still active and can be resumed "
+                     f"this request ({error_info['category']}).{detail_text} The case is still active and can be resumed "
                      "after checking provider availability and model configuration.")
                     if self.auto_model_rotation else
-                    f"The request could not be completed ({error_info['category']}). The case is still active."
+                    f"The request could not be completed ({error_info['category']}).{detail_text}"
                 )
                 if lifecycle is not None:
                     error_event.metadata.setdefault("run_id", str(lifecycle.run.pk))
@@ -2035,6 +2040,10 @@ Output strictly the category name."""
                     error_event.metadata.setdefault("checkpoint_version", lifecycle.run.checkpoint_version)
                 events_history.append(_stamp_event(error_event.to_dict()))
                 await self._log_event(error_event)
+                try:
+                    await self._persist_run_history(events_history)
+                except Exception:
+                    pass
                 yield error_event
             return
         except asyncio.CancelledError:

@@ -2,6 +2,7 @@ import pytest
 
 from sre_agent.canonical_lifecycle import (
     ContextManager, TrustedObservation, case_relation, classify_case,
+    classify_early_run_exit,
     is_contextual_continuation, is_generic_continuation,
     normalize_provider_error,
 )
@@ -28,6 +29,26 @@ def test_provider_error_normalization(message, category, retryable):
     result = normalize_provider_error(RuntimeError(message))
     assert result["category"] == category
     assert result["retryable"] is retryable
+
+
+def test_unexpected_runner_exception_is_not_misreported_as_provider_or_security_failure():
+    result = normalize_provider_error(RuntimeError("unexpected agent runner failure"))
+    assert result["category"] == "internal_error"
+    assert result["retryable"] is False
+    assert classify_early_run_exit(RuntimeError("unexpected agent runner failure")) == "failed"
+    assert normalize_provider_error(NameError("missing local import"))["category"] == "internal_error"
+
+
+def test_transport_exceptions_remain_retryable_provider_failures():
+    assert normalize_provider_error(TimeoutError())['category'] == 'transient'
+    assert normalize_provider_error(ConnectionError())['category'] == 'transient'
+
+
+def test_only_explicit_approval_outcomes_are_classified_as_denials():
+    from sre_agent.approval_lifecycle import ApprovalStopped
+
+    assert classify_early_run_exit(ApprovalStopped(ending="denied")) == "denied"
+    assert classify_early_run_exit(ApprovalStopped(ending="denied_timeout")) == "denied_timeout"
 
 
 def test_unrelated_time_lookup_is_a_new_isolated_case():

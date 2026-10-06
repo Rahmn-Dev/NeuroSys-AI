@@ -2403,6 +2403,7 @@
     function addUserMessage(text, ts, msgId) {
       const div = document.createElement('div');
       div.className = 'sre-msg-user';
+      div.dataset.originalText = String(text || '');
       // Messages remember their timestamp so an artifact can point back at the
       // exact turn that produced it.
       if (ts) div.dataset.created = String(ts);
@@ -2866,9 +2867,8 @@
       });
     };
 
-    // Streaming presentation for the reply itself: newly arrived text is
-    // revealed, the tail of the answer carries a travelling highlight while it
-    // is still growing, and a caret shows the model is mid-sentence.
+    // Streaming presentation for the reply itself: newly arrived text settles
+    // in with a soft reveal, while a restrained shimmer marks the live answer.
     // A turn's text is two things: the narrated reasoning that arrived while
     // the agent worked, and the answer it concluded with. The server marks
     // where the second one starts, so a live turn and the same turn replayed
@@ -2962,13 +2962,12 @@
 
     // While the answer is still arriving, narration is shown open; the split
     // collapses by itself the moment the marker shows up.
-    // A finished turn leaves no trace of motion behind: every caret comes
-    // down and every highlight settles, in every bubble, not just the one the
+    // A finished turn leaves no trace of motion behind: every highlight settles,
+    // in every bubble, not just the one the
     // pointer happens to reference. A duplicate terminal event used to skip
     // all of this and leave the blue caret blinking forever.
     window.stopAllStreaming = function () {
       try {
-        document.querySelectorAll('#chat-messages .sre-caret').forEach((c) => c.remove());
         document.querySelectorAll('#chat-messages .ai-content.sre-streaming').forEach((box) => {
           box.classList.remove('sre-streaming');
           const live = box.querySelector('.sre-live-text');
@@ -2995,11 +2994,6 @@
             target.innerHTML = '<span class="sre-live-text">' + inner + '</span>';
           }
         }
-        if (!box.querySelector('.sre-caret')) {
-          const caret = document.createElement('span');
-          caret.className = 'sre-caret';
-          box.appendChild(caret);
-        }
       } else {
         box.classList.remove('sre-streaming');
         const live = box.querySelector('.sre-live-text');
@@ -3007,8 +3001,6 @@
           const span = live;
           span.outerHTML = span.innerHTML;
         }
-        const caret = box.querySelector('.sre-caret');
-        if (caret) caret.remove();
         box.style.animation = 'none';
         void box.offsetWidth;
         box.style.animation = '';
@@ -6389,14 +6381,31 @@
       host.className = 'sre-run-actions';
       host.dataset.sessionId = String(sid || sessionId || '');
       host.dataset.caseId = String(caseId || '');
+      const priorUser = Array.from(messagesDiv.querySelectorAll('.sre-msg-user')).pop();
+      host.dataset.retryGoal = String(
+        (priorUser && priorUser.dataset.originalText) || window.lastSubmittedMessage || ''
+      );
       host.style.cssText = 'margin: 8px 0;';
-      host.innerHTML =
-        `<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">` +
-        `<button onclick="window.continueRun('${escapeHtml(host.dataset.sessionId)}', '${escapeHtml(host.dataset.caseId)}', true)" style="background: rgba(88,166,255,0.12); color: var(--text-strong); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 14px; font-size: 12px; cursor: pointer; font-weight: 600;">` +
-        `<i class="fa-solid fa-rotate-right" style="font-size:11px;"></i> Retry</button>` +
-        `<button onclick="window.cancelRunForSession('${escapeHtml(host.dataset.sessionId)}')" style="background: transparent; color: var(--text-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 12px; font-size: 12px; cursor: pointer; font-weight: 600;">` +
-        `<i class="fa-solid fa-xmark" style="font-size:11px;"></i> Cancel</button>` +
-        `<span style="font-size: 11px; color: var(--text-secondary);">the run stopped; retry continues the active case with re-verification</span></div>`;
+      host.innerHTML = `<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;"></div>`;
+      const row = host.firstElementChild;
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.style.cssText = 'background: rgba(88,166,255,0.12); color: var(--text-strong); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 14px; font-size: 12px; cursor: pointer; font-weight: 600;';
+      retry.innerHTML = '<i class="fa-solid fa-rotate-right" style="font-size:11px;"></i> Retry';
+      retry.addEventListener('click', () => window.continueRun(
+        host.dataset.sessionId, host.dataset.caseId, true, host.dataset.retryGoal
+      ));
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.style.cssText = 'background: transparent; color: var(--text-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 12px; font-size: 12px; cursor: pointer; font-weight: 600;';
+      cancel.innerHTML = '<i class="fa-solid fa-xmark" style="font-size:11px;"></i> Cancel';
+      cancel.addEventListener('click', () => window.cancelRunForSession(host.dataset.sessionId));
+      const hint = document.createElement('span');
+      hint.style.cssText = 'font-size: 11px; color: var(--text-secondary);';
+      hint.textContent = host.dataset.caseId
+        ? 'The run stopped; retry continues this case with re-verification.'
+        : 'The run stopped; retry sends the original request again.';
+      row.append(retry, cancel, hint);
       return host;
     };
 
@@ -6658,12 +6667,13 @@
       }
     };
 
-    window.continueRun = function (forSessionId, forCaseId, fresh) {
+    window.continueRun = function (forSessionId, forCaseId, fresh, originalGoal) {
       try {
         if (typeof isProcessing !== 'undefined' && isProcessing) return;
         const owner = forSessionId || window.continueSessionId || sessionId;
-        window.pendingResumeCaseId = forCaseId || window.continueCaseId || '';
-        window.pendingResumeMode = fresh === false ? '' : 'fresh';
+        const caseId = String(forCaseId || '');
+        window.pendingResumeCaseId = caseId;
+        window.pendingResumeMode = caseId && fresh !== false ? 'fresh' : '';
         // Refuse to continue a case that belongs to a chat the operator has
         // since navigated away from.
         if (owner && String(owner) !== String(sessionId)) {
@@ -6673,6 +6683,11 @@
         const inputEl = document.getElementById('chat-input') || (typeof input !== 'undefined' ? input : null);
         const formEl = (typeof form !== 'undefined' && form) ? form : (inputEl ? inputEl.form : null);
         if (!inputEl || !formEl) return;
+        const retryText = caseId ? 'continue' : String(originalGoal || window.lastSubmittedMessage || '').trim();
+        if (!retryText) {
+          addSystemMsg('The original request is unavailable. Please send it again.', 'circle-info');
+          return;
+        }
         // A retry is a refresh, not a new turn: clear the old error traces,
         // then resend without adding another user bubble.
         window.clearRunFailureUI(owner);
@@ -6684,7 +6699,7 @@
         window.activeRunWrap = null;
         window.activeRunOrb = null;
         window.silentSubmit = true;
-        inputEl.value = 'continue';
+        inputEl.value = retryText;
         if (formEl.requestSubmit) formEl.requestSubmit();
         else formEl.dispatchEvent(new Event('submit', { cancelable: true }));
       } catch (e) { /* no-op */ }
@@ -6970,17 +6985,12 @@
     from { background-position: 200% 0; }
     to { background-position: -60% 0; }
   }
-  @keyframes sreCaret {
-    0%, 45% { opacity: 1; }
-    50%, 95% { opacity: 0; }
-    100% { opacity: 1; }
-  }
   @keyframes srePulse {
     0%, 100% { box-shadow: 0 0 0 0 rgba(88, 166, 255, .45); }
     50% { box-shadow: 0 0 0 6px rgba(88, 166, 255, 0); }
   }
-  #sre-agent-app .ai-content.sre-streaming {
-    animation: sreReveal .5s ease both;
+  #sre-agent-app .ai-content.sre-streaming > * {
+    animation: sreReveal .28s ease both;
   }
   /* --- Investigation panel -------------------------------------------------
      Cards with a quiet surface, a hairline that lights up on hover, and rows
@@ -7206,25 +7216,23 @@
   #sre-agent-app .sre-answer-body > :first-child {
     margin-top: 0;
   }
-  #sre-agent-app .sre-caret {
-    display: inline-block;
-    width: 2px;
-    height: 1em;
-    margin-left: 2px;
-    vertical-align: text-bottom;
-    background: var(--accent);
-    animation: sreCaret 1.05s steps(1, end) infinite;
-  }
   @supports (-webkit-background-clip: text) or (background-clip: text) {
     #sre-agent-app .ai-content.sre-streaming .sre-live-text {
       background-image: linear-gradient(90deg,
-        var(--text-primary) 0%, var(--text-primary) 38%,
-        var(--accent) 52%, var(--text-primary) 66%, var(--text-primary) 100%);
-      background-size: 220% 100%;
+        var(--text-primary) 0%, var(--text-primary) 42%,
+        color-mix(in srgb, var(--accent) 45%, var(--text-primary)) 52%,
+        var(--text-primary) 62%, var(--text-primary) 100%);
+      background-size: 260% 100%;
       -webkit-background-clip: text;
       background-clip: text;
       color: transparent;
-      animation: sreSweep 2.6s linear infinite;
+      animation: sreSweep 3.2s ease-in-out infinite;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #sre-agent-app .ai-content.sre-streaming > *,
+    #sre-agent-app .ai-content.sre-streaming .sre-live-text {
+      animation: none !important;
     }
   }
   /* The reasoning trace: the step being worked on is the only one that moves,

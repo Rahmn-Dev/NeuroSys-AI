@@ -458,6 +458,12 @@ def expire_abandoned_runs(session_id, user_id, max_age_seconds=330):
 
 def normalize_provider_error(exc: Exception) -> dict:
     """Return stable categories used by all adapters and tests."""
+    # LangChain/provider adapters often wrap the useful HTTP/SDK exception in
+    # RuntimeError. Keep the originating status/message instead of collapsing
+    # every wrapped application error into the vague ``provider_error``.
+    cause = getattr(exc, "__cause__", None) or getattr(exc, "__context__", None)
+    if isinstance(cause, Exception) and cause is not exc:
+        return normalize_provider_error(cause)
     # Preserve the originating provider category when an automatic model pool
     # wraps the last candidate error after exhausting its one bounded pass.
     last_error = getattr(exc, "last_error", None)
@@ -467,7 +473,7 @@ def normalize_provider_error(exc: Exception) -> dict:
     # like 'json') must never be reported as a provider 'malformed' response:
     # they are not retryable provider failures and must surface immediately.
     if isinstance(exc, (UnboundLocalError, NameError, ImportError, SyntaxError)):
-        return {"category": "provider_error", "retryable": False, "status": getattr(exc, "status_code", None) or getattr(exc, "status", None), "message": f"{type(exc).__name__}: {str(exc)[:480]}"}
+        return {"category": "internal_error", "retryable": False, "status": getattr(exc, "status_code", None) or getattr(exc, "status", None), "message": f"{type(exc).__name__}: {str(exc)[:480]}"}
     text = str(exc).lower()
     status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
     if status in (401, 403) or any(x in text for x in ("unauthorized", "forbidden", "api key")):
@@ -478,19 +484,44 @@ def normalize_provider_error(exc: Exception) -> dict:
         category = "rate_limit"
     elif "context" in text or "token" in text and "limit" in text:
         category = "context_overflow"
-    elif status and int(status) >= 500 or any(x in text for x in (
+    elif isinstance(exc, (TimeoutError, ConnectionError)) or (status and int(status) >= 500) or any(x in text for x in (
         "timeout", "timed out", "connection",
         "name resolution", "gaierror", "failed to resolve", "dns",
         "temporary failure", "no such host", "network is unreachable",
         "name or service not known", "nodename nor servname",
     )):
         category = "transient"
+    elif status:
+        category = "provider_error"
     elif "json" in text or "parse" in text:
         category = "malformed"
-    else:
+    elif any(marker in text for marker in (
+        "provider", "model endpoint", "api error", "api request", "invalid response",
+        "model unavailable", "unknown model", "unsupported model",
+    )):
         category = "provider_error"
+    else:
+        # Unknown Python exceptions are runner/application failures unless the
+        # exception carries HTTP/provider evidence. Mislabeling them as provider
+        # errors made agent bugs impossible to distinguish from model outages.
+        category = "internal_error"
     retryable = category in {"rate_limit", "transient", "malformed"}
     return {"category": category, "retryable": retryable, "status": status, "message": str(exc)[:500]}
+
+
+def classify_early_run_exit(exc: BaseException) -> str:
+    """Map runner exits to truthful terminal states.
+
+    Only explicit approval outcomes are denials. A normal exception must never
+    be presented as a user/security denial just because the event stream ended.
+    """
+    ending = str(getattr(exc, "ending", "") or "").strip().lower()
+    if ending in {"denied", "denied_timeout", "security_blocked", "blocked", "cancelled"}:
+        return ending
+    import asyncio
+    if isinstance(exc, (asyncio.CancelledError, GeneratorExit)):
+        return "cancelled"
+    return "failed"
 
 
 def cancel_run_now(session_id, user_id):

@@ -252,6 +252,7 @@ def test_resume_ttl_setting_has_a_default():
 import inspect  # noqa: E402
 
 from sre_agent.engine import SREAgentEngine  # noqa: E402
+from sre_agent.events import AgentEventType, evt_completed, evt_message_saved  # noqa: E402
 
 
 def test_run_direct_chat_imports_every_helper_it_calls():
@@ -268,6 +269,36 @@ def test_conversation_branch_imports_its_domain_clamp():
     # the router call lives in a tuple import, so match the module import
     assert "from .direct_chat import" in source
     assert "route_turn(" in source
+
+
+def test_saved_message_notifications_follow_the_typed_agent_event_contract():
+    event = evt_message_saved("user", "message-123")
+    assert event.type is AgentEventType.MESSAGE_SAVED
+    assert event.to_dict()["type"] == "message_saved"
+    assert event.to_dict()["sender"] == "user"
+    assert event.to_dict()["msg_id"] == "message-123"
+
+    source = inspect.getsource(SREAgentEngine)
+    assert 'yield {"type": "message_saved"' not in source
+
+
+@pytest.mark.asyncio
+async def test_runner_wrapper_accepts_the_saved_message_event_before_completion():
+    engine = SREAgentEngine(session_id="99999999-0000-4000-8000-000000000001")
+
+    async def fake_internal(*args, **kwargs):
+        yield evt_message_saved("user", "message-123")
+        yield evt_completed("Hello!")
+
+    engine._run_internal = fake_internal
+    async def noop(*args, **kwargs):
+        return None
+    engine._update_last_message_metadata = noop
+    engine._log_event = noop
+    engine._persist_run_history = noop
+    events = [event async for event in engine.run("hello")]
+
+    assert [event.type.value for event in events] == ["message_saved", "completed"]
 
 
 # --- evidence coverage checklists -------------------------------------------

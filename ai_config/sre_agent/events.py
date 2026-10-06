@@ -104,6 +104,7 @@ class AgentEventType(str, enum.Enum):
     VERIFYING = "verifying"
     RESUMING = "resuming"
     DIRECT_CHAT = "direct_chat"
+    MESSAGE_SAVED = "message_saved"
 
 
 def public_text(value):
@@ -177,6 +178,11 @@ class AgentEvent:
 # ---------------------------------------------------------------------------
 # Convenience constructors
 # ---------------------------------------------------------------------------
+
+def evt_message_saved(sender: str, msg_id: str) -> AgentEvent:
+    """Typed acknowledgement that a chat message was persisted."""
+    return AgentEvent(type=AgentEventType.MESSAGE_SAVED,
+                      metadata={"sender": sender, "msg_id": str(msg_id)})
 
 def evt_direct_chat(msg: str = "Direct answer, no tools needed") -> AgentEvent:
     """Marker: this turn was answered directly, with no agent tooling."""
