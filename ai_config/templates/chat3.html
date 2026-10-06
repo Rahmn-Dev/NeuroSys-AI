@@ -4850,6 +4850,13 @@
                   const wid = window.historyRunWraps[evt.run_id];
                   if (wid) paintRunWrap(wid, evt.type === 'completed' ? 'completed' : (evt.status || evt.type), evt.duration);
                 }
+              } else if (['completed', 'error', 'failed', 'cancelled', 'blocked', 'denied', 'denied_timeout', 'security_blocked'].includes(evt.type)
+                           && window.historyReplayWrap && document.contains(window.historyReplayWrap)) {
+                  // Stored runs from before grouping existed carry no run_id, so
+                  // their card was never painted and stayed on the neutral
+                  // placeholder while the turn below it was plainly blocked.
+                  paintRunWrap(window.historyReplayWrap.dataset.wrapId,
+                    evt.type === 'completed' ? 'completed' : (evt.status || evt.type), evt.duration);
               }
               if (evt.event_id && window.agentSeenEvents.has(evt.event_id)) return;
               if (evt.event_id) window.agentSeenEvents.add(evt.event_id);
