@@ -508,7 +508,8 @@ class SREAgentEngine:
                                     get_session_memory, is_recap_request, record_turn)
         raw_history = await self._fetch_history(db_session_id, limit=24)
         history = await sync_to_async(relevant_prior_turns)(user_message, raw_history)
-        await self._save_message(db_session_id, "user", user_message)
+        _mid = await self._save_message(db_session_id, "user", user_message)
+        yield {"type": "message_saved", "sender": "user", "msg_id": str(_mid)}
         await record_turn(db_session_id, user_message,
                             topic_hint=getattr(self, "_router_topic", ""),
                             switched_hint=getattr(self, "_router_switched", None))
@@ -562,7 +563,8 @@ class SREAgentEngine:
                 yield event
             return
 
-        await self._save_message(db_session_id, "ai", answer)
+        _mid = await self._save_message(db_session_id, "ai", answer)
+        yield {"type": "message_saved", "sender": "ai", "msg_id": str(_mid)}
         yield evt_direct_chat("Direct answer, no tools needed")
         yield evt_message_chunk(answer)
         yield evt_completed(answer, duration=time.time() - start_time)
@@ -586,7 +588,8 @@ class SREAgentEngine:
             # red security card instead of a gap in the transcript.
             try:
                 db_session_id = await self._get_or_create_session()
-                await self._save_message(db_session_id, "user", user_message)
+                _mid = await self._save_message(db_session_id, "user", user_message)
+                yield {"type": "message_saved", "sender": "user", "msg_id": str(_mid)}
                 blocked_text = "Request blocked: instruction override detected."
                 await self._save_blocked_message(db_session_id, blocked_text)
             except Exception:
@@ -655,7 +658,8 @@ class SREAgentEngine:
 
         # Stored first: even a run cancelled a second later still shows the
         # request that started it when the chat is reopened.
-        await self._save_message(db_session_id, "user", user_message)
+        _mid = await self._save_message(db_session_id, "user", user_message)
+        yield {"type": "message_saved", "sender": "user", "msg_id": str(_mid)}
 
         # Resolve the case boundary before loading any history. Unrelated turns
         # must never inherit the previous investigation's prompt or findings.
@@ -877,7 +881,8 @@ class SREAgentEngine:
                 resolved_file = selected_file or (attached.group(1) if attached else "")
                 answer = (f"File tersebut berada di `{resolved_file}`."
                           if resolved_file else "Lokasi file belum tersedia pada context case ini.")
-            await self._save_message(db_session_id, "ai", answer)
+            _mid = await self._save_message(db_session_id, "ai", answer)
+            yield {"type": "message_saved", "sender": "ai", "msg_id": str(_mid)}
             await sync_to_async(lambda: Investigation.objects.filter(id=self._active_case_id).update(status="completed"))()
             await self._lifecycle.atransition("finalization", "completed", "fast_lookup_completed", {
                 "summary": answer, "case_id": self._active_case_id,
@@ -921,7 +926,8 @@ Output strictly the category name."""
             # investigation with an empty goal, which is what used to make the
             # agent wander off executing unrelated commands.
             note = "There is no active case in this chat to continue. Describe what you want checked or fixed."
-            await self._save_message(db_session_id, "ai", note)
+            _mid = await self._save_message(db_session_id, "ai", note)
+            yield {"type": "message_saved", "sender": "ai", "msg_id": str(_mid)}
             yield evt_direct_chat("Nothing to continue in this chat")
             yield evt_message_chunk(note)
             yield evt_completed(note, duration=time.time() - start_time)
@@ -988,7 +994,8 @@ Output strictly the category name."""
                     full_response += content
                     yield evt_message_chunk(full_response)
 
-            await self._save_message(db_session_id, "ai", full_response)
+            _mid = await self._save_message(db_session_id, "ai", full_response)
+            yield {"type": "message_saved", "sender": "ai", "msg_id": str(_mid)}
             from .thread_memory import maybe_refresh_digest
             asyncio.create_task(maybe_refresh_digest(db_session_id, llm))
             await sync_to_async(lambda: Investigation.objects.filter(id=self._active_case_id).update(status="completed"))()
@@ -1701,7 +1708,8 @@ Output strictly the category name."""
         finally:
             # --- Phase 8: Save results and update memory ---
             if final_message:
-                await self._save_message(db_session_id, "ai", final_message)
+                _mid = await self._save_message(db_session_id, "ai", final_message)
+                yield {"type": "message_saved", "sender": "ai", "msg_id": str(_mid)}
 
                 # Store in long-term memory if it looks like a resolved incident
                 if run_completed and any(kw in effective_goal.lower() for kw in ["error", "failed", "down", "issue", "problem", "fix", "why"]):
