@@ -107,6 +107,9 @@ class AntigravitySysAdmin:
         await save_message("user", user_message)
         
         history_msgs = await fetch_history(db_session_id)
+        # Tell the client which message id belongs to the user prompt so it can
+        # attach it for delete/revise without waiting for a DB reload.
+        yield {"type": "message_saved", "msg_id": str(history_msgs[-1].id if history_msgs else ''), "sender": "user"}
         
         messages = [SystemMessage(content=self.system_prompt)]
         for msg in history_msgs[-20:-1]:
@@ -167,5 +170,12 @@ class AntigravitySysAdmin:
             
         if final_ai_message or events_history:
             await save_message("ai", final_ai_message, metadata={"events": events_history})
+            # The saved AI message can be left for delete without reloading from DB.
+            try:
+                last = ChatMessage.objects.filter(session_id=db_session_id, sender__in=['ai', 'AI']).order_by('-created_at').first()
+                if last is not None:
+                    yield {"type": "message_saved", "msg_id": str(last.id), "sender": "ai"}
+            except Exception:
+                pass
             
         yield {"type": "complete", "content": {"summary": "Workflow completed", "start_time": time.time(), "end_time": time.time(), "duration": 0}}
