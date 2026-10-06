@@ -1802,6 +1802,15 @@
             isProcessing = false;
             window.setSendButtonState('idle');
             window.markRunFinished(window.liveRunSessionId || sessionId, data.status === 'completed');
+            // The final event must pin the bubble pill and the plan right away;
+            // relying on a later canvas is how the turn got stuck on "working".
+            try {
+              const _w = window.activeRunWrap
+                || (window.lastRunBody && document.contains(window.lastRunBody) ? window.lastRunBody : null);
+              if (_w && _w.dataset && _w.dataset.wrapId) {
+                window.paintRunWrap(_w.dataset.wrapId, data.status, data.duration || null);
+              }
+            } catch (err) { /* best-effort */ }
             try { window.refreshInvestigations(); } catch (err) { /* best-effort */ }
             if (activeInvestigationId && investigations[activeInvestigationId]) {
               const _inv = investigations[activeInvestigationId];
