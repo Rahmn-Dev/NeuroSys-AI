@@ -379,9 +379,12 @@ def expire_abandoned_runs(session_id, user_id, max_age_seconds=330):
     from django.utils import timezone
     from chatbot.models import AgentRun
     cutoff = timezone.now() - timedelta(seconds=max_age_seconds)
+    # Inactivity, not age. A long investigation that keeps progressing records
+    # transitions, so it must not be failed merely for being older than the
+    # budget - only a run that stopped moving for that long is abandoned.
     ids = list(AgentRun.objects.filter(session_id=session_id, user_id=str(user_id),
         status__in=ACTIVE_STATUSES,
-        created_at__lt=cutoff).values_list("pk", flat=True))
+        updated_at__lt=cutoff).values_list("pk", flat=True))
     for run_id in ids:
         lifecycle = DurableAgentLifecycle(session_id=str(session_id), user_id=str(user_id))
         lifecycle.run = AgentRun.objects.get(pk=run_id)

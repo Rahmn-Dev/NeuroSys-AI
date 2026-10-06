@@ -47,13 +47,24 @@ def agent_runs_active(request):
         user_id = 'anonymous'
     runs = (AgentRun.objects.filter(user_id=user_id).exclude(status__in=terminal)
             .order_by('-updated_at')[:20])
+    # The newest run of every chat, terminal ones included, so the sidebar can
+    # paint a truthful state for a chat instead of guessing: previously a row
+    # showed a status only while this tab happened to be watching it live.
+    latest = list(AgentRun.objects.filter(user_id=user_id)
+                  .order_by('session_id', '-updated_at')
+                  .distinct('session_id')[:60])
     return Response({'runs': [{
         'session_id': str(r.session_id),
         'status': r.status,
         'goal': (r.goal or '')[:120],
         'current_node': r.current_node or '',
         'updated_at': r.updated_at.isoformat(),
-    } for r in runs]})
+    } for r in runs], 'latest': [{
+        'session_id': str(r.session_id),
+        'status': r.status,
+        'goal': (r.goal or '')[:120],
+        'updated_at': r.updated_at.isoformat(),
+    } for r in latest]})
 
 
 @api_view(['GET'])

@@ -3463,6 +3463,12 @@
         const res = await fetch('/api/v1/agent-runs/active/', { credentials: 'same-origin' });
         if (!res.ok) return;
         const data = await res.json();
+        const _latest = {};
+        (data.latest || []).forEach((row) => {
+          const sid = String(row.session_id || '');
+          if (sid) _latest[sid] = row;
+        });
+        window.latestRunBySession = _latest;
         (data.runs || []).forEach((run) => {
           const sid = String(run.session_id || '');
           if (!sid) return;
@@ -3483,6 +3489,10 @@
           window.refreshHistoryRowState(sid);
         });
         Object.keys(window.runsBySession || {}).forEach((sid) => window.resolveStaleRunEntry(sid));
+        // Chats without a live run still need their state, from the same poll.
+        Object.keys(_latest).forEach((sid) => {
+          if (!(window.runsBySession || {})[sid]) window.refreshHistoryRowState(sid);
+        });
         window.renderActiveRuns();
       } catch (err) { /* presence is best-effort */ }
     };
@@ -3540,6 +3550,7 @@
       if (!slot) return;
       const run = (window.runsBySession || {})[String(sid)];
       const unread = !!(window.unreadSessions || {})[String(sid)];
+      const latest = (window.latestRunBySession || {})[String(sid)];
       if (run) {
         const phase = run.phase || 'running';
         slot.innerHTML =
@@ -3550,6 +3561,16 @@
         slot.innerHTML = '<i class="fa-solid fa-circle-dot" title="Finished with an error while you were away" style="color:var(--error); font-size:11px; flex-shrink:0;"></i>';
       } else if (unread) {
         slot.innerHTML = '<i class="fa-solid fa-circle-dot" title="Finished while you were in another chat" style="color:var(--warning); font-size:11px; flex-shrink:0;"></i>';
+      } else if (latest && latest.status) {
+        // Every chat with a run shows how it ended, from the server's record.
+        const failed = ['failed', 'error', 'blocked', 'denied', 'denied_timeout', 'security_blocked', 'cancelled'].includes(String(latest.status));
+        const done = String(latest.status) === 'completed';
+        const label = String(latest.status).replace(/_/g, ' ');
+        slot.innerHTML = failed
+          ? '<i class="fa-solid fa-circle-exclamation" title="Last run: ' + escapeHtml(label) + '" style="color:var(--error); font-size:11px; flex-shrink:0;"></i>'
+          : (done
+            ? '<i class="fa-solid fa-circle-check" title="Last run completed" style="color:var(--success-text); font-size:11px; flex-shrink:0;"></i>'
+            : '<i class="fa-solid fa-circle-dot" title="Last run: ' + escapeHtml(label) + '" style="color:var(--text-secondary); font-size:11px; flex-shrink:0;"></i>');
       } else {
         slot.innerHTML = '';
       }
@@ -4413,8 +4434,15 @@
         lastSnapshotCheckpoint = run.checkpoint_version;
         window.activeAgentRunId = run.id;
         const terminalRunStates = ['completed', 'failed', 'cancelled', 'blocked', 'denied', 'denied_timeout', 'security_blocked', 'error', 'finalized'];
-        if (terminalRunStates.includes(run.status)) stopAllAgentStepTimers();
-        updateRunStateCard(run.id, run.status, run.duration);
+        const runIsTerminal = terminalRunStates.includes(run.status);
+        if (runIsTerminal) {
+          // The replay already carries that run's steps and its outcome. Adding
+          // a fresh Run State row here is what made a finished chat flash
+          // "starting" the moment it was opened.
+          stopAllAgentStepTimers();
+        } else {
+          updateRunStateCard(run.id, run.status, run.duration);
+        }
         if (rehydratedSessionId !== sessionId) {
           rehydratedSessionId = sessionId;
           // A locally-started run already owns the live DOM. Replacing it with
@@ -4425,7 +4453,7 @@
         }
         if (run.pending_approval) {
           showApprovalCard({ ...run.pending_approval, approval_id: run.pending_approval.id, session_id: sessionId });
-        } else if (terminalRunStates.includes(run.status)) {
+        } else if (runIsTerminal) {
           hideApprovalCard();
           window.sessionStartTime = null;
           isProcessing = false;
@@ -4441,7 +4469,7 @@
         });
         // Adopt a still-running run: reopen its card live so the orb, phase
         // and steps keep updating here instead of freezing at the replay.
-        if (!terminalRunStates.includes(run.status) && !window.activeRunWrap) {
+        if (!runIsTerminal && !window.activeRunWrap) {
           let adopted = null;
           const knownWrap = window.historyRunWraps && window.historyRunWraps[run.id];
           if (knownWrap && document.getElementById(knownWrap + '-body')) {

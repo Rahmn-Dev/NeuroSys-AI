@@ -145,12 +145,39 @@ def test_abandoned_run_watchdog_is_terminal_not_reexecution(run_tables):
     session = ChatSession.objects.create(title='abandoned')
     lifecycle = DurableAgentLifecycle(session_id=session.pk, goal='nginx', user_id='7')
     run = lifecycle.open()
-    AgentRun.objects.filter(pk=run.pk).update(created_at=timezone.now() - timedelta(seconds=340))
+    # Abandoned means "stopped moving", so both stamps go back: the run records
+    # a transition for every real step, and a run that is merely old is still
+    # alive. See the regression test below for exactly that case.
+    stale = timezone.now() - timedelta(seconds=340)
+    AgentRun.objects.filter(pk=run.pk).update(created_at=stale, updated_at=stale)
     assert expire_abandoned_runs(session.pk, '7') == 1
     run.refresh_from_db()
     assert run.status == 'failed'
     assert run.transitions.count() == 1
     assert expire_abandoned_runs(session.pk, '7') == 0
+
+
+def test_running_run_is_not_failed_just_for_being_old(run_tables):
+    """A long investigation that keeps progressing must survive the watchdog.
+
+    The operator reported a still-running nginx investigation being marked
+    failed after they returned to the chat: the watchdog judged it by age, so
+    every investigation longer than the budget was reported as broken.
+    """
+    from datetime import timedelta
+    from django.utils import timezone
+    from sre_agent.canonical_lifecycle import expire_abandoned_runs
+    session = ChatSession.objects.create(title='long but progressing')
+    lifecycle = DurableAgentLifecycle(session_id=session.pk, goal='nginx', user_id='7')
+    run = lifecycle.open()
+    # Older than the budget, but it recorded activity a moment ago.
+    AgentRun.objects.filter(pk=run.pk).update(
+        created_at=timezone.now() - timedelta(seconds=900),
+        updated_at=timezone.now() - timedelta(seconds=5),
+    )
+    assert expire_abandoned_runs(session.pk, '7') == 0
+    run.refresh_from_db()
+    assert run.status not in ('failed', 'expired')
 
 
 def test_cancellation_propagates_and_persists(monkeypatch):
