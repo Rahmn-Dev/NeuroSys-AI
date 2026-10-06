@@ -1981,6 +1981,7 @@
             : data.type === 'denied_timeout' ? 'denied_timeout' : 'denied';
           finalizeRunWrap(_stopStatus);
           addAgentStep(_stopLabel, escapeHtml(data.content || ''), 'var(--warning)', 'ban', null, true);
+          window.refreshInvestigations();
           // The pill and the plan must say what happened right now, even if the
           // run container was already cleared: otherwise the pill keeps spinning
           // on the last live phase and the plan keeps reading running/pending.
@@ -3848,6 +3849,7 @@
       window.stoppingRuns = window.stoppingRuns || {};
       window.stoppingRuns[String(sid)] = Date.now();
       window.refreshHistoryRowState(String(sid));
+      setTimeout(() => window.refreshInvestigations(), 1500);
       try {
         if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'cancel', session_id: String(sid) }));
       } catch (err) { /* socket closing */ }
@@ -3863,6 +3865,33 @@
     // Stop one investigation from its own card. A live run in this chat is
     // stopped the usual way; a case whose run is already gone but which still
     // reads as active is closed honestly instead of left running forever.
+    // The panel reads from memory, so anything the server changed behind its
+    // back (a repair, another tab, a watchdog) shows stale until the chat is
+    // reopened. Every terminal event and every stop re-pulls instead.
+    window.refreshInvestigations = async function () {
+      try {
+        const sid = String((typeof sessionId !== 'undefined' && sessionId) || '');
+        if (!sid) return;
+        const res = await fetch(`/api/v1/chat-sessions/${encodeURIComponent(sid)}/investigations/`,
+          { credentials: 'same-origin' });
+        if (!res.ok) return;
+        const data = await res.json();
+        investigations = {};
+        activeInvestigationId = null;
+        (data || []).forEach((inv) => {
+          investigations[inv.id] = {
+            id: inv.id,
+            title: inv.title,
+            status: inv.status,
+            plan: inv.tasks || [],
+            findings: inv.findings ? inv.findings.map((f) => f.content) : [],
+          };
+          if (inv.status === 'active') activeInvestigationId = inv.id;
+        });
+        renderInvestigationTimeline();
+      } catch (err) { /* best-effort */ }
+    };
+
     window.stopInvestigationCase = async function (invId) {
       if (!invId) return;
       const sid = String((typeof sessionId !== 'undefined' && sessionId) || '');
