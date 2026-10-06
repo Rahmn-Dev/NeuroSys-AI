@@ -3238,18 +3238,9 @@
       wrap.className = 'sre-run-card';
       wrap.style.cssText = 'margin-bottom: 10px;';
       wrap.innerHTML = `
-        <div id="${wrapId}-head" class="sre-run-head" data-open="0" onclick="toggleRunWrap('${wrapId}')" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; user-select: none;" onmouseover="if(this.dataset.open!=='1')this.style.background='rgba(127,140,160,.12)'" onmouseout="if(this.dataset.open!=='1')this.style.background=''">
-          <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
-            <span id="${wrapId}-stat" style="width:20px; height:20px; display:flex; align-items:center; justify-content:center; flex:none; color:var(--text-secondary);"></span>
-            <span id="${wrapId}-pill" class="sre-run-phase" style="font-size: 15px; font-weight: 600; letter-spacing: -.01em; color: var(--text-strong); white-space: nowrap;">observing</span>
-            <span id="${wrapId}-dur" style="font-size: 11px; font-family: monospace; color: var(--text-secondary);"></span>
-            <span id="${wrapId}-case" style="font-size: 10px; font-family: monospace; color: var(--text-secondary); opacity: .7;"></span>
-          </div>
-          <span style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 6px; flex: none;">
-            <i class="fa-solid fa-chevron-down" id="${wrapId}-chev" style="font-size: 12px; color: var(--text-secondary); transition: transform .2s; transform: rotate(-90deg);"></i>
-          </span>
+        <div id="${wrapId}-body" class="sre-run-body" style="padding: 14px 16px 16px; display: flex; flex-direction: column; align-items: stretch; max-height: 420px; overflow-y: auto; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 20px; margin: 8px;">
+          <div id="${wrapId}-case" style="display:none; font-size: 10px; font-family: monospace; color: var(--text-secondary); opacity: .7; margin-bottom: 6px;"></div>
         </div>
-        <div id="${wrapId}-body" class="sre-run-body" style="padding: 18px 20px 20px; display: flex; flex-direction: column; align-items: stretch; max-height: 420px; overflow-y: auto; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 20px; margin: 8px;"></div>
       `;
       messagesDiv.appendChild(wrap);
       window.agentAutoScroll = window.isPinnedToBottom();
@@ -3341,7 +3332,14 @@
         opts = opts || {};
         const wrap = document.getElementById(wrapId);
         if (!wrap) return;
-        const bubble = wrap.dataset.bubbleId && document.getElementById(wrap.dataset.bubbleId);
+        let bubble = wrap.dataset.bubbleId && document.getElementById(wrap.dataset.bubbleId);
+        if ((!bubble || !document.contains(bubble)) && wrap.nextElementSibling
+            && wrap.nextElementSibling.classList
+            && wrap.nextElementSibling.classList.contains('agent-msg')) {
+          bubble = wrap.nextElementSibling;
+          wrap.dataset.bubbleId = bubble.id;
+          if (wrapId) bubble.dataset.wrapId = wrapId;
+        }
         if (!bubble) return;
         const toggle = bubble.querySelector('.sre-run-toggle');
         if (!toggle) return;
@@ -5366,7 +5364,9 @@
                   if (_replayWrap) {
                     const slot = document.getElementById(_replayWrap.dataset.wrapId + '-case');
                     if (slot && !slot.textContent.trim()) {
-                      slot.textContent = evt.case_id || evt.investigation_id || '';
+                      const _cid = evt.case_id || evt.investigation_id || '';
+                      slot.textContent = _cid;
+                      if (_cid) slot.style.display = '';
                     }
                   }
                   if (evt.investigation_id) {
