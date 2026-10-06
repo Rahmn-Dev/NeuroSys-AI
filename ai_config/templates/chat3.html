@@ -2921,8 +2921,8 @@
     // Chain-of-thought status rings: blue while a step is working, emerald
     // once it lands, rose when it fails. Translated from the AgentPlanning
     // reference into CSS variables so both themes keep working.
-    window.__sreUiBuild = 'runpanel-01';
-    console.log('[NeuroSysAI UI] build runpanel-01');
+    window.__sreUiBuild = 'cardown-05';
+    console.log('[NeuroSysAI UI] build cardown-05');
 
     // Icons below never depend on the lucide name table: an unknown name used
     // to render an empty dot. These inline SVGs always paint.
@@ -3106,13 +3106,25 @@
       body.dataset.open = '0';
       body.style.display = 'none';
       window.activeRunWrap = body;
+      // Only a run that is actually executing gets a spinner. A card built
+      // while replaying history is finished by definition, and a spinning glyph
+      // on a stored run made it look like the agent was still working.
       const liveStat = document.getElementById(wrapId + '-stat');
-      if (liveStat) {
-        liveStat.style.color = 'var(--accent)';
-        liveStat.innerHTML = '<div class="spinner-border spinner-border-sm" role="status" style="width:13px; height:13px; border-width:2px;"></div>';
-      }
       const livePill = document.getElementById(wrapId + '-pill');
-      if (livePill) livePill.style.color = '';
+      if (!window.isLoadingHistory) {
+        if (liveStat) {
+          liveStat.style.color = 'var(--accent)';
+          liveStat.innerHTML = '<div class="spinner-border spinner-border-sm" role="status" style="width:13px; height:13px; border-width:2px;"></div>';
+        }
+        if (livePill) livePill.style.color = '';
+      } else {
+        if (liveStat) { liveStat.style.color = ''; liveStat.innerHTML = ''; }
+        if (livePill) {
+          livePill.classList.remove('sre-run-phase');
+          livePill.textContent = 'archived run';
+          livePill.style.color = 'var(--text-secondary)';
+        }
+      }
       window.activeRunOrb = null;
       window.orbInRun = false;
       // Live runs are born packaged: avatar + run card together from the first
@@ -4850,8 +4862,11 @@
           'resolution_plan', 'hypothesis', 'findings', 'parallel_start', 'parallel_complete',
           'completed', 'error', 'failed', 'cancelled', 'blocked', 'denied',
           'denied_timeout', 'security_blocked'];
+        // Every agent turn keeps a card, including one that recorded no steps:
+        // a card that says so is clearer than a run that silently disappears
+        // from the transcript.
         const _hasTrace = _evts.some((e) => e && _STEP_TYPES.includes(String(e.type)));
-        if (_evts.some((e) => e && e.run_id) || !_hasTrace) {
+        if (_evts.some((e) => e && e.run_id)) {
           window.historyReplayWrap = null;
         } else {
           const _own = ensureHistoryWrap('msg-' + (msg.id || 'orphan'));
@@ -5138,7 +5153,8 @@
           // runs, and a card that truthfully says it recorded nothing is far
           // more useful than a missing one.
           if (window.historyReplayWrap && document.contains(window.historyReplayWrap)
-              && window.historyReplayWrap.childElementCount === 0) {
+              && window.historyReplayWrap.childElementCount === 0
+              && !_hasTrace) {
             const _note = document.createElement('div');
             _note.className = 'sre-run-empty-note';
             _note.style.cssText = 'padding: 10px 12px; font-size: 12px; color: var(--text-secondary); font-style: italic;';
