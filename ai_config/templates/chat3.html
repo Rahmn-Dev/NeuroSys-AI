@@ -1865,6 +1865,12 @@
           if (window.activeRunWrap) {
             paintRunWrap(window.activeRunWrap.dataset.wrapId, 'answered');
             window.activeRunOrb = null;
+            // A plain answer ran no chain, so there is nothing to open: the
+            // pill stays hidden instead of claiming "completed".
+            const _wrap = document.getElementById(window.activeRunWrap.dataset.wrapId);
+            const _bubble = _wrap && _wrap.dataset.bubbleId && document.getElementById(_wrap.dataset.bubbleId);
+            const _toggle = _bubble && _bubble.querySelector('.sre-run-toggle');
+            if (_toggle) _toggle.classList.add('sre-hidden');
           }
           setBeamRunning(false);
           break;
@@ -2623,6 +2629,7 @@
       if (!text) return;
       pill.textContent = text;
       pill.classList.add('sre-run-phase');
+      window.paintBubblePill(wrapId, text, { spinner: true, working: true });
     };
 
     // Re-render the live orb after a theme switch so the glow matches.
@@ -2674,15 +2681,18 @@
           bubble.insertBefore(column, panel);
           column.appendChild(panel);
         }
-        const stale = column.querySelector(':scope > .sre-run-audit');
+        const panel = bubble.querySelector(':scope .agent-msg-body .sre-panel')
+          || bubble.querySelector('.sre-panel');
+        if (!panel) return false;
+        const stale = panel.querySelector(':scope > .sre-run-audit');
         if (stale) stale.remove();
         const holder = document.createElement('div');
         holder.innerHTML = html;
         const audit = holder.querySelector('.sre-run-audit');
         if (!audit) return false;
-        const panel = column.querySelector(':scope > .sre-panel');
-        if (panel) column.insertBefore(audit, panel.nextSibling);
-        else column.appendChild(audit);
+        const answer = panel.querySelector(':scope > .ai-content');
+        if (answer) panel.insertBefore(audit, answer.nextSibling);
+        else panel.appendChild(audit);
         return true;
       } catch (err) { return false; }
     };
@@ -2791,31 +2801,28 @@
     window.liveBubbles = window.liveBubbles || {};
     // A packaged turn skeleton: bot avatar on the left, one column on the
     // right holding the run card now and the answer panel later.
+    // On send, the answer bubble is born first and the run seats its chain
+    // into it: avatar, header with the live pill, the chain of thought, then
+    // the answer as it streams.
     window.ensureLiveBubble = function (sid, wrap) {
       try {
         if (!wrap) return null;
         const prev = window.liveBubbleCurrent;
-        if (prev && !prev.claimed && document.contains(prev.bubble)) {
-          const hasPanel = !!prev.column.querySelector(':scope > .sre-panel');
-          if (!prev.claimed && !hasPanel) {
-            if (wrap.parentElement !== prev.column) prev.column.appendChild(wrap);
-            return prev;
-          }
+        const prevPanel = prev && document.contains(prev.bubble)
+          ? prev.bubble.querySelector('.sre-panel .ai-content') : null;
+        if (prev && prevPanel && !prevPanel.textContent.trim()) {
+          window.seatChain(prev.bubble, wrap);
+          return prev;
         }
-        const bubble = document.createElement('div');
-        bubble.className = 'agent-msg sre-msg-ai';
+        const bubble = buildAnswerBubble('', null, null);
         bubble.dataset.sessionId = sid;
-        bubble.style.cssText = 'display:flex; align-items:flex-start; gap:12px; max-width: 85%; margin-bottom: 2px;';
-        bubble.innerHTML =
-          '<div data-avatar="agent" data-orb-size="42" style="flex-shrink:0; width:56px; height:56px; border-radius:50%; background:rgba(31, 111, 235, 0.12); border:1px solid var(--border-color); display:flex; align-items:center; justify-content:center; box-shadow: 0 4px 12px rgba(0,0,0,0.08); flex-wrap: nowrap; overflow: hidden;">'
-          + window.neuroBotAvatar(42) + '</div>'
-          + '<div class="agent-msg-body" style="flex:1; min-width: 0; display:flex; flex-direction:column;"></div>';
         messagesDiv.insertBefore(bubble, wrap);
+        window.seatChain(bubble, wrap);
         const column = bubble.querySelector(':scope > .agent-msg-body');
-        column.appendChild(wrap);
         const entry = { bubble: bubble, column: column, claimed: false, sid: sid };
         window.liveBubbles[sid] = entry;
         window.liveBubbleCurrent = entry;
+        if (typeof currentAIMsg !== 'undefined' && !currentAIMsg) currentAIMsg = bubble;
         scrollToBottom();
         return entry;
       } catch (err) { return null; }
@@ -2824,8 +2831,10 @@
     window.discardLiveBubble = function (sid) {
       try {
         const skel = window.liveBubbleCurrent;
-        if (skel && !skel.claimed && document.contains(skel.bubble)
-            && (!sid || !skel.sid || String(skel.sid) === String(sid))) {
+        const answer = skel && skel.bubble.querySelector('.sre-panel .ai-content');
+        if (skel && document.contains(skel.bubble)
+            && (!sid || !skel.sid || String(skel.sid) === String(sid))
+            && answer && !answer.textContent.trim()) {
           skel.bubble.remove();
         }
         window.liveBubbleCurrent = null;
@@ -2833,33 +2842,60 @@
       } catch (err) { /* best-effort */ }
     };
 
+    // The chain of thought seats inside the bubble's own slot, under the
+    // header and above the answer. The bubble owns the status pill; the run
+    // card's own header steps aside (its hooks keep working, they are just not
+    // painted anymore).
+    window.seatChain = function (bubble, wrap) {
+      if (!bubble || !wrap) return false;
+      try {
+        if (String(wrap.dataset.sessionId || '') && String(bubble.dataset.sessionId || '')
+            && String(wrap.dataset.sessionId) !== String(bubble.dataset.sessionId)) return false;
+        let slot = bubble.querySelector(':scope .agent-msg-body .sre-panel .sre-cot');
+        if (!slot) {
+          const panel = bubble.querySelector('.sre-panel');
+          if (!panel) return false;
+          slot = document.createElement('div');
+          slot.className = 'sre-cot';
+          slot.style.display = 'none';
+          const answer = panel.querySelector(':scope > .ai-content');
+          panel.insertBefore(slot, answer || null);
+        }
+        const body = wrap.querySelector('[data-wrap-id]') || wrap.firstElementChild;
+        const wrapId = (body && body.dataset.wrapId) || wrap.id;
+        // A card painted before it met its bubble (replay) hands its latest
+        // state to the pill the moment they join.
+        if (wrapId) {
+          const _w = document.getElementById(wrapId);
+          const _last = _w && _w.dataset.lastStatus;
+          if (_last) {
+            const _dur = _w.dataset.lastDuration !== '' ? Number(_w.dataset.lastDuration) : null;
+            const _low = _last.toLowerCase();
+            const _terminal = ['completed', 'failed', 'cancelled', 'blocked', 'denied', 'denied_timeout', 'security_blocked', 'error', 'finalized'].includes(_low);
+            const _status = _terminal ? _last : 'working';
+            window.paintBubblePill(wrapId, _status,
+              _terminal
+                ? { done: _low === 'completed', failed: _low !== 'completed', duration: _dur }
+                : { spinner: true, working: true });
+          }
+        }
+        if (slot.contains(wrap)) {
+          if (wrapId) bubble.dataset.wrapId = wrapId;
+          return true;
+        }
+        slot.appendChild(wrap);
+        wrap.dataset.bubbleId = bubble.id;
+        if (wrapId) bubble.dataset.wrapId = wrapId;
+        const toggle = bubble.querySelector('.sre-run-toggle');
+        if (toggle) toggle.classList.remove('sre-hidden');
+        bubble.dataset.chainOpen = slot.style.display !== 'none' ? '1' : '0';
+        return true;
+      } catch (err) { return false; }
+    };
+
     window.seatWrapAbove = function (wrap, card) {
       if (!wrap || !card || wrap === card || wrap.contains(card)) return;
-      if (String(wrap.dataset.sessionId || '') !== String(card.dataset.sessionId || '')) return;
-      try {
-        let column = null;
-        for (const child of card.children) {
-          if (child.classList && child.classList.contains('agent-msg-body')) { column = child; break; }
-        }
-        if (!column) {
-          // Heal bubbles built before the column existed: gather the panel.
-          const panels = Array.from(card.children).filter((el) => el.classList && el.classList.contains('sre-panel'));
-          if (!panels.length) return;
-          column = document.createElement('div');
-          column.className = 'agent-msg-body';
-          column.style.cssText = 'flex:1; min-width:0; display:flex; flex-direction:column;';
-          card.insertBefore(column, panels[0]);
-          panels.forEach((panel) => column.appendChild(panel));
-        }
-        if (column.contains(wrap)) {
-          const panel = column.querySelector(':scope > .sre-panel');
-          if (panel && wrap.nextElementSibling !== panel && wrap !== panel) column.insertBefore(wrap, panel);
-          return;
-        }
-        const panel = column.querySelector(':scope > .sre-panel');
-        if (panel) column.insertBefore(wrap, panel);
-        else column.appendChild(wrap);
-      } catch (err) { /* best-effort */ }
+      window.seatChain(card, wrap);
     };
 
     // A run card always lives inside its answer's column, above the response
@@ -2867,43 +2903,57 @@
     window.normalizeRunCards = function () {
       try {
         document.querySelectorAll('[id^="runwrap-"]').forEach((wrap) => {
+          const linked = wrap.dataset.bubbleId && document.getElementById(wrap.dataset.bubbleId);
+          if (linked) { window.seatChain(linked, wrap); return; }
           const bubble = wrap.closest('.agent-msg.sre-msg-ai');
           if (bubble) window.seatWrapAbove(wrap, bubble);
         });
       } catch (err) { /* best-effort */ }
     };
 
-    function addAIMessage(content, ts, msgId) {
+    function buildAnswerBubble(content, ts, msgId) {
       const div = document.createElement('div');
+      const bubbleId = 'bubble-' + Math.random().toString(36).substr(2, 9);
+      div.id = bubbleId;
       div.className = 'agent-msg sre-msg-ai';
       div.dataset.sessionId = String(sessionId || '');
       if (ts) div.dataset.created = String(ts);
       if (msgId) div.dataset.msgId = String(msgId);
       div.style.cssText = 'display:flex; align-items:flex-start; gap:12px; max-width: 85%; margin-bottom: 2px;';
+      // One card per turn: header with the status pill, the chain of thought,
+      // then the answer. The pill opens the chain.
       div.innerHTML = `
             <div data-avatar="agent" data-orb-size="42" style="flex-shrink:0; width:56px; height:56px; border-radius:50%; background:rgba(31, 111, 235, 0.12); border:1px solid var(--border-color); display:flex; align-items:center; justify-content:center; box-shadow: 0 4px 12px rgba(0,0,0,0.08); flex-wrap: nowrap; overflow: hidden;">
                 ${window.neuroBotAvatar(42)}
             </div>
             <div class="agent-msg-body" style="flex:1; min-width: 0; display:flex; flex-direction:column;">
             <div class="sre-panel p-3 my-2" style="background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 14px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); min-width: 0;">
-                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                <div class="sre-bubble-head">
                     <strong style="font-size: 13px;"><span class="theme-gradient">NeuroSysAI</span><i class="sre-agent-dot" data-state="idle" title="Agent idle"></i></strong>
+                    <button type="button" class="sre-run-toggle sre-hidden" id="${bubbleId}-toggle" title="Show the agent's work" onclick="window.toggleBubbleChain('${bubbleId}')">
+                        <span class="sre-run-glyph"></span><span class="sre-run-title"></span><span class="sre-run-dur"></span><span class="sre-run-chev">${window.sreChevSvg(12)}</span>
+                    </button>
                 </div>
+                <div class="sre-cot" style="display:none;"></div>
                 <div class="ai-content sre-text-primary" style="font-size: 13px; color: var(--text-primary); line-height: 1.6;">${window.renderAnswerContent(content || '')}</div>
             </div>
             </div>
         `;
-      // The live turn already has a packaged skeleton (avatar + run card).
-      // The first answer to arrive takes its column over instead of stacking a
-      // second bubble, which used to leave two bot avatars on screen.
+      return div;
+    }
+
+    function addAIMessage(content, ts, msgId) {
+      // The live turn already owns a bubble: the empty answer region inside it
+      // is filled instead of stacking a second bubble with a second avatar.
       const _skel = window.liveBubbleCurrent;
-      if (_skel && !window.replayingOlder && document.contains(_skel.bubble)
-          && !_skel.column.querySelector(':scope > .sre-panel')) {
-        const _panel = div.querySelector(':scope > .agent-msg-body > .sre-panel') || div.querySelector('.sre-panel');
-        if (_panel) {
-          _skel.column.appendChild(_panel);
+      if (_skel && !window.replayingOlder && document.contains(_skel.bubble)) {
+        const _empty = _skel.bubble.querySelector('.sre-panel .ai-content');
+        if (_empty && !_empty.textContent.trim()) {
+          _empty.innerHTML = window.renderAnswerContent(content || '');
           const _sid = String(sessionId || '');
           if (_skel.sid !== _sid) { _skel.sid = _sid; window.liveBubbles[_sid] = _skel; }
+          if (ts && !_skel.bubble.dataset.created) _skel.bubble.dataset.created = String(ts);
+          if (msgId && !_skel.bubble.dataset.msgId) _skel.bubble.dataset.msgId = String(msgId);
           window.seatRunCardAbove(_skel.bubble);
           const _aiTime = document.createElement('div');
           _aiTime.style.cssText = 'font-size: 10px; color: var(--text-secondary); opacity: 0.7; margin-bottom: 8px; padding-left: 4px; margin-left: 68px;';
@@ -2914,6 +2964,7 @@
           return _skel.bubble;
         }
       }
+      const div = buildAnswerBubble(content, ts, msgId);
       window.markStreaming(false, div.querySelector('.ai-content'));
       messagesDiv.appendChild(div);
       window.seatRunCardAbove(div);
@@ -3164,7 +3215,10 @@
       // Live runs are born packaged: avatar + run card together from the first
       // moment, exactly as the finished turn reads. The answer panel joins the
       // same column when it arrives (addAIMessage claims the skeleton).
-      if (!window.isLoadingHistory) window.ensureLiveBubble(String(sessionId || ''), wrap);
+      if (!window.isLoadingHistory) {
+        window.ensureLiveBubble(String(sessionId || ''), wrap);
+        window.paintBubblePill(wrapId, 'starting', { spinner: true, working: true });
+      }
       const startPill = document.getElementById(wrapId + '-pill');
       if (startPill) {
         startPill.textContent = 'starting';
@@ -3172,6 +3226,21 @@
       }
       scrollToBottom();
     }
+
+    window.toggleBubbleChain = function (bubbleId, force) {
+      const bubble = document.getElementById(bubbleId);
+      if (!bubble) return;
+      const wrapId = bubble.dataset.wrapId;
+      const body = wrapId && document.getElementById(wrapId + '-body');
+      if (body && document.contains(body)) { window.toggleRunWrap(wrapId, force); return; }
+      const slot = bubble.querySelector('.sre-cot');
+      if (!slot) return;
+      const open = (typeof force === 'boolean') ? force : slot.style.display === 'none';
+      slot.style.display = open ? '' : 'none';
+      const chev = bubble.querySelector('.sre-run-chev');
+      if (chev) chev.style.transform = open ? 'rotate(0deg)' : 'rotate(-90deg)';
+      bubble.dataset.chainOpen = open ? '1' : '0';
+    };
 
     window.toggleRunWrap = function (wrapId, force) {
       const body = document.getElementById(wrapId + '-body');
@@ -3185,6 +3254,57 @@
       if (head) head.dataset.open = open ? '1' : '0';
       const card = document.getElementById(wrapId);
       if (card) card.dataset.open = open ? '1' : '0';
+      const wrap = document.getElementById(wrapId);
+      const bubble = wrap && wrap.dataset.bubbleId && document.getElementById(wrap.dataset.bubbleId);
+      if (bubble) {
+        bubble.dataset.chainOpen = open ? '1' : '0';
+        const chev = bubble.querySelector('.sre-run-chev');
+        if (chev) chev.style.transform = open ? 'rotate(0deg)' : 'rotate(-90deg)';
+      }
+    };
+
+    // The bubble owns the visible status pill, so whatever the run card
+    // learns is mirrored onto it: live phase while it works, the outcome with
+    // its duration once it lands.
+    window.paintBubblePill = function (wrapId, title, opts) {
+      try {
+        opts = opts || {};
+        const wrap = document.getElementById(wrapId);
+        if (!wrap) return;
+        const bubble = wrap.dataset.bubbleId && document.getElementById(wrap.dataset.bubbleId);
+        if (!bubble) return;
+        const toggle = bubble.querySelector('.sre-run-toggle');
+        if (!toggle) return;
+        toggle.classList.remove('sre-hidden');
+        toggle.classList.remove('sre-done', 'sre-failed');
+        if (opts.done) toggle.classList.add('sre-done');
+        if (opts.failed) toggle.classList.add('sre-failed');
+        const glyph = toggle.querySelector('.sre-run-glyph');
+        const label = toggle.querySelector('.sre-run-title');
+        const dur = toggle.querySelector('.sre-run-dur');
+        if (glyph) {
+          if (opts.spinner) {
+            glyph.style.color = '';
+            glyph.innerHTML = '<div class="spinner-border spinner-border-sm" role="status" style="width:11px; height:11px; border-width:2px;"></div>';
+          } else if (opts.failed) {
+            glyph.style.color = '';
+            glyph.innerHTML = window.sreXSvg(12);
+          } else if (opts.done) {
+            glyph.style.color = '';
+            glyph.innerHTML = window.sreCheckSvg(12);
+          } else if (opts.glyphHtml != null) {
+            glyph.innerHTML = opts.glyphHtml;
+          }
+        }
+        if (label && title != null) {
+          label.textContent = title;
+          label.classList.remove('sre-run-phase');
+          if (opts.working) label.classList.add('sre-run-phase');
+        }
+        if (dur) dur.textContent = (opts.duration != null) ? `✓ ${Number(opts.duration).toFixed(1)}s` : '';
+        const chev = toggle.querySelector('.sre-run-chev');
+        if (chev) chev.style.transform = (bubble.dataset.chainOpen === '1') ? 'rotate(0deg)' : 'rotate(-90deg)';
+      } catch (err) { /* best-effort */ }
     };
 
     function paintRunWrap(wrapId, status, duration) {
@@ -3192,6 +3312,15 @@
       // completed. Hiding it used to orphan the run state and leave the turn
       // without its trace.
       if (status === 'answered') status = 'completed';
+      // The bubble may only link up later (replay paints before seating), so
+      // the latest state is kept on the card for the link to pick up.
+      try {
+        const _w = document.getElementById(wrapId);
+        if (_w) {
+          _w.dataset.lastStatus = String(status || '');
+          _w.dataset.lastDuration = (duration != null) ? String(duration) : '';
+        }
+      } catch (err) { /* best-effort */ }
       const pill = document.getElementById(wrapId + '-pill');
       const dur = document.getElementById(wrapId + '-dur');
       const spin = document.getElementById(wrapId + '-spin');
@@ -3211,6 +3340,13 @@
       if (stat && terminal) {
         stat.innerHTML = ok ? window.sreCheckSvg(14) : window.sreXSvg(14);
         stat.style.color = ok ? 'var(--success-text)' : 'var(--error)';
+      }
+      const durSecs = (duration != null) ? Number(duration) : null;
+      if (terminal) {
+        window.paintBubblePill(wrapId, status || (ok ? 'completed' : 'failed'),
+          { done: ok, failed: !ok, duration: durSecs });
+      } else if (status) {
+        window.paintBubblePill(wrapId, status, { spinner: true, working: true });
       }
     }
 
@@ -5205,12 +5341,11 @@
           if (msg.message && msg.message.trim() !== "") {
             const _wasBlocked = _evts.some((e) => e && e.type === 'security_blocked');
             const _bubble = addAIMessage(msg.message, msg.created_at, msg.id);
-            // Reading order for a finished turn: the completion summary, then
-            // the card with the commands that produced it, then the answer.
-            if (_bubble && _bubble.parentElement === messagesDiv && window.activeRunWrap) {
+            // The chain of thought seats inside the bubble's own slot.
+            if (_bubble && window.activeRunWrap) {
               const _wrap = window.activeRunWrap.parentElement;
-              if (_wrap && _wrap.parentElement === messagesDiv && _wrap.id.indexOf('runwrap-') === 0) {
-                messagesDiv.insertBefore(_wrap, _bubble);
+              if (_wrap && _wrap.id && _wrap.id.indexOf('runwrap-') === 0) {
+                window.seatChain(_bubble, _wrap);
               }
             }
             // Reading order for a finished turn: run card, answer, and the
@@ -6324,6 +6459,50 @@
   #sre-agent-app .sre-run-audit > div {
     background: var(--bg-main) !important;
     border-top: 1px solid var(--border-color) !important;
+  }
+  /* --- Unified answer bubble: the agent's work lives inside the card -----
+     One card per turn: avatar, header with the status pill, the collapsible
+     chain of thought, the answer, then the audit. The pill opens the chain. */
+  #sre-agent-app .sre-bubble-head {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+  }
+  #sre-agent-app .sre-run-toggle {
+    margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 700; padding: 4px 10px 4px 8px;
+    border-radius: 999px; border: 1px solid transparent;
+    background: rgba(88, 166, 255, .12); color: var(--accent);
+    cursor: pointer; user-select: none; flex: none; font-family: inherit;
+    transition: background .15s ease, transform .1s ease;
+  }
+  #sre-agent-app .sre-run-toggle:hover { background: rgba(88, 166, 255, .22); }
+  #sre-agent-app .sre-run-toggle:active { transform: scale(.96); }
+  #sre-agent-app .sre-run-toggle.sre-done {
+    background: rgba(63, 185, 80, .13); color: var(--success-text);
+  }
+  #sre-agent-app .sre-run-toggle.sre-done:hover { background: rgba(63, 185, 80, .22); }
+  #sre-agent-app .sre-run-toggle.sre-failed {
+    background: rgba(248, 81, 73, .12); color: var(--error);
+  }
+  #sre-agent-app .sre-run-toggle.sre-failed:hover { background: rgba(248, 81, 73, .2); }
+  #sre-agent-app .sre-run-toggle.sre-hidden { display: none; }
+  #sre-agent-app .sre-run-toggle .sre-run-dur {
+    font-family: monospace; font-size: 11px; font-weight: 600; opacity: .85;
+  }
+  #sre-agent-app .sre-run-toggle svg { display: block; }
+  #sre-agent-app .sre-run-toggle .sre-run-chev { display: flex; opacity: .7; transition: transform .2s ease; }
+  #sre-agent-app .sre-cot:empty { display: none; }
+  /* The run card sheds its own chrome once nested: the bubble owns it. */
+  #sre-agent-app .sre-cot .sre-run-card {
+    border: 0 !important; background: transparent !important;
+    box-shadow: none !important; border-radius: 0 !important;
+    margin: 0 !important; overflow: visible !important; width: auto !important;
+  }
+  #sre-agent-app .sre-cot .sre-run-head { display: none !important; }
+  #sre-agent-app .sre-cot .sre-run-body {
+    border: 0 !important; background: transparent !important;
+    box-shadow: none !important; border-radius: 0 !important;
+    margin: 0 !important; padding: 2px 0 8px !important;
+    max-height: none !important; overflow: visible !important;
   }
   #sre-agent-app .sre-art-locate {
     cursor: pointer; transition: background .15s ease, color .15s ease;
