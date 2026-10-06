@@ -15,6 +15,7 @@ import re
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.conf import settings
+from chatbot.models import AIModel
 @api_view(['GET'])
 def system_status(request):
     status = {

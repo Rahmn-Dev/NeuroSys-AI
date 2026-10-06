@@ -36,37 +36,14 @@ class ChatSessionViewSet(viewsets.ModelViewSet):
             return serializers.ChatSessionListSerializer
         return self.serializer_class
 
-    # Custom action untuk mengirim pesan ke sesi tertentu
-    @action(detail=True, methods=['post'])
+    # Investigations of one chat (read-only).
+    @action(detail=True, methods=['get'])
     def investigations(self, request, pk=None):
         session = self.get_object()
         investigations = models.Investigation.objects.filter(session=session).order_by('created_at')
         serializer = serializers.InvestigationSerializer(investigations, many=True)
         return Response(serializer.data)
 
-    @action(detail=True, methods=['post'], url_path='investigations/(?P<inv_id>[^/.]+)/cancel')
-    def cancel_investigation(self, request, pk=None, inv_id=None):
-        """Close a case that is still marked active from the panel's stop control.
-
-        Only touches a case that belongs to this chat. A live run is stopped
-        separately over the socket; this endpoint is the honest close for a case
-        whose run is already gone but whose tasks still read as running.
-        """
-        session = self.get_object()
-        try:
-            from sre_agent.canonical_lifecycle import cancel_run_now
-            user_id = str(getattr(request.user, 'pk', None) or 'anonymous')
-            cancel_run_now(str(session.pk), user_id)
-        except Exception:
-            pass
-        updated = models.Investigation.objects.filter(
-            id=inv_id, session=session, status='active').update(status='cancelled')
-        if not updated:
-            return Response({'status': 'unchanged'})
-        models.InvestigationTask.objects.filter(
-            investigation_id=inv_id,
-            status__in=['pending', 'running', 'in_progress', 'executing']).update(status='cancelled')
-        return Response({'status': 'cancelled'})
 
     @action(detail=True, methods=['get'], url_path='case-graph', permission_classes=[permissions.IsAuthenticated])
     def case_graph(self, request, pk=None):
