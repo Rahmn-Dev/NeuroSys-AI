@@ -3960,14 +3960,9 @@
       window.stoppingRuns = window.stoppingRuns || {};
       window.stoppingRuns[String(sid)] = Date.now();
       window.refreshHistoryRowState(String(sid));
-      const live = !!((window.runsBySession || {})[sid])
-        || (typeof isProcessing !== 'undefined' && !!isProcessing
-            && String(window.processingSid || '') === sid);
-      if (live) {
-        window.stopCurrentRun();
-        return;
-      }
       try {
+        // A stop button on a case stops that case, not whichever run happens
+        // to be live. Falling back to the live run made the card look untouched.
         const data = await window.wsCall('investigation.cancel',
           { session_id: sid, inv_id: invId });
         // Paint from the answer itself: pressing stop always lands on a
