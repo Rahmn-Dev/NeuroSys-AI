@@ -3259,9 +3259,13 @@
       // The ownership tag must live on the body itself: activeRunWrap points
       // here, not at the outer wrap, and the render sites compare against it.
       body.dataset.sessionId = String(sessionId || '');
-      // Always folded: the run card is a summary until the operator opens it.
-      body.dataset.open = '0';
-      body.style.display = 'none';
+      // A live run shows its work as it happens; a replayed one stays hidden
+      // until its pill is pressed.
+      const _live = !window.isLoadingHistory;
+      body.dataset.open = _live ? '1' : '0';
+      body.style.display = _live ? 'flex' : 'none';
+      wrap.style.display = _live ? '' : 'none';
+      wrap.dataset.open = _live ? '1' : '0';
       window.activeRunWrap = body;
       // Only a run that is actually executing gets a spinner. A card built
       // while replaying history is finished by definition, and a spinning glyph
@@ -3309,23 +3313,23 @@
     };
 
     window.toggleRunWrap = function (wrapId, force) {
+      const card = document.getElementById(wrapId);
       const body = document.getElementById(wrapId + '-body');
       const chev = document.getElementById(wrapId + '-chev');
-      if (!body) return;
-      const open = (typeof force === 'boolean') ? force : body.dataset.open !== '1';
+      if (!card || !body) return;
+      const open = (typeof force === 'boolean') ? force : card.style.display === 'none';
+      card.style.display = open ? '' : 'none';
       body.dataset.open = open ? '1' : '0';
       body.style.display = open ? 'flex' : 'none';
       if (chev) chev.style.transform = open ? 'rotate(0deg)' : 'rotate(-90deg)';
       const head = document.getElementById(wrapId + '-head');
       if (head) head.dataset.open = open ? '1' : '0';
-      const card = document.getElementById(wrapId);
-      if (card) card.dataset.open = open ? '1' : '0';
-      const wrap = document.getElementById(wrapId);
-      const bubble = wrap && wrap.dataset.bubbleId && document.getElementById(wrap.dataset.bubbleId);
+      card.dataset.open = open ? '1' : '0';
+      const bubble = card.dataset.bubbleId && document.getElementById(card.dataset.bubbleId);
       if (bubble) {
         bubble.dataset.chainOpen = open ? '1' : '0';
-        const chev = bubble.querySelector('.sre-run-chev');
-        if (chev) chev.style.transform = open ? 'rotate(0deg)' : 'rotate(-90deg)';
+        const bchev = bubble.querySelector('.sre-run-chev');
+        if (bchev) bchev.style.transform = open ? 'rotate(0deg)' : 'rotate(-90deg)';
       }
     };
 
