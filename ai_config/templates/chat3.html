@@ -2921,8 +2921,8 @@
     // Chain-of-thought status rings: blue while a step is working, emerald
     // once it lands, rose when it fails. Translated from the AgentPlanning
     // reference into CSS variables so both themes keep working.
-    window.__sreUiBuild = 'cardown-05';
-    console.log('[NeuroSysAI UI] build cardown-05');
+    window.__sreUiBuild = 'cardown-06';
+    console.log('[NeuroSysAI UI] build cardown-06');
 
     // Icons below never depend on the lucide name table: an unknown name used
     // to render an empty dot. These inline SVGs always paint.
@@ -6308,9 +6308,15 @@
     border-radius: 12px !important;
     box-shadow: 0 1px 2px rgba(0, 0, 0, .06) !important;
     overflow: hidden !important;
-    align-self: stretch !important;
     width: 100% !important;
     box-sizing: border-box;
+    /* align-self: stretch here collapsed the card to a single pixel: the card is
+       a flex item, and stretching it against a container whose own height comes
+       from its content left a 1px box with a full-height header spilling out of
+       it. Its size is its content. */
+    align-self: auto !important;
+    flex: 0 0 auto;
+    min-height: min-content;
   }
   #sre-agent-app .sre-run-card > .sre-run-head {
     background: rgba(127, 140, 160, .06);
