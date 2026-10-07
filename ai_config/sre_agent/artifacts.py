@@ -1,5 +1,6 @@
 import os
 import difflib
+import json
 from datetime import datetime
 from asgiref.sync import sync_to_async
 
@@ -162,3 +163,51 @@ def render_task_plan_markdown(plan: dict) -> str:
         lines.append(f"- {box} {idx}. {desc} ({status})")
     lines += ["", f"_Progress: {done}/{total} completed_"]
     return "\n".join(lines) + "\n"
+
+
+def render_worker_execution_markdown(plan: dict) -> str:
+    """Render the guided workers' actual execution trail for the Artifacts tab."""
+    plan = plan or {}
+    inv_id = str(plan.get("investigation_id", "") or "")
+    workers = plan.get("worker_results", []) or []
+    lines = ["# Guided Worker Execution", ""]
+    if inv_id:
+        lines.extend([f"_Investigation: `{inv_id}`_", ""])
+    if not workers:
+        return "\n".join(lines + ["No worker execution details were recorded.", ""])
+
+    for worker in workers:
+        worker_id = str(worker.get("id", "?") or "?")
+        role = str(worker.get("role", "") or f"Worker {worker_id}")
+        status = str(worker.get("status", "unknown") or "unknown").lower()
+        lines.extend([
+            f"## {role} [{worker_id}] — {status}",
+            "",
+            f"**Goal:** {str(worker.get('goal', '') or '').strip()}",
+            "",
+        ])
+        tool_history = worker.get("tool_history", []) or []
+        if tool_history:
+            lines.extend(["### Tool calls", ""])
+            lines.extend(f"- `{str(call)[:500]}`" for call in tool_history)
+            lines.append("")
+
+        findings = worker.get("findings", []) or []
+        if findings:
+            lines.extend(["### Results", ""])
+            for finding in findings:
+                tool = str(finding.get("tool", "unknown") or "unknown")
+                signal = str(finding.get("signal", "INFO") or "INFO").upper()
+                args = finding.get("args", {}) or {}
+                output = str(finding.get("output", "") or "").strip()
+                lines.append(f"- **{signal} — `{tool}`** (`{json.dumps(args, ensure_ascii=False, default=str)[:500]}`)")
+                if output:
+                    lines.extend(["", f"  {output[:2000].replace(chr(10), chr(10) + '  ')}"])
+            lines.append("")
+        else:
+            lines.extend(["No tool results were recorded for this worker.", ""])
+
+        root_cause = str(worker.get("root_cause", "") or "").strip()
+        if root_cause:
+            lines.extend([f"**Conclusion:** {root_cause[:1000]}", ""])
+    return "\n".join(lines).rstrip() + "\n"

@@ -96,7 +96,11 @@ def test_location_queries_have_deterministic_fast_path_categories():
 def test_bounded_readonly_pipeline_is_allowed_but_shell_mutation_is_not():
     assert _is_readonly_pipeline("journalctl -u nginx -n 100 --no-pager | grep -Ei 'error|warn' | tail -n 20")
     assert _is_readonly_pipeline("sed -n '1,80p' /etc/nginx/nginx.conf | grep server")
+    assert _is_readonly_pipeline("echo 'nginx logs' && journalctl -u nginx -n 50 --no-pager | grep -Ei 'error|warn'")
+    assert _is_readonly_pipeline("grep ERROR app.log || echo 'no errors found'")
+    assert _is_readonly_pipeline("hostname; uptime; df -h")
     assert not _is_readonly_pipeline("systemctl restart nginx")
+    assert not _is_readonly_pipeline("grep ERROR app.log && rm -rf /tmp/app")
     assert not _is_readonly_pipeline("journalctl -u nginx > /tmp/nginx.log")
 
 
@@ -110,6 +114,12 @@ def test_workspace_relative_observation_commands_are_approved():
     assert not _is_readonly_pipeline("cat /proc/self/environ")
     assert not _is_readonly_pipeline("find / -name shadow")
     assert not _is_readonly_pipeline("cat /etc/shadow")
+
+
+def test_python_dependency_inventory_uses_a_single_readonly_command():
+    command = "grep -iE '^(torch|transformers|dspy|crewai|ag2|accelerate|bitsandbytes|flaml|xgboost|shap|triton|trl|huggingface|faiss|chromadb)' requirements.txt"
+    assert _is_readonly_pipeline(command)
+    assert _is_readonly_pipeline('echo "=== AI/ML Lanjutan ===" && ' + command)
 
 
 def test_repeat_followup_with_anaphor_resumes_case():
@@ -167,3 +177,46 @@ def test_task_plan_markdown_mirrors_checklist_state():
     assert "- [b] 3. Tulis laporan (blocked)" in md
     assert "- [!] 4. Restart service (failed)" in md
     assert "_Progress: 1/4 completed_" in md
+    assert "[>]" in md  # live checkpoint remains live until terminal sync rewrites it
+
+
+@pytest.mark.parametrize(("outcome", "expected"), [
+    ("blocked", "failed"),
+    ("security_blocked", "failed"),
+    ("failed", "failed"),
+    ("denied", "denied"),
+    ("paused", ""),
+])
+def test_investigation_terminal_status_normalizes_policy_blocks(outcome, expected):
+    from sre_agent.engine import normalize_investigation_terminal_status
+
+    assert normalize_investigation_terminal_status(outcome) == expected
+
+
+@pytest.mark.parametrize("outcome", ["blocked", "security_blocked"])
+def test_guided_terminal_status_preserves_blocked_without_changing_other_modes(outcome):
+    from sre_agent.engine import normalize_investigation_terminal_status
+
+    assert normalize_investigation_terminal_status(outcome) == "failed"
+    assert normalize_investigation_terminal_status(outcome, preserve_blocked=True) == "blocked"
+
+
+def test_guided_worker_execution_artifact_contains_calls_and_results():
+    from sre_agent.artifacts import render_worker_execution_markdown
+
+    markdown = render_worker_execution_markdown({
+        "investigation_id": "inv_test",
+        "worker_results": [{
+            "id": "A", "role": "Code Analyst", "status": "failed",
+            "goal": "Read and analyze a file",
+            "tool_history": ["read_file({\"path\": \"sample.py\"})"],
+            "findings": [{
+                "tool": "read_file", "args": {"path": "sample.py"},
+                "signal": "FAILURE", "output": "Permission denied",
+            }],
+        }],
+    })
+    assert "Investigation: `inv_test`" in markdown
+    assert "Code Analyst [A] — failed" in markdown
+    assert "`read_file`" in markdown
+    assert "Permission denied" in markdown

@@ -125,6 +125,25 @@ def test_full_access_secret_exfiltration_hard_block():
             consume_for(meta, {"command": "cat /etc/shadow"})
 
 
+@pytest.mark.parametrize("command", [
+    "grep -i password /var/log/auth.log | tail -n 20",
+    "grep -i secret /tmp/application.log | head -n 10",
+    "grep -i reboot /var/log/syslog | tail -n 10",
+])
+def test_secret_words_in_read_only_diagnostics_are_not_hard_blocked(command):
+    meta = ToolMetadata("terminal_execute", "shell", "system", RiskLevel.HIGH)
+    with execution_context("s1", "u1", mode="controlled"):
+        assert consume_for(meta, {"command": command})
+
+
+def test_direct_env_file_read_remains_hard_blocked():
+    meta = ToolMetadata("terminal_execute", "shell", "system", RiskLevel.HIGH)
+    with execution_context("s1", "u1", mode="full"):
+        for command in ("cat .env", "echo 'checking config' && grep API_KEY .env"):
+            with pytest.raises(PermissionError, match="blocked"):
+                consume_for(meta, {"command": command})
+
+
 def test_preview_and_audit_never_store_payload():
     args = {"command": "sudo id PASSWORD=canary-secret"}
     obj = request_approval(session_id="s1", user_id="u1", tool_name="terminal_execute", args=args)

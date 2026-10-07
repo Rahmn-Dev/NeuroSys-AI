@@ -31,45 +31,49 @@ READ_ONLY_PIPE_COMMANDS = {
     "pwd", "whoami", "hostname", "uptime", "id", "uname", "df", "free", "ss", "ps",
     "systemctl", "journalctl", "grep", "rg", "sed", "head", "tail", "cut", "sort",
     "wc", "stat", "ls", "du", "cat", "file", "uniq", "tr", "tac", "nl", "find",
-    "ip", "ping", "getent",
+    "ip", "ping", "getent", "echo", "printf",
 }
 
 
 def _is_readonly_pipeline(command: str) -> bool:
-    """Allow compact observation pipelines without granting a general shell."""
+    """Allow bounded read-only pipelines/chains without granting a general shell."""
     text = str(command or "").strip()
     # Silencing stderr to /dev/null persists nothing and is a ubiquitous
     # read-only idiom (`grep -r ... 2>/dev/null`). Strip those exact tokens so
-    # they don't trip the redirection ban; every other `>`, `<`, `;`, `&`,
-    # backtick, or `$()` still disqualifies the pipeline below.
+    # they don't trip the redirection ban. Control operators are parsed and
+    # validated below; redirection, backticks, and substitutions remain banned.
     text = text.replace("2>/dev/null", "").replace("  ", " ").strip()
-    if not text or len(text) > 1200 or re.search(r"[;&><`\n\r]|\$\(|\$\{", text):
+    if not text or len(text) > 2400 or re.search(r"[><`\n\r]|\$\(|\$\{", text):
         return False
     try:
-        lexer = shlex.shlex(text, posix=True, punctuation_chars="|")
+        lexer = shlex.shlex(text, posix=True, punctuation_chars="|&;")
         lexer.whitespace_split = True
         tokens = list(lexer)
     except ValueError:
         return False
-    segments, current = [], []
+    segments, operators, current = [], [], []
+    allowed_operators = {"|", "&&", "||", ";"}
     for token in tokens:
-        if token == "|":
+        if token in allowed_operators:
             if not current:
                 return False
             segments.append(current)
+            operators.append(token)
             current = []
-        elif "|" in token and token.strip("|") == "":
+        elif token and all(char in "|&;" for char in token):
+            # Reject background jobs and malformed/operator-combining syntax.
             return False
         else:
             current.append(token)
     if current:
         segments.append(current)
-    if not segments or len(segments) > 6:
+    if not segments or len(segments) > 8 or len(operators) != len(segments) - 1:
         return False
     for index, argv in enumerate(segments):
         if not argv or argv[0] not in READ_ONLY_PIPE_COMMANDS:
             return False
         executable = argv[0]
+        pipeline_start = index == 0 or operators[index - 1] != "|"
         if executable == "systemctl":
             action = next((arg for arg in argv[1:] if not arg.startswith("-")), "list-units")
             if action not in {"status", "show", "is-active", "is-failed", "list-units", "list-unit-files"}:
@@ -123,7 +127,7 @@ def _is_readonly_pipeline(command: str) -> bool:
                 return False
         # Filters are meaningful only after an observation source, except for
         # direct bounded file reads such as `tail -n 50 /var/log/nginx/error.log`.
-        if index == 0 and executable in {"grep", "rg", "sed", "cut", "sort", "uniq", "wc"}:
+        if pipeline_start and executable in {"grep", "rg", "sed", "cut", "sort", "uniq", "wc"}:
             if not any(arg.startswith("/") for arg in argv[1:]):
                 # Workspace-relative reads are allowed as long as they cannot
                 # escape the working directory. Absolute sensitive paths stay

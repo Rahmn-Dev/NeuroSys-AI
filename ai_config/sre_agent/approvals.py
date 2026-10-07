@@ -3,9 +3,11 @@ import hashlib
 import json
 import uuid
 import re
+import shlex
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import timedelta
+from pathlib import Path
 from django.db import transaction
 from django.utils import timezone
 from django.conf import settings
@@ -203,9 +205,37 @@ def consume_for(meta, args):
     call_id = __import__("uuid").uuid4().hex
     if meta.name in {"terminal_execute", "terminal_session", "start_background_process"}:
         command = str(args.get("command", ""))
-        if __import__("re").search(r"(?:rm\s+-rf\s+/|mkfs\b|dd\s+if=/dev/|shutdown\b|reboot\b|curl\s+[^|]+\|\s*(?:ba)?sh|/etc/shadow|\.env\b|private[_ -]?key|password|secret|token)", command, __import__("re").I):
+        # Keep the non-approvable list focused on actual destructive commands
+        # and direct reads of protected credential files. A broad keyword
+        # match (e.g. `grep password /var/log/auth.log`) incorrectly blocked
+        # ordinary diagnostics merely because their search term mentioned a
+        # secret-related word.
+        import re as _re
+        dangerous_command = _re.search(
+            r"(?:^|[|;&]\s*)(?:sudo\s+(?:-[A-Za-z]+\s+)*)?"
+            r"(?:rm\s+-(?=[^\s]*r)(?=[^\s]*f)[^\s]+|mkfs\w*|"
+            r"dd\s+if=/dev/\S+|shutdown\b|reboot\b)",
+            command, _re.I,
+        )
+        shell_pipe = _re.search(
+            r"(?:^|[|;&]\s*)(?:sudo\s+)?curl\s+[^|]+\|\s*(?:ba)?sh\b",
+            command, _re.I,
+        )
+        if dangerous_command or shell_pipe:
             audit("tool_decision", meta.name, "hard_block", call_id)
             raise PermissionError("blocked: destructive command")
+        try:
+            for token in shlex.split(command):
+                # Only path-shaped arguments are checked: words such as
+                # "password" used as grep patterns are not file access.
+                if token.startswith("/") or token.startswith("."):
+                    if _sensitive_read_path(Path(token).expanduser().resolve()):
+                        audit("tool_decision", meta.name, "hard_block", call_id)
+                        raise PermissionError("blocked: protected credential file")
+        except ValueError:
+            # Malformed quoting cannot be auto-classified as a protected read;
+            # the normal execution policy below will require approval.
+            pass
     verdict, reason = evaluate(meta, args)
     if verdict == "blocked":
         audit("tool_decision", meta.name, "hard_block", call_id)

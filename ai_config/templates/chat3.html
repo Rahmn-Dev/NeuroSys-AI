@@ -2000,7 +2000,7 @@
           hideApprovalCard();
           pendingApproval = null;
           stopAllAgentStepTimers();
-          updateRunStateCard(data.run_id, data.type === 'security_blocked' ? 'security_blocked' : data.type);
+          updateRunStateCard(data.run_id, data.type === 'security_blocked' ? 'failed' : data.type);
           // Each way of stopping says what it was. Calling a denial a failure
           // told the operator the agent broke when they simply said no.
           const _stopLabel = data.type === 'security_blocked' ? 'Blocked by Security Policy'
@@ -2008,6 +2008,10 @@
             : 'Denied by you';
           const _stopStatus = data.type === 'security_blocked' ? 'security_blocked'
             : data.type === 'denied_timeout' ? 'denied_timeout' : 'denied';
+          const _blockedCaseId = data.investigation_id || (data.metadata && data.metadata.investigation_id) || '';
+          const _canUpdateInvestigation = activeInvestigationId
+            && investigations[activeInvestigationId]
+            && (data.type !== 'security_blocked' || _blockedCaseId === activeInvestigationId);
           finalizeRunWrap(_stopStatus);
           addAgentStep(_stopLabel, escapeHtml(data.content || ''), 'var(--warning)', 'ban', null, true);
           window.refreshInvestigations();
@@ -2021,13 +2025,15 @@
               paintRunWrap(_body.dataset.wrapId, _stopStatus);
             }
           } catch (err) { /* best-effort */ }
-          if (data.type !== 'security_blocked'
-              && activeInvestigationId && investigations[activeInvestigationId]) {
+          if (_canUpdateInvestigation) {
             const _inv = investigations[activeInvestigationId];
-            _inv.status = data.type === 'denied_timeout' ? 'denied_timeout' : 'denied';
+            _inv.status = data.type === 'security_blocked' ? 'blocked'
+              : data.type === 'denied_timeout' ? 'denied_timeout' : 'denied';
             (_inv.plan || []).forEach((p) => {
               const _st = String(p.status || '').toLowerCase();
-              if (['pending', 'running', 'in_progress', 'executing'].includes(_st)) p.status = 'denied';
+              if (['pending', 'running', 'in_progress', 'executing', 'verifying'].includes(_st)) {
+                p.status = data.type === 'security_blocked' ? 'blocked' : 'denied';
+              }
             });
             renderInvestigationTimeline();
           }
@@ -2045,9 +2051,8 @@
           // A blocked prompt never ran this investigation. Repainting the case
           // red overwrote work that had genuinely completed earlier, which is
           // how a finished case ended up labelled "security blocked".
-          if (data.type !== 'security_blocked'
-              && activeInvestigationId && investigations[activeInvestigationId]) {
-            investigations[activeInvestigationId].status = data.type;
+          if (_canUpdateInvestigation) {
+            investigations[activeInvestigationId].status = data.type === 'security_blocked' ? 'blocked' : data.type;
             renderInvestigationTimeline();
           }
           isProcessing = false;
@@ -2108,6 +2113,7 @@
                 id: invId,
                 title: data.content || 'Investigation',
                 status: 'active',
+                createdAt: Date.now(),
                 plan: [],
                 findings: []
               };
@@ -2124,8 +2130,11 @@
         case 'worker_activity':
           const workers = data.workers || (data.metadata && data.metadata.workers);
           if (workers) {
-            activeWorkers = workers;
-            renderWorkerActivity();
+            updateInvestigationWorkerActivity(
+              workers,
+              data.investigation_id || (data.metadata && data.metadata.investigation_id)
+                || data.case_id || (data.metadata && data.metadata.case_id)
+            );
           }
           break;
 
@@ -2137,6 +2146,7 @@
                 id: planData.investigation_id,
                 title: planData.title || 'Investigation',
                 status: 'active',
+                createdAt: Date.now(),
                 plan: [],
                 findings: []
               };
@@ -2165,6 +2175,7 @@
                 id: findingsData.investigation_id,
                 title: findingsData.title || 'Investigation',
                 status: 'active',
+                createdAt: Date.now(),
                 plan: [],
                 findings: []
               };
@@ -2213,6 +2224,9 @@
           // The reveal replays on every chunk, so each arrival settles in
           // instead of the whole block blinking at once.
           window.markStreaming(true, contentDiv);
+          if (window.runHeaderPinned && window.activeRunWrap && window.activeRunWrap.dataset.wrapId) {
+            window.centerRunTurn(window.activeRunWrap.dataset.wrapId);
+          }
           scrollToBottom();
           break;
 
@@ -3224,6 +3238,7 @@
     window.historyRunWraps = {};
 
     function startRunWrap() {
+      window.runHeaderPinned = false;
       // Collapse any previous still-open run first
       if (window.activeRunWrap && window.activeRunWrap.dataset.open === '1') {
         toggleRunWrap(window.activeRunWrap.dataset.wrapId, false);
@@ -3500,17 +3515,14 @@
       if (!body) return;
       const wrapId = body.dataset.wrapId;
       paintRunWrap(wrapId, status, duration);
-      // Finished run folds itself away: the header (status icon, duration and
-      // phase label) stays visible, the step list does not compete with the
-      // reply that is about to arrive.
+      // Keep the completed turn together on screen: user prompt, collapsed
+      // workflow summary, and AI bubble with its terminal pill.
       window.lastRunBody = body;
       toggleRunWrap(wrapId, false);
       setBeamRunning(false);
-      window.agentAutoScroll = false;
-      // Stay OPEN so the just-finished run stays visible; it collapses when
-      // the next run starts (startRunWrap) or via manual toggle.
       window.activeRunWrap = null;
-      scrollToBottom();
+      window.runHeaderPinned = true;
+      window.centerRunTurn(wrapId);
     }
 
     // History replay grouping: one collapsed container per past run_id.
@@ -3717,6 +3729,17 @@
       // that card; scrolling back to its bottom resumes. Replays never move.
       const _host = stepDiv.parentElement;
       const _isRunBody = !!(_host && _host.id && /-body$/.test(_host.id));
+      if (!window.isLoadingHistory && !window.runHeaderPinned && window.activeRunWrap) {
+        const _wrapId = window.activeRunWrap.dataset.wrapId;
+        if (_wrapId) {
+          window.runHeaderPinned = true;
+          window.centerRunTurn(_wrapId);
+        }
+      }
+      if (!window.isLoadingHistory && window.runHeaderPinned && window.activeRunWrap
+          && window.activeRunWrap.dataset.wrapId) {
+        window.centerRunTurn(window.activeRunWrap.dataset.wrapId);
+      }
       if (_isRunBody) {
         const _ownerOk = String(_host.dataset.sessionId || '') === String(sessionId || '');
         const _mine = _host === window.activeRunWrap || _host === window.lastRunBody;
@@ -3835,10 +3858,11 @@
             id: inv.id,
             title: inv.title,
             status: inv.status,
+            createdAt: inv.created_at || inv.createdAt || 0,
             plan: inv.tasks || [],
             findings: inv.findings ? inv.findings.map((f) => f.content) : [],
           };
-          if (inv.status === 'active') activeInvestigationId = inv.id;
+          if (inv.status === 'active' && !activeInvestigationId) activeInvestigationId = inv.id;
         });
         renderInvestigationTimeline();
       } catch (err) { /* best-effort */ }
@@ -4553,6 +4577,7 @@
     let investigations = {};
     let activeInvestigationId = null;
     let activeWorkers = [];
+    let investigationFilter = 'all';
     // ← ADD THIS
 
     // Status vocabulary shared by the task rows and the case badge.
@@ -4590,17 +4615,72 @@
       return '';
     };
 
+    const investigationFilterGroup = (status) => {
+      const state = String(status || '').toLowerCase();
+      if (['active', 'running', 'in_progress', 'executing', 'planning', 'thinking'].includes(state)) return 'active';
+      if (['completed', 'success'].includes(state)) return 'completed';
+      if (['failed', 'error', 'blocked', 'security_blocked', 'denied', 'denied_timeout'].includes(state)) return 'failed';
+      if (['cancelled', 'stopped', 'expired', 'superseded', 'finalized'].includes(state)) return 'stopped';
+      return 'other';
+    };
+
+    window.setInvestigationFilter = function (filter) {
+      const allowed = new Set(['all', 'active', 'completed', 'failed', 'stopped']);
+      if (!allowed.has(String(filter || '').toLowerCase())) return;
+      investigationFilter = String(filter).toLowerCase();
+      renderInvestigationTimeline();
+    };
+
     function renderInvestigationTimeline() {
       const container = document.getElementById('investigation-timeline-container');
       if (!container) return;
 
-      const invKeys = Object.keys(investigations);
-      if (invKeys.length === 0) {
-        container.innerHTML = '<div class="sre-inv-empty">No investigations yet.</div>';
+      const allInvKeys = Object.keys(investigations).sort((a, b) => {
+        const createdAt = (key) => {
+          const inv = investigations[key] || {};
+          const raw = inv.createdAt || inv.created_at || inv.updatedAt || inv.updated_at || 0;
+          const time = new Date(raw).getTime();
+          return Number.isFinite(time) ? time : 0;
+        };
+        return createdAt(b) - createdAt(a) || String(b).localeCompare(String(a));
+      });
+      const filters = [
+        { id: 'all', label: 'All' },
+        { id: 'active', label: 'Active' },
+        { id: 'completed', label: 'Done' },
+        { id: 'failed', label: 'Failed' },
+        { id: 'stopped', label: 'Stopped' },
+      ];
+      const counts = { all: allInvKeys.length, active: 0, completed: 0, failed: 0, stopped: 0 };
+      allInvKeys.forEach((key) => {
+        const group = investigationFilterGroup((investigations[key] || {}).status);
+        if (Object.prototype.hasOwnProperty.call(counts, group)) counts[group] += 1;
+      });
+      const filterIndex = Math.max(0, filters.findIndex((item) => item.id === investigationFilter));
+      const filterHtml = '<div class="sre-inv-filter" role="tablist" aria-label="Filter investigations" '
+        + 'style="--sre-filter-index:' + filterIndex + ';">'
+        + filters.map((item) => '<button type="button" role="tab" aria-selected="'
+          + (item.id === investigationFilter ? 'true' : 'false') + '"'
+          + ' class="' + (item.id === investigationFilter ? 'is-active' : '') + '"'
+          + ' onclick="window.setInvestigationFilter(\'' + item.id + '\')">'
+          + '<span>' + item.label + '</span><small>' + counts[item.id] + '</small></button>').join('')
+        + '</div>';
+      const invKeys = investigationFilter === 'all' ? allInvKeys : allInvKeys.filter((key) => {
+        const group = investigationFilterGroup((investigations[key] || {}).status);
+        return investigationFilter === 'active' ? group === 'active'
+          : investigationFilter === 'completed' ? group === 'completed'
+            : investigationFilter === 'failed' ? group === 'failed'
+              : group === 'stopped';
+      });
+      if (allInvKeys.length === 0) {
+        container.innerHTML = filterHtml + '<div class="sre-inv-empty">No investigations yet.</div>';
         return;
       }
 
-      let html = '';
+      let html = filterHtml;
+      if (invKeys.length === 0) {
+        html += '<div class="sre-inv-empty">No ' + escapeHtml(investigationFilter) + ' investigations.</div>';
+      }
       invKeys.forEach((key) => {
         const inv = investigations[key] || {};
         const isOpen = inv.id === activeInvestigationId;
@@ -4612,6 +4692,16 @@
         const tone = sreInvTone(status);
         const plan = Array.isArray(inv.plan) ? inv.plan : [];
         const findings = Array.isArray(inv.findings) ? inv.findings : [];
+        const createdRaw = inv.createdAt || inv.created_at || inv.updatedAt || inv.updated_at;
+        let createdLabel = '';
+        try {
+          const createdDate = createdRaw ? new Date(createdRaw) : null;
+          if (createdDate && !Number.isNaN(createdDate.getTime())) {
+            createdLabel = createdDate.toLocaleString('id-ID', {
+              day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+            });
+          }
+        } catch (err) { /* optional metadata */ }
         const done = plan.filter((p) => String(p.status || '').toLowerCase() === 'completed').length;
         const pct = plan.length ? Math.round((done / plan.length) * 100) : 0;
 
@@ -4664,6 +4754,42 @@
             }).join('')
           : '<div class="sre-inv-empty" style="padding:4px 0;">No findings yet</div>';
 
+        const invWorkers = Array.isArray(inv.workers) ? inv.workers : [];
+        const workerWorkflowHtml = invWorkers.length
+          ? '<div class="sre-inv-section"><i class="fa-solid fa-diagram-project" style="font-size:10px;"></i> Worker workflow</div>'
+            + invWorkers.map((worker) => {
+                const workerStatus = String(worker.status || 'running').toLowerCase();
+                const workerTone = sreInvTone(workerStatus);
+                const steps = Array.isArray(worker.workflow) ? worker.workflow : [];
+                const stepsHtml = steps.length
+                  ? '<div style="position:relative;margin:8px 0 2px 5px;padding-left:16px;border-left:1px solid var(--border-color);">'
+                    + steps.map((step) => {
+                        const stepStatus = String(step.tool_status || step.status || 'running').toLowerCase();
+                        const stepTone = sreInvTone(stepStatus);
+                        const detail = step.last_tool_result
+                          ? '<div style="margin:3px 0 6px;color:var(--text-secondary);font-size:10px;white-space:pre-wrap;overflow-wrap:anywhere;">' + escapeHtml(step.last_tool_result) + '</div>' : '';
+                        const tool = step.last_tool
+                          ? '<span class="sre-inv-chip" style="color:' + stepTone + ';margin-left:4px;">' + escapeHtml(step.last_tool) + '</span>' : '';
+                        return '<div style="position:relative;margin:0 0 6px;color:var(--text-primary);font-size:11px;">'
+                          + '<span style="position:absolute;left:-21px;top:3px;color:' + stepTone + ';background:var(--bg-panel);">' + sreInvGlyph(stepStatus) + '</span>'
+                          + '<span>' + escapeHtml(step.current_action || step.status || 'Working') + '</span>' + tool + detail
+                          + '</div>';
+                      }).join('')
+                    + '</div>'
+                  : '<div class="sre-inv-empty" style="padding:3px 0 6px;">Waiting for worker activity…</div>';
+                const lastResult = worker.last_tool_result && !steps.length
+                  ? '<div style="margin:4px 0 6px;color:var(--text-secondary);font-size:10px;white-space:pre-wrap;overflow-wrap:anywhere;">' + escapeHtml(worker.last_tool_result) + '</div>' : '';
+                return '<div style="margin:0 0 10px;padding:9px 10px;border:1px solid var(--border-color);border-radius:10px;background:rgba(127,140,160,.04);">'
+                  + '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'
+                  + '<span style="font-weight:700;color:var(--text-primary);font-size:11px;">' + escapeHtml(worker.role || ('Worker ' + worker.id)) + '</span>'
+                  + '<span class="sre-inv-chip" style="color:' + workerTone + ';">' + escapeHtml(workerStatus.replace(/_/g, ' ')) + '</span>'
+                  + '<span style="font-size:10px;color:var(--text-secondary);">' + Number(worker.findings_count || 0) + ' findings · ' + Number(worker.evidence_count || 0) + ' evidence</span>'
+                  + '</div>'
+                  + '<div style="margin-top:4px;color:var(--text-secondary);font-size:10px;">' + escapeHtml(worker.goal || '') + '</div>'
+                  + lastResult + stepsHtml + '</div>';
+              }).join('')
+          : '';
+
         html += '<section class="sre-inv-card" data-open="' + (isOpen ? '1' : '0') + '">'
           + '<button class="sre-inv-head" onclick="window.toggleInvestigationCard(this)">'
           + '<span class="sre-inv-chev"><i class="fa-solid fa-chevron-right"></i></span>'
@@ -4677,9 +4803,11 @@
           + '<span>' + done + '/' + plan.length + ' tasks</span>'
           + '<span>' + findings.length + ' finding' + (findings.length === 1 ? '' : 's') + '</span>'
           + (inv.id ? '<span style="font-family:monospace; opacity:.7;">' + escapeHtml(inv.id) + '</span>' : '')
+          + (createdLabel ? '<span class="sre-inv-date"><i class="fa-regular fa-clock"></i> ' + escapeHtml(createdLabel) + '</span>' : '')
           + '</div>'
           + '<div class="sre-inv-bar"><i style="width:' + pct + '%;"></i></div>'
           + '<div class="sre-inv-body" ' + (isOpen ? '' : 'hidden') + '>'
+          + workerWorkflowHtml
           + '<div class="sre-inv-section"><i class="fa-solid fa-list-check" style="font-size:10px;"></i> Task plan</div>'
           + planHtml
           + '<div class="sre-inv-section"><i class="fa-solid fa-magnifying-glass" style="font-size:10px;"></i> Findings</div>'
@@ -4688,6 +4816,35 @@
       });
 
       container.innerHTML = html;
+    }
+
+    function updateInvestigationWorkerActivity(workers, caseId) {
+      if (!Array.isArray(workers)) return;
+      activeWorkers = workers;
+      const invId = caseId || activeInvestigationId;
+      const inv = invId && investigations[invId];
+      if (inv) {
+        const previous = new Map((inv.workers || []).map((worker) => [String(worker.id), worker]));
+        inv.workers = workers.map((worker) => {
+          const prior = previous.get(String(worker.id)) || {};
+          const workflow = Array.isArray(prior.workflow) ? prior.workflow.slice() : [];
+          const stepKey = [worker.current_action, worker.last_tool, worker.last_tool_status,
+            worker.last_tool_result, worker.status].join('|');
+          if (!workflow.length || workflow[workflow.length - 1].key !== stepKey) {
+            workflow.push({
+              key: stepKey,
+              current_action: worker.current_action || 'Working',
+              status: worker.status || 'running',
+              last_tool: worker.last_tool || '',
+              tool_status: worker.last_tool_status || 'unknown',
+              last_tool_result: worker.last_tool_result || '',
+            });
+          }
+          return Object.assign({}, prior, worker, { workflow: workflow.slice(-30) });
+        });
+        renderInvestigationTimeline();
+      }
+      renderWorkerActivity();
     }
 
     window.toggleInvestigationCard = function (btn) {
@@ -4711,15 +4868,18 @@
 
       container.style.display = 'flex';
       const terminalWorkerStates = new Set(['completed', 'failed', 'blocked', 'cancelled']);
-      const allWorkersTerminal = activeWorkers.every(w =>
-        terminalWorkerStates.has(String(w.status || w.current_action || '').toLowerCase())
-      );
-      const headerIcon = allWorkersTerminal
-        ? `<i class="fa-solid fa-circle-check" style="color:var(--success);"></i>`
-        : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spin-anim" style="color: var(--accent);"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="4.93"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line></svg>`;
+      const workerStatuses = activeWorkers.map(w => String(w.status || w.current_action || '').toLowerCase());
+      const allWorkersTerminal = workerStatuses.every(status => terminalWorkerStates.has(status));
+      const allWorkersSucceeded = allWorkersTerminal && workerStatuses.every(status => status === 'completed');
+      const failedWorkerCount = workerStatuses.filter(status => ['failed', 'blocked', 'cancelled'].includes(status)).length;
+      const headerIcon = !allWorkersTerminal
+        ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spin-anim" style="color: var(--accent);"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="4.93"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line></svg>`
+        : allWorkersSucceeded
+          ? `<i class="fa-solid fa-circle-check" style="color:var(--success);"></i>`
+          : `<i class="fa-solid fa-circle-exclamation" style="color:var(--error);"></i>`;
       let html = `<div style="padding: 12px 16px; font-weight: 600; color: var(--text-primary); background: var(--bg-panel); display: flex; align-items: center; gap: 8px;">
             ${headerIcon}
-            ${allWorkersTerminal ? 'Workers Completed' : 'Active Workers'}
+            ${!allWorkersTerminal ? 'Active Workers' : allWorkersSucceeded ? 'Workers Completed' : `Workers Finished · ${failedWorkerCount} not completed`}
         </div>
         <div style="padding: 12px 16px; display: flex; flex-direction: column; gap: 16px;">`;
 
@@ -4728,19 +4888,26 @@
         const workerTerminal = terminalWorkerStates.has(workerStatus);
         let toolHtml = '';
         if (w.last_tool) {
-          toolHtml += `<div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--success);">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          const toolStatus = String(w.last_tool_status || 'unknown').toLowerCase();
+          const toolColor = toolStatus === 'completed' ? 'var(--success)' : toolStatus === 'failed' || toolStatus === 'blocked' ? 'var(--error)' : 'var(--text-secondary)';
+          const toolIcon = toolStatus === 'completed' ? 'fa-circle-check' : toolStatus === 'failed' || toolStatus === 'blocked' ? 'fa-circle-exclamation' : 'fa-circle-dot';
+          toolHtml += `<div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: ${toolColor};">
+                    <i class="fa-solid ${toolIcon}"></i>
                     ${escapeHtml(w.last_tool)}
                 </div>`;
+          if (w.last_tool_result) {
+            toolHtml += `<div style="font-size:11px; color:var(--text-secondary); margin:3px 0 0 18px; white-space:pre-wrap; overflow-wrap:anywhere;">${escapeHtml(w.last_tool_result)}</div>`;
+          }
         }
 
-        let actionColor = w.current_action.toLowerCase().includes('executing') ? 'var(--warning)' : 'var(--text-secondary)';
+        const currentAction = String(w.current_action || 'Working');
+        let actionColor = currentAction.toLowerCase().includes('executing') ? 'var(--warning)' : 'var(--text-secondary)';
         const workerIcon = workerTerminal
           ? `<i class="fa-solid ${workerStatus === 'completed' ? 'fa-circle-check' : 'fa-circle-exclamation'}"></i>`
           : `<i class="fa-solid fa-spinner spin-anim"></i>`;
         let currentActionHtml = `<div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: ${workerTerminal && workerStatus === 'completed' ? 'var(--success)' : actionColor}; margin-top: 4px;">
                 ${workerIcon}
-                ${escapeHtml(w.current_action)}
+                ${escapeHtml(currentAction)}
             </div>`;
 
         html += `
@@ -4788,6 +4955,7 @@
           ' background:rgba(31,111,235,.92); box-shadow:0 6px 18px rgba(0,0,0,.28);';
         btn.innerHTML = '<i class="fa-solid fa-arrow-down" style="font-size:11px;"></i> Latest';
         btn.onclick = () => {
+          window.agentAutoScroll = true;
           messagesDiv.scrollTo({ top: messagesDiv.scrollHeight, behavior: 'smooth' });
           window.hideJumpToLatest();
         };
@@ -4805,20 +4973,76 @@
 
     function scrollToBottom(force) {
       if (window.isLoadingHistory) return;
+      if (!force && window.runHeaderPinned) return;
       if (force) {
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
         window.hideJumpToLatest();
         return;
       }
-      if (!window.isPinnedToBottom()) { window.showJumpToLatest(); return; }
+      if (!window.agentAutoScroll && !window.isPinnedToBottom()) {
+        window.showJumpToLatest();
+        return;
+      }
+      window.agentAutoScroll = true;
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
       window.hideJumpToLatest();
     }
 
+    window.centerRunTurn = function (wrapId) {
+      if (window.isLoadingHistory || !messagesDiv) return;
+      const wrap = document.getElementById(wrapId);
+      const bubbleId = wrap && wrap.dataset.bubbleId;
+      const bubble = (bubbleId && document.getElementById(bubbleId))
+        || (wrap && wrap.nextElementSibling && wrap.nextElementSibling.classList.contains('agent-msg')
+          ? wrap.nextElementSibling : null);
+      if (!bubble) return;
+      let userBubble = null;
+      for (const child of messagesDiv.children) {
+        if (child === wrap) break;
+        if (child.classList && child.classList.contains('sre-msg-user')) userBubble = child;
+      }
+      const align = () => {
+        if (!document.contains(bubble)) return;
+        const hostRect = messagesDiv.getBoundingClientRect();
+        const bubbleRect = bubble.getBoundingClientRect();
+        const userRect = userBubble && userBubble.getBoundingClientRect();
+        const groupTop = userRect ? userRect.top : (wrap ? wrap.getBoundingClientRect().top : bubbleRect.top);
+        const groupCenter = (groupTop + bubbleRect.bottom) / 2;
+        const viewCenter = hostRect.top + messagesDiv.clientHeight / 2;
+        const maxScroll = Math.max(0, messagesDiv.scrollHeight - messagesDiv.clientHeight);
+        messagesDiv.scrollTop = Math.max(0, Math.min(maxScroll, messagesDiv.scrollTop + groupCenter - viewCenter));
+        window.hideJumpToLatest();
+      };
+      align();
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(align);
+    };
+
+    // A new turn inserts its user bubble, run card, and empty AI bubble in the
+    // same task. Defer the forced follow until those changes have been laid out
+    // so the starting state is fully visible, even if the user was reading up.
+    window.scrollToNewTurn = function () {
+      if (window.isLoadingHistory || !messagesDiv) return;
+      window.runHeaderPinned = false;
+      window.agentAutoScroll = true;
+      const follow = () => {
+        if (!window.isLoadingHistory) scrollToBottom(true);
+      };
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => requestAnimationFrame(follow));
+      } else {
+        setTimeout(follow, 0);
+      }
+    };
+
     if (messagesDiv) {
       messagesDiv.addEventListener('scroll', () => {
-        if (window.isPinnedToBottom()) window.hideJumpToLatest();
-        else if (messagesDiv.scrollHeight > messagesDiv.clientHeight + 200) window.showJumpToLatest();
+        if (window.isPinnedToBottom()) {
+          window.agentAutoScroll = true;
+          window.hideJumpToLatest();
+        } else {
+          window.agentAutoScroll = false;
+          if (messagesDiv.scrollHeight > messagesDiv.clientHeight + 200) window.showJumpToLatest();
+        }
       }, { passive: true });
     }
 
@@ -4871,7 +5095,7 @@
       startRunWrap();
       // Sending means following so the live card and reply stay in view.
       window.agentAutoScroll = true;
-      scrollToBottom(true);
+      window.scrollToNewTurn();
       window.sessionStartTime = new Date();
       isProcessing = true;
       window.processingSid = String(sessionId || '');
@@ -5488,6 +5712,7 @@
                           id: planData.investigation_id,
                           title: planData.title || 'Investigation',
                           status: 'active',
+                          createdAt: evt.timestamp ? new Date(evt.timestamp).getTime() : Date.now(),
                           plan: [],
                           findings: []
                         };
@@ -5541,8 +5766,11 @@
 
                 case 'worker_activity':
                   if (evt.workers) {
-                    activeWorkers = evt.workers;
-                    renderWorkerActivity();
+                    updateInvestigationWorkerActivity(
+                      evt.workers,
+                      evt.investigation_id || (evt.metadata && evt.metadata.investigation_id)
+                        || evt.case_id || (evt.metadata && evt.metadata.case_id)
+                    );
                   }
                   break;
 
@@ -5564,7 +5792,7 @@
                     const invId = (f && f.investigation_id) || null;
                     if (invId) {
                       if (!investigations[invId]) {
-                        investigations[invId] = { id: invId, title: 'Investigation', status: 'active', plan: [], findings: [] };
+                        investigations[invId] = { id: invId, title: 'Investigation', status: 'active', createdAt: Date.now(), plan: [], findings: [] };
                       }
                       investigations[invId].findings = Array.isArray(f) ? f : (f.findings || []);
                       renderInvestigationTimeline();
@@ -5616,7 +5844,7 @@
                       (_inv.plan || []).forEach((p) => {
                         const _p = String(p.status || '').toLowerCase();
                         if (['pending', 'running', 'in_progress', 'executing'].includes(_p)) {
-                          p.status = _term === 'security_blocked' ? 'blocked'
+                          p.status = _term === 'security_blocked' ? 'failed'
                             : _term === 'error' ? 'failed' : _term;
                         }
                       });
@@ -5661,7 +5889,7 @@
                   if (!_blocked) {
                     messagesDiv.appendChild(window.renderRunFailureActions(sessionId, evt.case_id));
                   }
-                  scrollToBottom();
+      window.scrollToNewTurn();
                   break;
                 }
 
@@ -5683,6 +5911,7 @@
                         id: evt.investigation_id,
                         title: evt.content || 'Investigation',
                         status: 'active',
+                        createdAt: evt.timestamp ? new Date(evt.timestamp).getTime() : Date.now(),
                         plan: [],
                         findings: []
                       };
@@ -5842,10 +6071,11 @@
               id: inv.id,
               title: inv.title,
               status: inv.status,
+              createdAt: inv.created_at || inv.createdAt || 0,
               plan: inv.tasks || [],
               findings: inv.findings ? inv.findings.map(f => f.content) : []
             };
-            if (inv.status === 'active') {
+            if (inv.status === 'active' && !activeInvestigationId) {
               activeInvestigationId = inv.id;
             }
           });
@@ -6804,6 +7034,83 @@
   /* --- Investigation panel -------------------------------------------------
      Cards with a quiet surface, a hairline that lights up on hover, and rows
      that read as one system instead of loose inline styles. */
+  #sre-agent-app .sre-inv-filter {
+    --sre-filter-count: 5;
+    position: relative;
+    isolation: isolate;
+    display: grid;
+    grid-template-columns: repeat(var(--sre-filter-count), minmax(0, 1fr));
+    gap: 0;
+    padding: 4px;
+    margin: 0 0 10px;
+    border: 1px solid color-mix(in srgb, var(--border-color) 75%, transparent);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--bg-panel) 72%, transparent);
+    -webkit-backdrop-filter: blur(18px) saturate(1.45);
+    backdrop-filter: blur(18px) saturate(1.45);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 5px 16px rgba(0,0,0,.06);
+  }
+  #sre-agent-app .sre-inv-filter::before {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    top: 4px;
+    bottom: 4px;
+    left: 4px;
+    width: calc((100% - 8px) / var(--sre-filter-count));
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border-color));
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--accent) 15%, var(--bg-panel));
+    box-shadow: 0 2px 8px rgba(0,0,0,.08), inset 0 1px 0 rgba(255,255,255,.28);
+    transform: translateX(calc(var(--sre-filter-index, 0) * 100%));
+    transition: transform .38s cubic-bezier(.22,.85,.25,1), background .2s ease;
+    pointer-events: none;
+  }
+  #sre-agent-app .sre-inv-filter button {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 7px 3px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 10px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color .2s ease, transform .2s ease;
+  }
+  #sre-agent-app .sre-inv-filter button:hover { color: var(--text-primary); }
+  #sre-agent-app .sre-inv-filter button:active { transform: scale(.97); }
+  #sre-agent-app .sre-inv-filter button.is-active { color: var(--text-primary); }
+  #sre-agent-app .sre-inv-filter button small {
+    min-width: 14px;
+    padding: 1px 3px;
+    border-radius: 999px;
+    background: rgba(127,140,160,.12);
+    color: var(--text-secondary);
+    font-size: 9px;
+    line-height: 1.2;
+  }
+  #sre-agent-app .sre-inv-filter button.is-active small {
+    background: color-mix(in srgb, var(--accent) 17%, transparent);
+    color: var(--accent);
+  }
+  #sre-agent-app .sre-inv-date {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+  }
+  #sre-agent-app .sre-inv-date i { font-size: 10px; opacity: .75; }
+  @media (max-width: 440px) {
+    #sre-agent-app .sre-inv-filter button { gap: 2px; font-size: 9px; }
+    #sre-agent-app .sre-inv-filter button small { min-width: 12px; font-size: 8px; }
+  }
   #sre-agent-app .sre-inv-card {
     border: 1px solid var(--border-color);
     border-radius: 16px;

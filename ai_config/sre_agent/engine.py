@@ -44,6 +44,21 @@ def _now_ms() -> int:
     return int(_t.time() * 1000)
 _GRAPH_LOGGER = logging.getLogger("neurosys.sre.graph")
 
+
+def normalize_investigation_terminal_status(outcome: str, preserve_blocked: bool = False) -> str:
+    """Map a stopped run to one stable case/task terminal status."""
+    normalized_outcome = str(outcome or "").lower()
+    if preserve_blocked and normalized_outcome in {"security_blocked", "blocked"}:
+        return "blocked"
+    return {
+        "security_blocked": "failed",
+        "blocked": "failed",
+        "denied": "denied",
+        "denied_timeout": "denied_timeout",
+        "failed": "failed",
+        "cancelled": "cancelled",
+    }.get(str(outcome or "").lower(), "")
+
 from datetime import timedelta
 
 from django.utils import timezone
@@ -1221,6 +1236,7 @@ Output strictly the category name."""
             final_message = ""
             run_completed = False
             terminal_failure = False
+            terminal_reason = ""
             plan_data = {}
             last_emitted_plan_signature = ""
             findings_data = {}
@@ -1316,7 +1332,9 @@ Output strictly the category name."""
                     if event.type == AgentEventType.SECURITY_BLOCKED:
                         terminal_failure = True
                         yield event
-                        return
+                        # Let the common finalizer update case/task/artifact
+                        # state rather than exiting before terminal sync.
+                        break
                     if event.type == AgentEventType.ERROR:
                         terminal_failure = True
                     if event.type == AgentEventType.MESSAGE_CHUNK:
@@ -1386,6 +1404,15 @@ Output strictly the category name."""
                 # labelled, on the case, on its in-flight tasks, and as a
                 # finding, so the audit trail is complete.
                 _outcome = str(getattr(react_engine, "outcome", "") or "").lower()
+                # This artifact is normally written at finish_task. Upsert it
+                # again here so blocked/failed exits also retain their calls.
+                try:
+                    await react_engine._record_run_execution(
+                        inv_id or "",
+                        getattr(react_engine, "_run_started_at", 0.0) or time.time(),
+                    )
+                except Exception:
+                    pass
                 _lc = getattr(self, "_lifecycle", None)
                 _terminal_case = await self._label_case_terminal(
                     inv_id, _outcome, events_history, artifact_mgr,
@@ -1475,6 +1502,24 @@ Output strictly the category name."""
                                     yield evt_parallel_start(total, task_summaries)
                                     total_duration = sum(r.get("duration", 0) for r in p_results)
                                     yield evt_parallel_complete(total, total_duration)
+                                    # Guided workers use the same durable audit
+                                    # surface as the main agent: retain each
+                                    # worker's calls, outcomes, and evidence.
+                                    if mode == "guided" and artifact_mgr:
+                                        _worker_plan = state_output.get("plan", {})
+                                        _worker_inv = _worker_plan.get("investigation_id") or inv_id
+                                        if _worker_inv:
+                                            from .artifacts import render_worker_execution_markdown
+                                            _worker_path = (
+                                                f".neurosys/sessions/{self.session_id}/investigations/"
+                                                f"{_worker_inv}/worker_execution.md"
+                                            )
+                                            await artifact_mgr.upsert_artifact(
+                                                _worker_path,
+                                                render_worker_execution_markdown(_worker_plan),
+                                                action_type="subagent_execution",
+                                                case_id=_worker_inv,
+                                            )
 
                                 # Handle Final Report — always emit, never guard on final_message
                                 if name == "final_response" and state_output.get("final_report"):
@@ -1495,6 +1540,38 @@ Output strictly the category name."""
                                         await artifact_mgr.upsert_artifact(
                                             artifact_path, final_message, action_type="report",
                                             case_id=inv_id or "")
+
+                                        # Keep a report and evidence bundle under
+                                        # the investigation itself, not only in
+                                        # the session-wide Artifacts folder.
+                                        if mode == "guided" and inv_id:
+                                            _case_root = (
+                                                f".neurosys/sessions/{self.session_id}/investigations/{inv_id}"
+                                            )
+                                            _final_plan = state_output.get("plan", plan_data) or {}
+                                            _final_findings = state_output.get("findings", findings_data) or {}
+                                            try:
+                                                from .artifacts import render_task_plan_markdown
+                                                await artifact_mgr.upsert_artifact(
+                                                    f"{_case_root}/response.md", final_message,
+                                                    action_type="report", case_id=inv_id)
+                                                await artifact_mgr.upsert_artifact(
+                                                    f"{_case_root}/findings.json",
+                                                    json.dumps(_final_findings, indent=2, default=str),
+                                                    action_type="finding", case_id=inv_id)
+                                                await artifact_mgr.upsert_artifact(
+                                                    f"{_case_root}/task_plan.json",
+                                                    json.dumps(_final_plan, indent=2, default=str),
+                                                    action_type="plan", case_id=inv_id)
+                                                await artifact_mgr.upsert_artifact(
+                                                    f"{_case_root}/task_plan.md",
+                                                    render_task_plan_markdown(_final_plan),
+                                                    action_type="plan", case_id=inv_id)
+                                            except Exception as artifact_error:
+                                                _GRAPH_LOGGER.warning(
+                                                    "guided case artifact sync failed: %s",
+                                                    type(artifact_error).__name__,
+                                                )
 
                                     # Mark Investigation and tasks as completed in DB
                                     # Bug #3 fix: also try resolving inv_id from state_output plan
@@ -1545,6 +1622,9 @@ Output strictly the category name."""
                                     new_plan = state_output["plan"]
                                     new_tasks = new_plan.get("tasks", [])
                                     old_tasks = plan_data.get("tasks", []) if isinstance(plan_data, dict) else []
+                                    db_was_completed = bool(
+                                        isinstance(plan_data, dict) and plan_data.get("_db_completed")
+                                    )
                                     old_by_id = {str(task.get("id")): task for task in old_tasks}
 
                                     # A later graph node may carry a stale plan copy. Never
@@ -1566,6 +1646,8 @@ Output strictly the category name."""
                                                 "new_status": p.get("status")
                                             })
                                     plan_data = new_plan
+                                    if db_was_completed:
+                                        plan_data["_db_completed"] = True
                                     plan_signature = json.dumps([
                                         {
                                             "id": task.get("id"),
@@ -1593,7 +1675,7 @@ Output strictly the category name."""
                                     # Sync Tasks to DB
                                     # Bug #2 fix: skip re-sync if already marked completed
                                     inv_id = new_plan.get("investigation_id")
-                                    if inv_id and not plan_data.get("_db_completed", False):
+                                    if inv_id and not db_was_completed:
                                         await sync_to_async(
                                             lambda _i=inv_id: Investigation.objects.get_or_create(
                                                 id=_i,
@@ -1718,6 +1800,7 @@ Output strictly the category name."""
             else:
                 print(f"[SRE ENGINE ERROR] guided loop failed: {type(e).__name__}: {e}\n{tb}", flush=True)
                 terminal_failure = True
+                terminal_reason = "Agent execution failed during workflow processing."
                 yield evt_error("Agent execution failed; no successful completion was recorded.")
                 final_message = ""
 
@@ -1741,13 +1824,28 @@ Output strictly the category name."""
                         pass  # non-critical
 
         duration = time.time() - start_time
+        terminal_outcome = "failed"
+        if mode == "guided" and 'inv_id' in locals() and inv_id and not run_completed:
+            task_statuses = [
+                str(task.get("status", "pending") or "pending").lower()
+                for task in (plan_data.get("tasks", []) if isinstance(plan_data, dict) else [])
+            ]
+            if any(status in {"blocked", "security_blocked"} for status in task_statuses):
+                terminal_failure = True
+                terminal_outcome = "blocked"
+                terminal_reason = "One or more guided workers were blocked by policy or a prerequisite."
+                _blocked_event = evt_security_blocked(terminal_reason)
+                _blocked_event.metadata["investigation_id"] = inv_id
+                yield _blocked_event
+            elif any(status in {"failed", "error", "cancelled"} for status in task_statuses):
+                terminal_failure = True
+                terminal_reason = "One or more guided workers failed before completing their assigned task."
+                yield evt_error(terminal_reason)
         if (not run_completed and not terminal_failure and final_message
-                and mode != "autonomous_single" and 'inv_id' in locals() and inv_id):
-            # The controller path (guided/multi) has no verified-completion gate:
-            # a delivered final answer closes the case. Without this, answered
-            # runs stayed 'active' and the next turn superseded an investigation
-            # the operator watched complete. Paused single-agent runs are
-            # excluded by the mode check so they stay resumable.
+                and mode not in {"autonomous_single", "guided"}
+                and 'inv_id' in locals() and inv_id):
+            # Keep legacy behavior for non-guided controller modes. Guided
+            # completion is gated by the controller's verified task plan.
             run_completed = True
         if run_completed:
             yield evt_completed(final_message or f"Task completed in {duration:.1f}s", duration=duration)
@@ -1757,7 +1855,15 @@ Output strictly the category name."""
 
         # A partial report can still be useful, but it is not a successful
         # terminal state. Keep the case available to multilingual "continue".
-        if 'inv_id' in locals() and inv_id:
+        if 'inv_id' in locals() and inv_id and terminal_failure and terminal_reason:
+            await self._label_case_terminal(
+                inv_id, terminal_outcome,
+                [{"type": "security_blocked" if terminal_outcome == "blocked" else "error",
+                  "content": terminal_reason}],
+                artifact_mgr, run_id=getattr(getattr(self, "_lifecycle", None), "run", None)
+                and getattr(self._lifecycle.run, "pk", None),
+                preserve_blocked=(mode == "guided"))
+        elif 'inv_id' in locals() and inv_id:
             await sync_to_async(lambda _i=inv_id: Investigation.objects.filter(id=_i).update(status="active"))()
         if not terminal_failure:
             yield evt_error("The case is not finished and stays active. Send 'continue' in your language to resume it.")
@@ -1902,7 +2008,7 @@ Output strictly the category name."""
                         elif event_type == "approval_required":
                             await lifecycle.atransition("approval", "awaiting_approval", event_type, {"content": event.content[:300]})
                         elif event_type in {"security_blocked", "error"}:
-                            await lifecycle.atransition("security", "blocked" if event_type == "security_blocked" else "failed", event_type, {"content": event.content[:300]})
+                            await lifecycle.atransition("security", "failed", event_type, {"content": event.content[:300]})
 
                     if event.type.value == "tool_start":
                         tool_name = event.metadata.get("tool", "")
@@ -1990,7 +2096,8 @@ Output strictly the category name."""
                             _lc2 = getattr(self, "_lifecycle", None)
                             await self._label_case_terminal(
                                 _case, _ending, events_history, artifact_mgr,
-                                run_id=getattr(getattr(_lc2, "run", None), "pk", None))
+                                run_id=getattr(getattr(_lc2, "run", None), "pk", None),
+                                preserve_blocked=(mode == "guided"))
                     except Exception:
                         pass
             except Exception:
@@ -2157,7 +2264,7 @@ Output strictly the category name."""
         return await _db()
 
     async def _label_case_terminal(self, inv_id, outcome, events_history, artifact_mgr,
-                                   run_id=None):
+                                   run_id=None, preserve_blocked=False):
         """Label a stopped case everywhere it shows: the case, its in-flight
         tasks, and a finding with the reason.
 
@@ -2167,20 +2274,14 @@ Output strictly the category name."""
         from asgiref.sync import sync_to_async
         from chatbot.models import Investigation, InvestigationTask, InvestigationFinding
 
-        terminal_case = {
-            "security_blocked": "security_blocked",
-            "blocked": "blocked",
-            "denied": "denied",
-            "denied_timeout": "denied_timeout",
-            "failed": "failed",
-            "cancelled": "cancelled",
-        }.get(str(outcome or "").lower(), "")
+        terminal_case = normalize_investigation_terminal_status(
+            outcome, preserve_blocked=preserve_blocked)
         if not inv_id or not terminal_case:
             return ""
         await sync_to_async(lambda _i=inv_id, _s=terminal_case: Investigation.objects.filter(id=_i).update(status=_s))()
         await sync_to_async(lambda _i=inv_id, _s=terminal_case: InvestigationTask.objects.filter(
             investigation_id=_i,
-            status__in=["pending", "running", "in_progress", "executing"]).update(status=_s))()
+            status__in=["pending", "running", "in_progress", "executing", "verifying"]).update(status=_s))()
         # The run's own task list (S1/S2/S3) is a different table from the
         # case's plan, and it was never frozen: a denied run kept showing
         # verifying/running/pending tasks in its own response.
@@ -2198,17 +2299,59 @@ Output strictly the category name."""
                 block_reason = str((_ev or {}).get("content", "") or "").strip()[:500]
                 break
         finding_text = (
-            f"Stopped by security policy ({terminal_case}): "
+            f"Investigation stopped ({terminal_case}): "
             f"{block_reason or 'no further detail recorded.'}"
         )
         await sync_to_async(InvestigationFinding.objects.create)(
             investigation_id=inv_id, content=finding_text)
         if artifact_mgr:
             import json as _fjson2
-            await artifact_mgr.upsert_artifact(
-                f".neurosys/sessions/{self.session_id}/investigations/{inv_id}/findings.json",
-                _fjson2.dumps({"findings": [finding_text]}, indent=2),
-                action_type="finding", case_id=inv_id)
+            all_findings = await sync_to_async(lambda: list(
+                InvestigationFinding.objects.filter(investigation_id=inv_id)
+                .order_by("created_at").values_list("content", flat=True)
+            ))()
+            plan_info = await sync_to_async(lambda: (
+                Investigation.objects.filter(id=inv_id).values("title").first() or {}
+            ))()
+            task_rows = await sync_to_async(lambda: list(
+                InvestigationTask.objects.filter(investigation_id=inv_id).order_by("task_order")
+                .values_list("title", "status")
+            ))()
+            terminal_plan = {
+                "investigation_id": inv_id,
+                "title": plan_info.get("title", "Investigation"),
+                "tasks": [{"id": str(i + 1), "description": title, "status": status}
+                          for i, (title, status) in enumerate(task_rows)],
+            }
+            from .artifacts import render_task_plan_markdown
+            artifact_root = f".neurosys/sessions/{self.session_id}/investigations/{inv_id}"
+            for _path, _content, _action in (
+                (f"{artifact_root}/findings.json",
+                 _fjson2.dumps({"investigation_id": inv_id, "findings": all_findings}, indent=2),
+                 "finding"),
+                (f"{artifact_root}/task_plan.json",
+                 _fjson2.dumps(terminal_plan, indent=2), "plan"),
+                (f"{artifact_root}/task_plan.md",
+                 render_task_plan_markdown(terminal_plan), "plan"),
+            ):
+                try:
+                    await artifact_mgr.upsert_artifact(
+                        _path, _content, action_type=_action, case_id=inv_id)
+                except Exception:
+                    pass
+            failure_reason = block_reason or "The agent could not complete this investigation."
+            failure_report = (
+                f"# Investigation stopped — {inv_id}\n\n"
+                f"**Status:** {terminal_case}\n\n**Reason:** {failure_reason}\n\n"
+                "The run stopped before completion. Findings, task status, and tool execution "
+                "details are retained in this investigation's artifacts.\n"
+            )
+            try:
+                await artifact_mgr.upsert_artifact(
+                    f"{artifact_root}/response.md", failure_report,
+                    action_type="report", case_id=inv_id)
+            except Exception:
+                pass
         return terminal_case
 
 

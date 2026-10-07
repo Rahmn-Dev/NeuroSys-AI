@@ -291,8 +291,6 @@ class ReactEngine:
             import os as _os
             from sre_agent.artifacts import ArtifactManager
             entries = list(getattr(self, "_execution_log", []) or [])
-            if not entries:
-                return None
             total = round(max(0.0, _time.time() - started_at), 1)
             tools = {}
             for entry in entries:
@@ -301,11 +299,17 @@ class ReactEngine:
                 slot["seconds"] += entry.get("duration", 0.0)
                 if entry.get("status") != "success":
                     slot["failed"] += 1
+            outcome = str(getattr(self, "outcome", "unknown") or "unknown")
+            if outcome in {"blocked", "security_blocked"}:
+                outcome = "failed"
             lines = [f"# Agent execution\n",
                      f"**Case**: {case_id or 'session'}\n",
+                     f"**Outcome**: {outcome}\n",
                      f"**Tool calls**: {len(entries)} in {total}s\n",
                      f"**Tools**: {', '.join(sorted(tools))}\n",
                      "\n## Calls\n"]
+            if not entries:
+                lines.append("_No tool calls were recorded before the run stopped._\n")
             for entry in entries:
                 cmd = ""
                 args = entry.get("args") or {}
@@ -799,6 +803,18 @@ Do NOT stop calling tools until you are ready to call `finish_task`.
                             reason = str(denied_exc)
                             audit("agent_stopped", tool_name, "authorization_required")
                             self.outcome = "blocked"
+                            # The rejected call is still part of the execution
+                            # record, even though no tool result was produced.
+                            try:
+                                from .events import sanitize_tool_args_for_audit
+                                self._execution_log.append({
+                                    "tool": tool_name,
+                                    "status": "blocked",
+                                    "duration": round(max(0.0, _time.time() - _call_started), 3),
+                                    "args": sanitize_tool_args_for_audit(tool_args),
+                                })
+                            except Exception:
+                                pass
                             if reason.startswith("blocked:"):
                                 detail = reason.split(":", 1)[1].strip()
                                 yield evt_error(

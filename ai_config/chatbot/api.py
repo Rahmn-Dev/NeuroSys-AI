@@ -40,7 +40,9 @@ class ChatSessionViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def investigations(self, request, pk=None):
         session = self.get_object()
-        investigations = models.Investigation.objects.filter(session=session).order_by('created_at')
+        # Put the newest case first so replay opens with the investigation the
+        # operator is most likely looking for, without scrolling to the panel's end.
+        investigations = models.Investigation.objects.filter(session=session).order_by('-created_at', '-id')
         serializer = serializers.InvestigationSerializer(investigations, many=True)
         return Response(serializer.data)
 

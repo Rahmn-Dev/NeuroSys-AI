@@ -875,8 +875,8 @@ RULES:
 - SYSTEM PATH ROUTING: `read_file` may inspect bounded regular files across the operating system. Prefer `log_reader` for large/rotating logs and `service_config_check` for syntax validation, but use `read_file` for targeted `/etc`, `/var/log`, and runtime configuration inspection when useful. Credential/device paths remain unavailable.
 - Prefer `service_config_check` over `terminal_execute` for supported service configuration validation because it is bounded and read-only.
 - When several read-only observations can be expressed as one bounded pipeline, prefer one concise `terminal_execute` pipeline using `grep`, `sed -n`, `head`, or `tail`. Never split it into repetitive calls merely to gather the same evidence.
-- SHELL DISCIPLINE: `terminal_execute` only auto-runs single read-only pipelines. NEVER use `cd`, `&&`, `||`, `;`, backticks, `$()`, or redirect operators (`>`, `>>`, `<`) — any of them routes the call to human approval and stalls the worker. Use absolute paths instead of `cd`. Prefer dedicated tools (`read_file`, `log_reader`, `search_files`) over shell equivalents.
-- APPROVED SHELL EXAMPLES (copy these shapes): `find /abs/dir -type f -name '*.log'`, `grep -c ERROR /abs/file.log`, `grep ERROR /abs/file.log | wc -l`, `grep -r ERROR /abs/dir 2>/dev/null`, `du -sh /abs/dir`, `ls -la /abs/dir | head -n 20`. DENIED shapes (need human approval, do NOT use): anything with `-exec`, `-delete`, `-printf`, `xargs`, `sh -c`, `cd`, `&&`, `;`, or output redirects (`>`, `>>`, `<`). Only `2>/dev/null` is allowed.
+- SHELL DISCIPLINE: compact chains of read-only commands are allowed when EVERY command is in the bounded read-only allowlist. Supported operators are `|`, `&&`, `||`, and `;`; each segment is validated independently. Do not use background `&`, `cd`, backticks, `$()`, or output redirection (`>`, `>>`, `<`). Never use a chain to hide or work around a denied action. Credential paths and contents (including `.env`, private keys, and credential stores) are off-limits; if relevant, use a sanitized example file such as `.env.example` and never print secret values.
+- APPROVED SHELL EXAMPLES (copy these shapes): `find /abs/dir -type f -name '*.log'`, `grep -c ERROR /abs/file.log`, `grep ERROR /abs/file.log | wc -l`, `grep -r ERROR /abs/dir 2>/dev/null`, `du -sh /abs/dir`, `ls -la /abs/dir | head -n 20`, `echo '=== AI/ML ===' && grep -iE '^(torch|transformers|dspy|crewai|ag2|accelerate|bitsandbytes|flaml|xgboost|shap|triton|trl|huggingface|faiss|chromadb)' requirements.txt`. `-exec`, `-delete`, `-printf`, `xargs`, `sh -c`, and mutation commands are not read-only and must not be used in a diagnostic chain. This dependency check reports declarations, not necessarily installed packages.
 - Once the assigned goal has decisive evidence, set `done`: true instead of generating another plan cycle.
 - Do NOT repeat a tool+args combination already in the ALREADY EXECUTED list. If you do, it will be BLOCKED.
 - If a diagnostic domain has already been satisfied and verified, move to the next logical domain.
@@ -1332,13 +1332,41 @@ class WorkerScheduler:
 
         def _on_worker_progress(ws: WorkerState, current_action: str = ""):
             # Maintain active worker list without overwriting the object itself
+            last_tool = getattr(ws, "last_tool", None)
+            last_finding = next(
+                (finding for finding in reversed(ws.findings)
+                 if not last_tool or finding.get("tool") == last_tool),
+                ws.findings[-1] if ws.findings else {},
+            )
+            last_signal = str(last_finding.get("signal", "") or "").upper()
+            last_output = str(last_finding.get("output", "") or "")
+            try:
+                parsed_output = json.loads(last_output)
+            except (TypeError, ValueError):
+                parsed_output = None
+            output_lower = last_output.strip().lower()
+            last_tool_status = (
+                "blocked" if last_signal == "BLOCKED" or output_lower.startswith("blocked")
+                else "failed" if (
+                    last_signal in {"FAILURE", "CRITICAL"}
+                    or (isinstance(parsed_output, dict) and (
+                        parsed_output.get("error")
+                        or parsed_output.get("exit_code") not in (None, 0)
+                    ))
+                    or output_lower.startswith(("error:", "failed:", "permission denied"))
+                )
+                else "completed" if last_signal == "SUCCESS"
+                else "unknown"
+            )
             active_workers_state[ws.id] = {
                 "id": ws.id,
                 "role": getattr(ws, "role", "") or f"Worker {ws.id}",
                 "goal": ws.goal,
                 "status": ws.status,
                 "current_action": current_action,
-                "last_tool": getattr(ws, "last_tool", None),
+                "last_tool": last_tool,
+                "last_tool_status": last_tool_status,
+                "last_tool_result": last_output[:300],
                 "findings_count": len(ws.findings),
                 "evidence_count": len(ws.confidence.evidence)
             }

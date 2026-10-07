@@ -294,6 +294,50 @@ def test_guided_partial_report_does_not_complete_or_relabel_tasks():
     assert task["status"] == "pending"
 
 
+def test_guided_report_cannot_complete_while_task_plan_is_pending():
+    from sre_agent.controller import AutonomousController
+
+    controller = AutonomousController.__new__(AutonomousController)
+    controller._robust_json_parse = lambda *args, **kwargs: {
+        "artifact_name": "report.md", "report_content": "A report based on partial output."
+    }
+    task = {
+        "id": "A", "description": "Analyze source file", "status": "pending",
+        "evidence": ["A tool returned output"],
+    }
+    result = controller.final_response_node({
+        "goal": "analyze source", "plan": {
+            "completed": True, "completion_verified": True,
+            "tasks": [task], "global_confidence": 1.0,
+        },
+        "findings": {"findings": ["Some evidence"]}, "messages": [],
+    })
+    assert result["is_completed"] is False
+    assert result["is_verified"] is False
+    assert task["status"] == "pending"
+
+
+def test_guided_simple_information_bypass_still_requires_completed_task():
+    from sre_agent.controller import AutonomousController
+
+    controller = AutonomousController.__new__(AutonomousController)
+    task = {
+        "id": "A", "description": "Read current time", "status": "pending",
+        "result": "12:00 UTC", "evidence": ["12:00 UTC"],
+    }
+    result = controller.final_response_node({
+        "goal": "what time now", "plan": {
+            "intent": "SIMPLE_INFORMATION", "completed": True,
+            "completion_verified": True, "tasks": [task], "global_confidence": 1.0,
+        },
+        "findings": {"findings": []}, "messages": [],
+    })
+    assert result["is_completed"] is False
+    assert result["is_verified"] is False
+    assert "partial evidence" in result["final_report"]
+    assert task["status"] == "pending"
+
+
 def test_durable_tasks_require_evidence_before_done(run_tables):
     session = ChatSession.objects.create(title='guided')
     lifecycle = DurableAgentLifecycle(session_id=session.pk, goal='nginx')

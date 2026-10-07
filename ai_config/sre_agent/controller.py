@@ -666,6 +666,7 @@ Output STRICTLY this JSON:
                 "findings_count": len(ws.findings),
                 "children_count": len(ws.children),
                 "findings": ws.findings,
+                "tool_history": ws.tool_history,
                 "is_child": getattr(ws, "is_child", False),
                 "parent_id": getattr(ws, "parent_id", None),
                 # Evidence quality: True only if any finding is verified root cause
@@ -685,7 +686,7 @@ Output STRICTLY this JSON:
 
             # Update tasks list for DB sync compatibility
             for t in plan.get("tasks", []):
-                if t["id"] == ws.id:
+                if str(t.get("id")) == str(ws.id):
                     t["status"] = ws.status
                     t["completed"] = ws.completed
                     t["result"] = ws.root_cause or ws.hypothesis
@@ -1062,6 +1063,9 @@ Respond ONLY with valid JSON:
             str(t.get("status", "")).lower() in {"failed", "blocked", "cancelled", "error"}
             for t in tasks
         )
+        all_tasks_terminal_successfully = bool(tasks) and all(
+            str(t.get("status", "")).lower() == "completed" for t in tasks
+        )
 
         # Build evidence summary
         evidence_lines = []
@@ -1122,11 +1126,20 @@ Respond ONLY with valid JSON:
                 # For date/time queries, just return the value directly
                 time_keywords = ["time", "date", "hostname", "whoami", "uptime", "uname", "ip"]
                 if any(kw in goal_lower_check for kw in time_keywords):
+                    fast_path_verified = (
+                        requested_completion and all_tasks_terminal_successfully
+                        and not has_failed_task
+                    )
+                    if not fast_path_verified:
+                        primary_output = (
+                            "> [!WARNING]\n> The task plan is not fully verified; "
+                            "this answer is based on partial evidence.\n\n" + primary_output
+                        )
                     final_report = primary_output
                     return {
                         "messages":    [AIMessage(content=final_report)],
-                        "is_completed": True,
-                        "is_verified":  True,
+                        "is_completed": fast_path_verified,
+                        "is_verified":  fast_path_verified,
                         "final_report": final_report,
                         "artifact_name": "response.md",
                         "plan":         plan,
@@ -1207,7 +1220,8 @@ Output ONLY valid JSON:
         has_evidence = bool(evidence_lines or findings_data.get("findings"))
         explicit_verification = bool(plan.get("completion_verified", False))
         is_verified = (
-            requested_completion and has_evidence and not has_failed_task
+            requested_completion and all_tasks_terminal_successfully
+            and has_evidence and not has_failed_task
             and (explicit_verification or global_confidence >= 0.5)
         )
         
