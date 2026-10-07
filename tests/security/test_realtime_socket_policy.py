@@ -38,17 +38,38 @@ def test_agent_reconnect_does_not_duplicate_run_execution():
     assert "clearTimeout(reconnectTimer)" in CHAT
 
 
-def test_agent_initial_snapshot_then_websocket_first():
-    assert "let initialSnapshotDone = false;" in CHAT
-    assert "if (!initialSnapshotDone)" in CHAT
-    assert "stopSnapshotPolling();" in CHAT
+def test_background_events_are_routed_to_their_own_chat_after_switching():
+    sender = CONSUMERS[CONSUMERS.index("async def send_event(event):") : CONSUMERS.index("self.lifecycle = ApprovalLifecycle(send_event)")]
+    assert "_event_sid = str(event.get(\"session_id\") or getattr(engine, \"session_id\", \"\") or \"\")" in sender
+    assert "group_send(\n                        _event_group" in sender
+    assert "group_send(self.run_group" not in sender
+
+
+def test_agent_reconciles_snapshot_after_every_websocket_reconnect():
+    assert "bootstrapActiveRun();" in CHAT
+    assert "Reconcile after every reconnect" in CHAT
     assert "badge.textContent = 'Live';" in CHAT
 
 
-def test_agent_fallback_only_when_unavailable_and_stops_when_open():
+def test_agent_snapshot_backstop_keeps_running_while_socket_is_open():
     assert "startSnapshotPolling();" in CHAT
-    assert "if (ws && ws.readyState === WebSocket.OPEN) { stopSnapshotPolling(); return; }" in CHAT
-    assert "}, 5000);" in CHAT
+    poller = CHAT[CHAT.index("function startSnapshotPolling()") : CHAT.index("function stopSnapshotPolling()")]
+    assert "bootstrapActiveRun();" in poller
+    assert "WebSocket.OPEN" not in poller
+    assert "}, 10000);" in poller
+
+
+def test_switching_history_sessions_resubscribes_the_run_socket():
+    load_session = CHAT[CHAT.index("async function loadSession(id)") : CHAT.index("// --- Explorer Logic ---")]
+    assert "type: 'subscribe', session_id: sessionId" in load_session
+    assert "await bootstrapActiveRun();" in load_session
+
+
+def test_rehydrated_active_run_restores_live_pill_and_state_row():
+    bootstrap = CHAT[CHAT.index("async function bootstrapActiveRun()") : CHAT.index("function startSnapshotPolling()")]
+    assert "paintRunWrap(adopted, run.status || 'running')" in bootstrap
+    assert "updateRunStateCard(run.id, phase, null," in bootstrap
+    assert "run.created_at" in bootstrap
 
 
 def test_permanent_auth_failure_stops_retry_and_shows_offline():

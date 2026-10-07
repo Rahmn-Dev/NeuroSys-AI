@@ -27,6 +27,7 @@ def test_snapshot_is_owned_and_contains_checkpoint_task_and_transcript():
         assert response.status_code == 200
         payload = response.data
         assert payload['run']['status'] == 'awaiting_approval'
+        assert payload['run']['created_at']
         assert payload['run']['tasks'][0]['status'] == 'awaiting_approval'
         assert payload['run']['events'][0]['event_type'] == 'approval_required'
         assert payload['messages'][0]['content'] == 'resume me'

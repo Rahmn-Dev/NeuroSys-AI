@@ -1507,6 +1507,7 @@
     let sessionId = null;
     let currentAIMsg = null;
     let currentTurnWasDirect = false;
+    let currentDirectAnswerSaved = false;
     let currentDirectRunId = '';
     let isProcessing = false;
     let pendingApproval = null;
@@ -1515,10 +1516,8 @@
     let lastSnapshotCheckpoint = 0;
     let rehydratedSessionId = null;
     let snapshotPollTimer = null;
-    let snapshotPollAttempts = 0;
     let agentHeartbeatTimer = null;
     let agentLastActivity = 0;
-    let initialSnapshotDone = false;
     let agentRetryAttempt = 0;
 
     // --- IDE Context State ---
@@ -1583,7 +1582,6 @@
         dot.style.background = '#3fb950';
         ensureConnectionCard();
         agentRetryAttempt = 0;
-        snapshotPollAttempts = 0;
         agentLastActivity = Date.now();
         clearInterval(agentHeartbeatTimer);
         agentHeartbeatTimer = setInterval(() => {
@@ -1591,12 +1589,11 @@
           if (Date.now() - agentLastActivity > 45000) { ws.close(4000, 'heartbeat timeout'); return; }
           ws.send(JSON.stringify({type: 'ping'}));
         }, 15000);
-        stopSnapshotPolling();
         if (sessionId) ws.send(JSON.stringify({type: 'subscribe', session_id: sessionId}));
-        if (!initialSnapshotDone) {
-          initialSnapshotDone = true;
-          bootstrapActiveRun();
-        }
+        // Reconcile after every reconnect, not only the first page load. A
+        // WebSocket subscription carries new events, while the snapshot fills
+        // the gap from the time this tab was disconnected.
+        bootstrapActiveRun();
       };
 
       ws.onclose = (event) => {
@@ -1754,10 +1751,34 @@
             }
             if (_el) _el.dataset.msgId = _mid;
           }
+          // Direct Chat saves its complete assistant answer only after model
+          // streaming has ended. This acknowledgement is already reliable
+          // success evidence, so settle the live status here instead of
+          // leaving "Thinking" up while waiting for the separate completed
+          // event (which can be delayed or missed during a socket hiccup).
+          if (currentTurnWasDirect && String(data.sender || '').toLowerCase() === 'ai'
+              && window.turnIsOpen()) {
+            currentDirectAnswerSaved = true;
+            const _directDuration = window.sessionStartTime
+              ? (Date.now() - window.sessionStartTime.getTime()) / 1000 : null;
+            window.markStreaming(false, currentAIMsg && currentAIMsg.querySelector('.ai-content'));
+            window.stopAllStreaming();
+            window.setRunPhase('done');
+            window.markRunFinished(window.liveRunSessionId || sessionId, true);
+            updateRunStateCard(currentDirectRunId, 'completed', _directDuration);
+            if (window.activeRunWrap) {
+              paintRunWrap(window.activeRunWrap.dataset.wrapId, 'completed', _directDuration);
+            }
+            finalizeRunWrap('completed', _directDuration);
+            window.closeTurn();
+            isProcessing = false;
+            window.setSendButtonState('idle');
+          }
           break;
         }
         case 'session_id':
           const oldSessionId = sessionId;
+          const sessionBelongsToSubmittedTurn = !!window.expectingSession;
           // Adopt the id only when this chat asked for a run and is still
           // waiting for its session. A straggler from another chat must never
           // repoint the open chat at itself.
@@ -1768,7 +1789,12 @@
             sessionId = data.content;
           }
           if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({type: 'subscribe', session_id: sessionId}));
-          bootstrapActiveRun();
+          // A locally submitted turn has already opened its own run card. The
+          // snapshot endpoint returns the latest durable run for the session,
+          // which may be the *previous* completed turn (Direct Chat does not
+          // create an AgentRun row). Hydrating it here races the new live
+          // events and can paint "completed" above a fresh Thinking step.
+          if (!isProcessing && !sessionBelongsToSubmittedTurn) bootstrapActiveRun();
           startSnapshotPolling();
 
           // If this is a new session (not from loading history), refresh the history sidebar
@@ -2188,12 +2214,12 @@
 
         case 'message_chunk':
           if (currentAIMsg && currentAIMsg.dataset.sessionId !== String(sessionId || '')) break;
-          if (!window.turnIsOpen()) break;
+          if (!window.turnIsOpen() && !(currentTurnWasDirect && currentDirectAnswerSaved)) break;
           if (!currentAIMsg) {
             currentAIMsg = addAIMessage('');
           }
           // Reply is streaming; keep the phase label in sync.
-          window.setRunPhase('composing');
+          if (!currentDirectAnswerSaved) window.setRunPhase('composing');
 
           let rawData = data.content;
           if (typeof rawData !== 'string') {
@@ -2223,7 +2249,7 @@
           contentDiv.innerHTML = window.renderAnswerContent(nextText);
           // The reveal replays on every chunk, so each arrival settles in
           // instead of the whole block blinking at once.
-          window.markStreaming(true, contentDiv);
+          window.markStreaming(!currentDirectAnswerSaved, contentDiv);
           if (window.runHeaderPinned && window.activeRunWrap && window.activeRunWrap.dataset.wrapId) {
             window.centerRunTurn(window.activeRunWrap.dataset.wrapId);
           }
@@ -2265,7 +2291,6 @@
           finalizeRunWrap('completed', data.duration);
           if (!directTurn && activeInvestigationId && investigations[activeInvestigationId]) {
             investigations[activeInvestigationId].status = 'completed';
-            window.setRunPhase('done');
             if (sessionId) {
               loadHistory();
             }
@@ -2274,6 +2299,10 @@
             renderInvestigationTimeline();  // Always refresh
             loadArtifacts();
           }
+          // Direct Chat has no investigation object, but its answer is still a
+          // terminal run. Keep its live dot/phase in sync with the completed
+          // pill rather than leaving the bubble in Thinking until a replay.
+          window.setRunPhase('done');
           stopAllAgentStepTimers();
           const activeDash = document.getElementById('active-dashboard');
           if (activeDash) { activeDash.removeAttribute('id'); }
@@ -2295,6 +2324,7 @@
 
           currentAIMsg = null;
           currentTurnWasDirect = false;
+          currentDirectAnswerSaved = false;
           currentDirectRunId = '';
           window.sessionStartTime = null;
           isProcessing = false;
@@ -2323,6 +2353,7 @@
           window.setSendButtonState('idle');
           currentAIMsg = null;
           currentTurnWasDirect = false;
+          currentDirectAnswerSaved = false;
           currentDirectRunId = '';
           break;
       }
@@ -2679,7 +2710,19 @@
       if (window.replayActive) return null;
       if (!window.turnIsOpen()) return window.activeRunWrap;
       if (!window.activeRunWrap) startRunWrap();
+      else if (window.revealRunWrap) window.revealRunWrap();
       return window.activeRunWrap;
+    };
+
+    // The send action creates the bubble and starting pill immediately, while
+    // the empty workflow card stays tucked away until the first real step.
+    window.revealRunWrap = function () {
+      const body = window.activeRunWrap;
+      if (!body || !body.dataset || body.dataset.deferOpen !== '1') return body;
+      body.dataset.deferOpen = '0';
+      const wrapId = body.dataset.wrapId;
+      if (wrapId) window.toggleRunWrap(wrapId, true);
+      return body;
     };
 
     window.runPhaseLabels = {
@@ -2796,19 +2839,19 @@
       const answer = text.slice(at + window.SRE_FINAL_MARKER.length).trim();
       const paragraphs = narration ? narration.split(/\n{2,}/).filter((p) => p.trim()).length : 0;
       const narrationHtml = narration
-        ? '<details class="sre-reasoning" style="margin-bottom: 10px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-main);">' +
-          '<summary style="cursor: pointer; padding: 8px 12px; font-size: 12px; font-weight: 600; color: var(--text-secondary); list-style: none; display: flex; align-items: center; gap: 8px;">' +
+        ? '<details class="sre-reasoning" open style="margin-bottom: 10px; border: 0; background: transparent;">' +
+          '<summary style="cursor: pointer; padding: 8px 0; font-size: 12px; font-weight: 600; color: var(--text-secondary); list-style: none; display: flex; align-items: center; gap: 8px;">' +
           '<i class="fa-solid fa-chevron-right sre-reasoning-chev" style="font-size: 10px; transition: transform .2s;"></i>' +
           'Reasoning <span style="font-weight: 400; opacity: .8;">· ' + paragraphs + ' note' + (paragraphs === 1 ? '' : 's') + ' while it worked</span>' +
           '</summary>' +
-          '<div class="sre-reasoning-body sre-md" style="padding: 0 12px 10px 28px; font-size: 12.5px; line-height: 1.65; color: var(--text-secondary); opacity: .92;">' +
+          '<div class="sre-reasoning-body sre-md" style="padding: 0 0 10px 18px; font-size: 12.5px; line-height: 1.65; color: var(--text-secondary); opacity: .92;">' +
           md(narration) + '</div></details>'
         : '';
       return narrationHtml + '<div class="sre-answer-body">' + md(answer) + '</div>';
     };
 
-    // While the answer is still arriving, narration is shown open; the split
-    // collapses by itself the moment the marker shows up.
+    // Reasoning stays open while streaming and after completion, in both live
+    // rendering and history replay.
     // A finished turn leaves no trace of motion behind: every highlight settles,
     // in every bubble, not just the one the
     // pointer happens to reference. A duplicate terminal event used to skip
@@ -3215,18 +3258,32 @@
       lastGenericStepId = null;
     }
 
-    function startAgentStepTimer(stepId) {
-      if (stepTimers[stepId] || window.isLoadingHistory) return;
+    function startAgentStepTimer(stepId, startedAt = null) {
+      if (window.isLoadingHistory) return;
+      const startTime = Number(startedAt) || Date.now();
+      if (stepTimers[stepId]) {
+        if (startedAt) {
+          clearInterval(stepTimers[stepId].interval);
+          stepTimers[stepId].startTime = startTime;
+          const current = document.getElementById(`timer-${stepId}`);
+          if (current) current.textContent = `${Math.max(0, (Date.now() - startTime) / 1000).toFixed(1)}s...`;
+          stepTimers[stepId].interval = setInterval(() => {
+            const el = document.getElementById(`timer-${stepId}`);
+            if (el) el.textContent = `${Math.max(0, (Date.now() - stepTimers[stepId].startTime) / 1000).toFixed(1)}s...`;
+          }, 100);
+        }
+        return;
+      }
       const timer = document.getElementById(`timer-${stepId}`);
       if (timer) {
-        timer.textContent = '0.0s';
+        timer.textContent = `${Math.max(0, (Date.now() - startTime) / 1000).toFixed(1)}s...`;
         timer.style.color = '';
       }
       stepTimers[stepId] = {
-        startTime: Date.now(),
+        startTime,
         interval: setInterval(() => {
           const el = document.getElementById(`timer-${stepId}`);
-          if (el) el.textContent = `${((Date.now() - stepTimers[stepId].startTime) / 1000).toFixed(1)}s...`;
+          if (el) el.textContent = `${Math.max(0, (Date.now() - stepTimers[stepId].startTime) / 1000).toFixed(1)}s...`;
         }, 100)
       };
     }
@@ -3237,7 +3294,8 @@
     window.activeRunWrap = null;
     window.historyRunWraps = {};
 
-    function startRunWrap() {
+    function startRunWrap(options = {}) {
+      const deferOpen = !!options.deferOpen;
       window.runHeaderPinned = false;
       // Collapse any previous still-open run first
       if (window.activeRunWrap && window.activeRunWrap.dataset.open === '1') {
@@ -3272,10 +3330,12 @@
       // A live run shows its work as it happens; a replayed one stays hidden
       // until its pill is pressed.
       const _live = !window.isLoadingHistory;
-      body.dataset.open = _live ? '1' : '0';
-      body.style.display = _live ? 'flex' : 'none';
-      wrap.style.display = _live ? '' : 'none';
-      wrap.dataset.open = _live ? '1' : '0';
+      const _showLive = _live && !deferOpen;
+      body.dataset.deferOpen = _live && deferOpen ? '1' : '0';
+      body.dataset.open = _showLive ? '1' : '0';
+      body.style.display = _showLive ? 'flex' : 'none';
+      wrap.style.display = _showLive ? '' : 'none';
+      wrap.dataset.open = _showLive ? '1' : '0';
       window.activeRunWrap = body;
       body.dataset.follow = '1';
       body.addEventListener('scroll', () => {
@@ -3511,10 +3571,32 @@
     }
 
     function finalizeRunWrap(status, duration) {
-      const body = window.activeRunWrap || window.lastRunBody;
+      const liveBubble = currentAIMsg
+        || (window.liveBubbleCurrent && window.liveBubbleCurrent.bubble) || null;
+      const linkedWrapId = liveBubble && liveBubble.dataset ? liveBubble.dataset.wrapId : '';
+      const linkedBody = linkedWrapId && document.getElementById(linkedWrapId + '-body');
+      const body = window.activeRunWrap || window.lastRunBody || linkedBody;
       if (!body) return;
       const wrapId = body.dataset.wrapId;
       paintRunWrap(wrapId, status, duration);
+      // Resolve the response bubble directly as well as through the run card.
+      // The card can finish after its active pointer was cleared by a socket
+      // reconnect; without this explicit link the workflow says completed
+      // while the bubble pill keeps its old "thinking" label.
+      if (liveBubble && wrapId) {
+        const outerWrap = document.getElementById(wrapId);
+        if (outerWrap) outerWrap.dataset.bubbleId = liveBubble.id;
+        liveBubble.dataset.wrapId = wrapId;
+        const ok = String(status || '').toLowerCase() === 'completed';
+        const terminal = window.SRE_TERMINAL.includes(String(status || '').toLowerCase());
+        if (terminal) {
+          window.paintBubblePill(wrapId, status, {
+            done: ok,
+            failed: !ok,
+            duration: duration != null ? Number(duration) : null,
+          });
+        }
+      }
       // Keep the completed turn together on screen: user prompt, collapsed
       // workflow summary, and AI bubble with its terminal pill.
       window.lastRunBody = body;
@@ -3551,7 +3633,7 @@
       return window.activeRunWrap;
     }
 
-    function updateRunStateCard(runId, status, duration = null) {
+    function updateRunStateCard(runId, status, duration = null, startedAt = null) {
       const safeRunId = String(runId || window.activeAgentRunId || 'current').replace(/[^a-zA-Z0-9_-]/g, '-');
       const stepId = `run-state-${safeRunId}`;
       const terminal = window.SRE_TERMINAL.includes(String(status).toLowerCase());
@@ -3580,6 +3662,7 @@
         const timer = terminal ? `✓ ${Number(duration || 0).toFixed(1)}s` : null;
         addAgentStep(stateLabel, escapeHtml(status || 'running'), color,
           successful ? 'check-circle' : terminal ? 'x-circle' : 'activity', stepId, terminal, timer);
+        if (!terminal && startedAt) startAgentStepTimer(stepId, startedAt);
         return;
       }
       if (blocked) {
@@ -3598,13 +3681,16 @@
           icon.querySelector('svg')?.classList.remove('fa-spin');
         }
       } else {
-        startAgentStepTimer(stepId);
+        startAgentStepTimer(stepId, startedAt);
       }
     }
 
 
     function addAgentStep(label, contentHtml, color, iconName = 'terminal', stepId = null, isEnd = false, customTimer = null) {
       if (!window.sessionStartTime) window.sessionStartTime = new Date();
+      if (!window.isLoadingHistory && window.turnIsOpen() && window.revealRunWrap) {
+        window.revealRunWrap();
+      }
 
       let isGeneric = false;
       if (!stepId) {
@@ -3966,12 +4052,13 @@
     window.runsBySession = window.runsBySession || {};
     window.unreadSessions = window.unreadSessions || {};
 
-    window.markRunActive = function (sid, label) {
+    window.markRunActive = function (sid, label, startedAt, phase) {
       if (!sid) return;
       window.runsBySession[String(sid)] = {
         id: String(sid),
         label: label || 'Agent run',
-        startedAt: Date.now(),
+        startedAt: Number(startedAt) || Date.now(),
+        phase: phase || 'running',
       };
       delete window.unreadSessions[String(sid)];
       window.renderActiveRuns();
@@ -4104,14 +4191,15 @@
           }
           const local = window.runsBySession[String(sid)];
           if (local) {
-            if (!local.phase && run.current_node) local.phase = run.current_node;
+            if (run.current_node) local.phase = run.current_node;
+            if (run.created_at) local.startedAt = new Date(run.created_at).getTime() || local.startedAt;
             local.serverSeen = true;
           } else {
             window.runsBySession[String(sid)] = {
               id: sid,
               label: run.goal || 'Agent run',
               phase: run.status === 'awaiting_approval' ? 'awaiting approval' : (run.current_node || run.status || 'running'),
-              startedAt: new Date(run.updated_at).getTime() || Date.now(),
+              startedAt: new Date(run.created_at || run.updated_at).getTime() || Date.now(),
               serverSeen: true,
             };
           }
@@ -5089,10 +5177,11 @@
       stopAllAgentStepTimers();
       window.openTurn();
       currentTurnWasDirect = false;
+      currentDirectAnswerSaved = false;
       currentDirectRunId = '';
       // Create the run card, avatar and starting pill immediately for every
       // turn. A direct reply later adds only Thinking; tool runs add their phases.
-      startRunWrap();
+      startRunWrap({ deferOpen: true });
       // Sending means following so the live card and reply stay in view.
       window.agentAutoScroll = true;
       window.scrollToNewTurn();
@@ -5326,8 +5415,14 @@
         if (!res.ok) return;
         const snapshot = await res.json();
         const run = snapshot.run;
-        if (!run || (window.activeAgentRunId === run.id && run.checkpoint_version <= lastSnapshotCheckpoint)) return;
-        lastSnapshotCheckpoint = run.checkpoint_version;
+        if (!run) {
+          stopSnapshotPolling();
+          return;
+        }
+        const sameRun = String(window.activeAgentRunId || '') === String(run.id);
+        const checkpointAdvanced = !sameRun || Number(run.checkpoint_version || 0) > lastSnapshotCheckpoint;
+        if (!sameRun) lastSnapshotCheckpoint = 0;
+        lastSnapshotCheckpoint = Math.max(lastSnapshotCheckpoint, Number(run.checkpoint_version || 0));
         window.activeAgentRunId = run.id;
         const terminalRunStates = window.SRE_TERMINAL;
         const runIsTerminal = terminalRunStates.includes(run.status);
@@ -5336,8 +5431,6 @@
           // a fresh Run State row here is what made a finished chat flash
           // "starting" the moment it was opened.
           stopAllAgentStepTimers();
-        } else {
-          updateRunStateCard(run.id, run.status, run.duration);
         }
         if (rehydratedSessionId !== sessionId) {
           rehydratedSessionId = sessionId;
@@ -5359,37 +5452,54 @@
           isProcessing = true;
           window.setSendButtonState('running');
         }
-        (run.events || []).slice().reverse().forEach(evt => {
-          if (evt.event_type === 'provider_fallback') handleEvent({ type: 'provider_fallback', content: 'Provider fallback recorded', ...evt.payload });
-          else if (evt.event_type === 'task_verified') handleEvent({ type: 'verifying', content: 'Task verification recorded' });
-        });
-        // Adopt a still-running run: reopen its card live so its phase and
-        // steps keep updating here instead of freezing at the replay.
-        if (!runIsTerminal && !window.activeRunWrap) {
-          let adopted = null;
-          const knownWrap = window.historyRunWraps && window.historyRunWraps[run.id];
-          if (knownWrap && document.getElementById(knownWrap + '-body')) {
-            adopted = knownWrap;
-          } else {
-            startRunWrap();
-            const fresh = window.activeRunWrap;
-            if (fresh) {
-              adopted = fresh.dataset.wrapId;
-              window.historyRunWraps = window.historyRunWraps || {};
-              window.historyRunWraps[run.id] = adopted;
-            }
-          }
-          if (adopted) {
-            const body = document.getElementById(adopted + '-body');
-            if (body) {
-              window.activeRunWrap = body;
+        if (checkpointAdvanced) {
+          (run.events || []).slice().reverse().forEach(evt => {
+            if (evt.event_type === 'provider_fallback') handleEvent({ type: 'provider_fallback', content: 'Provider fallback recorded', ...evt.payload });
+            else if (evt.event_type === 'task_verified') handleEvent({ type: 'verifying', content: 'Task verification recorded' });
+          });
+        }
+
+        // History replay can build the card before the durable run snapshot
+        // arrives. Re-adopt that exact card, or create one if the run began
+        // before its first timeline checkpoint, then restore its real phase
+        // instead of leaving the default "starting" pill in place.
+        const knownWrap = window.historyRunWraps && window.historyRunWraps[run.id];
+        let adopted = knownWrap && document.getElementById(knownWrap + '-body') ? knownWrap : null;
+        const currentWrap = window.activeRunWrap;
+        if (!adopted && currentWrap && document.contains(currentWrap)
+            && String(currentWrap.dataset.sessionId || '') === String(sessionId || '')) {
+          adopted = currentWrap.dataset.wrapId;
+        }
+        if (!adopted && !runIsTerminal) {
+          startRunWrap();
+          adopted = window.activeRunWrap && window.activeRunWrap.dataset.wrapId;
+        }
+        if (adopted) {
+          window.historyRunWraps = window.historyRunWraps || {};
+          window.historyRunWraps[run.id] = adopted;
+          const body = document.getElementById(adopted + '-body');
+          if (body) {
+            window.activeRunWrap = body;
+            window.liveRunSessionId = String(sessionId || '');
+            if (runIsTerminal) {
+              paintRunWrap(adopted, run.status, run.duration || null);
+              updateRunStateCard(run.id, run.status, run.duration || null);
+              window.activeRunWrap = null;
+            } else {
               toggleRunWrap(adopted, true);
+              paintRunWrap(adopted, run.status || 'running');
+              const phase = run.current_node || run.status || 'running';
+              updateRunStateCard(run.id, phase, null,
+                run.created_at ? new Date(run.created_at).getTime() : null);
               isProcessing = true;
               window.setSendButtonState('running');
-              window.liveRunSessionId = String(sessionId || '');
-              window.markRunActive(sessionId, run.goal || 'Agent run');
+              window.markRunActive(sessionId, run.goal || 'Agent run',
+                run.created_at ? new Date(run.created_at).getTime() : Date.now(), phase);
+              startSnapshotPolling();
             }
           }
+        } else if (runIsTerminal) {
+          updateRunStateCard(run.id, run.status, run.duration || null);
         }
       } catch (err) {
         console.warn('Agent run snapshot unavailable', err);
@@ -5401,10 +5511,13 @@
     function startSnapshotPolling() {
       if (snapshotPollTimer || !sessionId) return;
       snapshotPollTimer = setInterval(() => {
-        if (ws && ws.readyState === WebSocket.OPEN) { stopSnapshotPolling(); return; }
-        if (++snapshotPollAttempts > 12) { stopSnapshotPolling(); return; }
-        if (sessionId) bootstrapActiveRun();
-      }, 5000);
+        const sid = String(sessionId || '');
+        if (!sid || (!isProcessing && !(window.runsBySession || {})[sid])) {
+          stopSnapshotPolling();
+          return;
+        }
+        bootstrapActiveRun();
+      }, 10000);
     }
 
     function stopSnapshotPolling() {
@@ -6112,7 +6225,12 @@
         lucide.createIcons();
         loadArtifacts();
         renderInvestigationTimeline();
-        if (ws && ws.readyState === WebSocket.OPEN) await bootstrapActiveRun();
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          // `subscribe` is session-scoped; switching chats must leave the old
+          // channel group and join the newly opened chat before snapshotting.
+          ws.send(JSON.stringify({type: 'subscribe', session_id: sessionId}));
+          await bootstrapActiveRun();
+        }
 
       } catch (e) {
         console.error('Failed to load session', e);

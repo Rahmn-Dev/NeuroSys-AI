@@ -1928,6 +1928,7 @@ Output strictly the category name."""
         owner_task = asyncio.current_task()
         async def cancellation_watchdog():
             from chatbot.models import AgentRun
+            next_heartbeat = time.monotonic() + 15
             while True:
                 await asyncio.sleep(0.5)
                 lifecycle = getattr(self, "_lifecycle", None)
@@ -1936,6 +1937,20 @@ Output strictly the category name."""
                     if (state or {}).get("cancellation_requested"):
                         owner_task.cancel()
                         return
+                    # A durable heartbeat distinguishes an in-memory runner
+                    # that is still alive (possibly awaiting a slow provider)
+                    # from a run orphaned by a worker/server restart. Keep the
+                    # actual workflow node/status intact for the UI.
+                    if time.monotonic() >= next_heartbeat:
+                        try:
+                            await lifecycle.atransition(
+                                lifecycle.run.current_node or "running",
+                                lifecycle.run.status or "running",
+                                "heartbeat", {},
+                            )
+                        except Exception:
+                            pass
+                        next_heartbeat = time.monotonic() + 15
         cancellation_monitor = asyncio.create_task(cancellation_watchdog())
         # Multi-agent fans out workers that each run their own loop, so one
         # wall-clock budget for every mode starves it. Env-overridable per mode.
@@ -2039,9 +2054,16 @@ Output strictly the category name."""
 
                     yield event
 
-                    # Periodic progress checkpoint so a mid-run refresh shows
-                    # the timeline so far instead of a blank session.
-                    if len(events_history) - last_persisted >= 15:
+                    # Keep a recent durable timeline so refreshes and chat
+                    # switches can rehydrate the live workflow, including a
+                    # tool that is currently taking a long time. Milestones
+                    # flush immediately; other runs checkpoint every few
+                    # events to avoid writing after every streaming delta.
+                    _milestone = event.type.value in {
+                        "exploring", "discovering_tools", "planning", "task_plan",
+                        "investigation_started", "tool_start", "worker_activity",
+                    }
+                    if _milestone or len(events_history) - last_persisted >= 5:
                         last_persisted = len(events_history)
                         try:
                             await self._persist_run_history(events_history, final=False)

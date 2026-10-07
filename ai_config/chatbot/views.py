@@ -58,11 +58,13 @@ def build_presence_payload(user_id):
         'status': r.status,
         'goal': (r.goal or '')[:120],
         'current_node': r.current_node or '',
+        'created_at': r.created_at.isoformat(),
         'updated_at': r.updated_at.isoformat(),
     } for r in runs], 'latest': [{
         'session_id': str(r.session_id),
         'status': r.status,
         'goal': (r.goal or '')[:120],
+        'created_at': r.created_at.isoformat(),
         'updated_at': r.updated_at.isoformat(),
     } for r in latest]}
 
@@ -127,6 +129,9 @@ def agent_run_snapshot(request):
                     'args': pending.arguments_preview, 'risk': pending.risk, 'reason': pending.reason,
                     'status': pending.status, 'expires_at': pending.expires_at.isoformat(),
                     'expires_in': max(0, int((pending.expires_at - now).total_seconds()))}
+    terminal_statuses = {'completed', 'failed', 'cancelled', 'denied', 'denied_timeout',
+                         'security_blocked', 'blocked', 'error', 'finalized'}
+    duration = max(0.0, (run.updated_at - run.created_at).total_seconds()) if run.status in terminal_statuses else None
     events = list(run.transitions.order_by('-sequence').values(
         'sequence', 'node', 'from_status', 'to_status', 'event_type', 'payload', 'correlation_id', 'created_at')[:50])
     for event in events:
@@ -134,6 +139,7 @@ def agent_run_snapshot(request):
     return Response({'run': {'id': run.pk, 'session_id': str(run.session_id), 'status': run.status,
                              'goal': run.goal, 'summary': run.summary, 'provider': run.provider,
                              'model': run.model, 'mode': run.mode, 'current_node': run.current_node,
+                             'created_at': run.created_at.isoformat(), 'duration': duration,
                              'checkpoint_version': run.checkpoint_version, 'state': run.state,
                              'budget': run.budget, 'updated_at': run.updated_at.isoformat(),
                              'tasks': list(run.tasks.order_by('created_at').values(

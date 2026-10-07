@@ -1685,7 +1685,19 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
                 pass
             try:
                 if self.run_group:
-                    await self.channel_layer.group_send(self.run_group, {"type": "agent.event", "payload": event})
+                    # A consumer may switch its visible chat while an older
+                    # run continues in the background. Route each event by
+                    # the run's own session, never by the most recently
+                    # subscribed chat group.
+                    import hashlib
+                    _event_sid = str(event.get("session_id") or getattr(engine, "session_id", "") or "")
+                    _event_user = str(getattr(self.scope.get("user"), "pk", None) or "anonymous")
+                    _event_group = "sre." + hashlib.sha256(
+                        f"{_event_sid}:{_event_user}".encode()
+                    ).hexdigest()
+                    await self.channel_layer.group_send(
+                        _event_group, {"type": "agent.event", "payload": event}
+                    )
                 else:
                     await self.send(text_data=json.dumps(event))
             except Exception:
