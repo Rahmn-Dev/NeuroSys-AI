@@ -5206,22 +5206,23 @@
     };
 
     window.showJumpToLatest = function () {
-      if (!messagesDiv || !messagesDiv.parentElement) return;
+      const beam = document.getElementById('chat-beam');
+      const host = (beam && beam.parentElement) || (messagesDiv && messagesDiv.parentElement);
+      if (!host) return;
       let btn = document.getElementById('sre-jump-latest');
       if (!btn) {
         btn = document.createElement('button');
         btn.id = 'sre-jump-latest';
-        btn.style.cssText = 'position:absolute; right:18px; bottom:16px; z-index:20; display:none;' +
+        btn.style.cssText = 'position:absolute; right:18px; bottom:calc(100% + 8px); z-index:20; display:none;' +
           ' align-items:center; gap:6px; padding:7px 12px; border-radius:999px; font-size:12px;' +
           ' font-weight:600; cursor:pointer; color:#fff; border:1px solid rgba(255,255,255,.25);' +
-          ' background:rgba(31,111,235,.92); box-shadow:0 6px 18px rgba(0,0,0,.28);';
+          ' background:rgba(31,111,235,.92); box-shadow:0 6px 18px rgba(0,0,0,.28); white-space:nowrap;';
         btn.innerHTML = '<i class="fa-solid fa-arrow-down" style="font-size:11px;"></i> Latest';
         btn.onclick = () => {
           window.agentAutoScroll = true;
           messagesDiv.scrollTo({ top: messagesDiv.scrollHeight, behavior: 'smooth' });
           window.hideJumpToLatest();
         };
-        const host = messagesDiv.parentElement;
         if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
         host.appendChild(btn);
       }
