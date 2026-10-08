@@ -41,8 +41,18 @@ def test_agent_reconnect_does_not_duplicate_run_execution():
 def test_background_events_are_routed_to_their_own_chat_after_switching():
     sender = CONSUMERS[CONSUMERS.index("async def send_event(event):") : CONSUMERS.index("self.lifecycle = ApprovalLifecycle(send_event)")]
     assert "_event_sid = str(event.get(\"session_id\") or getattr(engine, \"session_id\", \"\") or \"\")" in sender
-    assert "group_send(\n                        _event_group" in sender
+    assert "_event_group" in sender
+    assert "_event_group == self.run_group" in sender
     assert "group_send(self.run_group" not in sender
+
+
+def test_fresh_run_events_reach_the_local_socket_before_subscribe():
+    sender = CONSUMERS[CONSUMERS.index("async def send_event(event):") : CONSUMERS.index("self.lifecycle = ApprovalLifecycle(send_event)")]
+    # Before the subscribe round-trip the consumer is not in the run's group;
+    # group_send alone would drop the run's first events (the "stuck at
+    # starting" race). It must also self.send while the group differs.
+    else_branch = sender[sender.index("if _event_group == self.run_group"):]
+    assert "await self.send(text_data=json.dumps(event))" in else_branch
 
 
 def test_agent_reconciles_snapshot_after_every_websocket_reconnect():

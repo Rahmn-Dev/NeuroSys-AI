@@ -115,13 +115,14 @@
   }
 
   .sre-header-actions {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 12px;
-    flex: 1 1 720px;
+    display: block;
+    text-align: right;
     min-width: 0;
-    flex-wrap: wrap;
+  }
+
+  .sre-header-actions > * {
+    margin-left: 12px;
+    vertical-align: middle;
   }
 
   #permission-selector {
@@ -130,8 +131,7 @@
 
   @media (max-width: 1100px) {
     .sre-header-actions {
-      justify-content: flex-start;
-      flex-basis: 100%;
+      text-align: left;
     }
   }
 
@@ -2886,19 +2886,19 @@
       const o = opts || {};
       // Audit time only: the answer already lives above, repeating it here
       // doubled the bubble for no reason.
-      const check = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+      const check = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
       const row = (icon, k, v) => '<div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid var(--border-color); font-size:12px;">'
         + '<i class="fa-solid ' + icon + '" style="flex:none; width:16px; text-align:center; color:var(--success-text); font-size:11px;"></i>'
         + '<span style="flex:none; width:96px; color:var(--text-secondary);">' + k + '</span>'
         + '<span style="flex:1; min-width:0; color:var(--text-primary); font-family:monospace; font-size:11.5px; word-break:break-word;">' + v + '</span></div>';
       return '<details class="sre-run-audit">'
         + '<summary style="cursor:pointer; list-style:none; display:flex; align-items:center; gap:12px; padding:12px 14px; user-select:none;">'
-        + '<span style="flex:none; width:36px; height:36px; border-radius:50%; background:var(--success-text); display:flex; align-items:center; justify-content:center;">'
+        + '<span style="flex:none; width:24px; height:24px; border-radius:50%; background:var(--success); display:flex; align-items:center; justify-content:center;">'
         + check + '</span>'
         + '<span style="flex:1; min-width:0; font-size:14px; font-weight:700; color:var(--success-text);">Task Execution Completed</span>'
         + '<i class="fa-solid fa-chevron-down" style="flex:none; color:var(--success-text); font-size:12px; transition:transform .2s;"></i>'
         + '</summary>'
-        + '<div style="padding:2px 14px 12px 62px; font-size:12.5px;">'
+        + '<div style="padding:2px 14px 12px 48px; font-size:12.5px;">'
         + row('fa-circle-check', 'Status', '<strong style="color:var(--success-text); font-family:inherit;">COMPLETED</strong>')
         + row('fa-play', 'Started', escapeHtml(o.started || '-'))
         + row('fa-flag-checkered', 'Finished', escapeHtml(o.finished || '-'))
@@ -2956,6 +2956,7 @@
       ['📊', 'chart-column'], ['📈', 'chart-line'], ['📉', 'arrow-trend-down'],
       ['⚡', 'bolt'], ['🔥', 'fire'], ['💥', 'bolt'], ['🚨', 'bell'],
       ['🔔', 'bell'], ['🔕', 'bell-slash'], ['📢', 'bullhorn'], ['🎯', 'crosshairs'],
+      ['🏁', 'flag-checkered'],
       ['⏱️', 'stopwatch'], ['⏱', 'stopwatch'], ['⏳', 'hourglass-half'], ['⌛', 'hourglass'],
       ['🕐', 'clock'], ['📅', 'calendar'],
       ['🔒', 'lock'], ['🔓', 'lock-open'], ['🔑', 'key'], ['🛡️', 'shield-halved'], ['🛡', 'shield-halved'],
@@ -3236,7 +3237,7 @@
       div.dataset.sessionId = String(sessionId || '');
       if (ts) div.dataset.created = String(ts);
       if (msgId) div.dataset.msgId = String(msgId);
-      div.style.cssText = 'display:flex; align-items:flex-start; gap:12px; max-width: 85%; margin-bottom: 2px;';
+      div.style.cssText = 'display:flex; align-items:flex-start; gap:12px; max-width: 92%; margin-bottom: 2px;';
       // One card per turn: header with the status pill, the chain of thought,
       // then the answer. The pill opens the chain.
       div.innerHTML = `
@@ -3926,7 +3927,15 @@
       if (/^(Error|Cancelled|Failed)/i.test(label) || iconName === 'x-circle') tlStatus = 'error';
       else if (!window.isLoadingHistory && !isEnd && !customTimer) tlStatus = 'active';
       const tlOpen = tlStatus === 'active' || !window.isLoadingHistory;
-      const tlPal = window.sreTlPalette(tlStatus);
+      // Operator-requested accent for landed tasks: green icon/text on a
+      // mint card instead of the neutral timeline look.
+      const isTaskDone = /^Task Completed/i.test(String(label || ''));
+      const tlPal = isTaskDone
+        ? ['rgba(29, 173, 111, .18)', '#1dad6f', 'rgba(29, 173, 111, .35)']
+        : window.sreTlPalette(tlStatus);
+      const tlTitleColor = isTaskDone
+        ? '#1dad6f'
+        : (tlStatus === 'error' ? 'var(--error)' : 'var(--text-primary)');
       const tlPhase = window.srePhaseIcon(label, iconName);
       // A working step shows its phase icon with a quiet ring; a landed step
       // shows a check. Nothing is tinted by phase.
@@ -3965,7 +3974,8 @@
         stepDiv.dataset.status = tlStatus;
       stepDiv.dataset.phaseIcon = tlPhase;
         stepDiv.dataset.open = tlOpen ? '1' : '0';
-        stepDiv.style.cssText = 'position: relative; display: flex; gap: 14px; padding-left: 2px; width: 100%; align-self: auto; flex: 0 0 auto;';
+        stepDiv.style.cssText = 'position: relative; display: flex; gap: 14px; padding-left: 2px; width: 100%; align-self: auto; flex: 0 0 auto;'
+          + (isTaskDone ? ' background: #edfaf8; border-color: rgba(29, 173, 111, .35) !important;' : '');
         stepDiv.innerHTML = `
                 <div class="sre-tl-line" style="position: absolute; left: 15px; top: 36px; bottom: 0; width: 2px; background: var(--border-color); opacity: .55; display: none;"></div>
                 <div class="sre-tl-dot" style="position: relative; z-index: 1; flex: none; width: 25px; height: 25px; margin-top: 8px; border-radius: 50%; overflow: visible; display: flex; align-items: center; justify-content: center; background: ${tlPal[0]}; color: ${tlPal[1]}; box-shadow: 0 0 0 3px ${tlPal[2]}; margin-left: 3px;">
@@ -3976,7 +3986,7 @@
                 <div style="flex: 1 1 auto; min-width: 0; width: 100%; align-self: auto; padding: 8px 0 24px;">
                     <div onclick="toggleStep('${stepId}', event)" onmouseover="this.style.background='rgba(127,140,160,.08)'" onmouseout="this.style.background='transparent'" style="display: flex; align-items: center; gap: 10px; padding: 1px 6px; margin: 0 -6px; border-radius: 6px; cursor: pointer; user-select: none;">
                         <span style="display: flex; align-items: baseline; gap: 8px; min-width: 0;">
-                            <span class="sre-tl-title" style="font-size: 14px; font-weight: ${tlStatus === 'active' ? '600' : '500'}; color: ${tlStatus === 'error' ? 'var(--error)' : 'var(--text-primary)'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${label}</span>
+                            <span class="sre-tl-title" style="font-size: 14px; font-weight: ${tlStatus === 'active' ? '600' : '500'}; color: ${tlTitleColor}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${label}</span>
                             ${initialTimer}
                         </span>
                         <span class="sre-tl-chev" style="display: flex; margin-left: auto; color: var(--text-secondary); opacity: .55; transition: transform .2s; transform: rotate(${tlOpen ? '0deg' : '-90deg'});">${window.sreChevSvg(14)}</span>
@@ -4497,6 +4507,8 @@
       if (!row) return;
       const slot = row.querySelector('[data-run-state]');
       if (!slot) return;
+      row.classList.remove('run-completed');
+      row.classList.remove('run-failed');
       const stopping = (window.stoppingRuns || {})[String(sid)];
       if (stopping && Date.now() - stopping < 120000) {
         slot.innerHTML = '<i class="fa-solid fa-circle-notch spin-anim" title="Stopping the run…" style="color:var(--warning); font-size:11px; flex-shrink:0;"></i>'
@@ -4515,9 +4527,11 @@
           '<span data-run-elapsed="' + (run.startedAt || Date.now()) + '" style="font-size:10px; color:var(--text-secondary);"></span>' +
           '<button type="button" title="Stop the run in this chat" onclick="event.stopPropagation(); window.stopOtherRun(\'' + escapeHtml(String(sid)) + '\')" style="flex:none; width:20px; height:20px; border-radius:6px; border:1px solid var(--border-color); background:rgba(248,81,73,.12); color:var(--error); cursor:pointer; display:inline-flex; align-items:center; justify-content:center;"><i class="fa-solid fa-stop" style="font-size:8px; pointer-events:none;"></i></button>';
       } else if (unread && unread.ok === false) {
-        slot.innerHTML = '<i class="fa-solid fa-circle-dot" title="Finished with an error while you were away" style="color:var(--error); font-size:11px; flex-shrink:0;"></i>';
+        row.classList.add('run-failed');
+        slot.innerHTML = '';
       } else if (unread) {
-        slot.innerHTML = '<i class="fa-solid fa-circle-dot" title="Finished while you were in another chat" style="color:var(--warning); font-size:11px; flex-shrink:0;"></i>';
+        row.classList.add('run-completed');
+        slot.innerHTML = '';
       } else if (latest && latest.status) {
         // Every chat with a run shows how it ended, from the server's record.
         // A run the operator stopped is not a failure, so it must not wear the
@@ -4527,13 +4541,15 @@
         const failed = ['failed', 'error', 'blocked', 'denied', 'denied_timeout', 'security_blocked'].includes(state);
         const stopped = ['cancelled', 'finalized'].includes(state);
         const done = state === 'completed';
-        slot.innerHTML = failed
-          ? '<i class="fa-solid fa-circle-exclamation" title="Last run: ' + escapeHtml(label) + '" style="color:var(--error); font-size:11px; flex-shrink:0;"></i>'
-          : (done
-            ? '<i class="fa-solid fa-circle-check" title="Last run completed" style="color:var(--success-text); font-size:11px; flex-shrink:0;"></i>'
-            : (stopped
-              ? '<i class="fa-solid fa-circle-minus" title="Last run: ' + escapeHtml(label) + '" style="color:var(--text-secondary); font-size:11px; flex-shrink:0;"></i>'
-              : '<i class="fa-solid fa-circle-dot" title="Last run: ' + escapeHtml(label) + '" style="color:var(--text-secondary); font-size:11px; flex-shrink:0;"></i>'));
+        // Run outcome wears the big circle (✓ completed / ✗ failed) instead
+        // of a second tiny icon beside it. Selection never shows the check.
+        if (done) row.classList.add('run-completed');
+        else if (failed) row.classList.add('run-failed');
+        slot.innerHTML = failed || done
+          ? ''
+          : (stopped
+            ? '<i class="fa-solid fa-circle-minus" title="Last run: ' + escapeHtml(label) + '" style="color:var(--text-secondary); font-size:11px; flex-shrink:0;"></i>'
+            : '<i class="fa-solid fa-circle-dot" title="Last run: ' + escapeHtml(label) + '" style="color:var(--text-secondary); font-size:11px; flex-shrink:0;"></i>');
       } else {
         slot.innerHTML = '';
       }
@@ -5310,7 +5326,8 @@
         btn.style.cssText = 'position:absolute; right:18px; bottom:calc(100% + 8px); z-index:20; display:none;' +
           ' align-items:center; gap:6px; padding:7px 12px; border-radius:999px; font-size:12px;' +
           ' font-weight:600; cursor:pointer; color:#fff; border:1px solid rgba(255,255,255,.25);' +
-          ' background:rgba(31,111,235,.92); box-shadow:0 6px 18px rgba(0,0,0,.28); white-space:nowrap;';
+          ' background:rgba(31,111,235,.92); box-shadow:0 6px 18px rgba(0,0,0,.28); white-space:nowrap;' +
+          ' pointer-events:auto;';
         btn.innerHTML = '<i class="fa-solid fa-arrow-down" style="font-size:11px;"></i> Latest';
         btn.onclick = () => {
           window.agentAutoScroll = true;
@@ -5583,8 +5600,9 @@
           const dateStr = new Date(sess.created_at).toLocaleString('en-US', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
           el.innerHTML = `
-            <div style="display: flex; align-items: center; gap: 8px; width: 100%;">
+            <div style="display: flex; align-items: center; gap: 10px; width: 100%;">
               <input type="checkbox" class="history-checkbox" value="${sess.id}" style="display: ${isBulkEditMode ? 'inline-block' : 'none'}; appearance: auto; -webkit-appearance: auto; accent-color: var(--purple); width: 16px; height: 16px; cursor: pointer; flex-shrink: 0;">
+              <span class="sre-history-check"><i class="fa-solid fa-check"></i></span>
               <span data-run-state style="display:inline-flex; align-items:center; gap:4px; flex-shrink:0;"></span>
               <div style="flex: 1; min-width: 0;">
                 <div class="sre-history-title">${escapeHtml(sess.title || 'Chat Session')}</div>
@@ -5593,6 +5611,7 @@
               <button class="delete-single-history-btn" title="Delete chat session" style="display: ${isBulkEditMode ? 'none' : 'inline-flex'}; background: transparent; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; transition: color 0.2s;" onmouseover="this.style.color='var(--error)'" onmouseout="this.style.color='var(--text-secondary)'" onclick="event.stopPropagation(); deleteSingleHistory('${sess.id}');">
                 <i class="fa-solid fa-trash-can" style="font-size: 12px; pointer-events: none;"></i>
               </button>
+              <i class="fa-solid fa-chevron-right sre-history-chev"></i>
             </div>
           `;
 
@@ -5857,7 +5876,7 @@
     // loaded history, and history replays.
     function welcomeBubbleHtml() {
       return `
-        <div style="display:flex; align-items:flex-start; gap:12px; max-width: 85%;">
+        <div style="display:flex; align-items:flex-start; gap:12px; max-width: 92%;">
           <div style="flex-shrink:0; width:56px; height:56px; border-radius:50%; background:rgba(31, 111, 235, 0.12); border:1px solid var(--border-color); display:flex; align-items:center; justify-content:center; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">
             ${window.neuroBotAvatar(42)}
           </div>
@@ -8031,8 +8050,8 @@
 
   .sre-history-item {
     padding: 12px;
-    background: var(--bg-main);
-    border-radius: 8px;
+    background: #ffffff;
+    border-radius: 12px;
     cursor: pointer;
     font-size: 13px;
     color: var(--text-primary);
@@ -8041,18 +8060,41 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
+    position: relative;
   }
 
   .sre-history-item:hover {
-    border-color: var(--accent);
-    background: var(--bg-panel);
+    border-color: rgba(42, 120, 249, 0.45);
+    background: rgba(42, 120, 249, 0.05);
   }
 
   .sre-history-item.active {
-    border-color: var(--accent);
-    background: var(--bg-panel);
-    border-left: 3px solid var(--accent);
+    background: rgba(42, 120, 249, 0.12);
+    border-color: rgba(42, 120, 249, 0.5);
+    box-shadow: 0 2px 10px rgba(42, 120, 249, 0.12);
   }
+
+  .sre-history-item.active .sre-history-title {
+    color: var(--accent);
+  }
+
+  .sre-history-check {
+    display: none;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--success); color: #fff;
+    align-items: center; justify-content: center; flex-shrink: 0;
+    font-size: 11px;
+  }
+  .sre-history-item.run-completed .sre-history-check,
+  .sre-history-item.run-failed .sre-history-check { display: inline-flex; }
+  .sre-history-item.run-failed .sre-history-check { background: var(--error); }
+  .sre-history-item.run-failed .sre-history-check i::before { content: "\f00d"; }
+
+  .sre-history-chev {
+    display: none;
+    color: var(--accent); font-size: 14px; flex-shrink: 0;
+  }
+  .sre-history-item.active .sre-history-chev { display: inline-flex; }
 
   .sre-history-title {
     font-weight: 600;
@@ -8458,17 +8500,17 @@
           <!-- Adv Settings -->
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem;">
             <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-              <label style="font-size: 1.5rem; font-weight: 500; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Endpoint</label>
+              <label style="font-size: 0.9rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.06em;">Endpoint</label>
               <div id="model-endpoint-toggle" style="display: flex; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 2px;">
-                <button type="button" data-endpoint="openai" onclick="setModelEndpointType('openai')" style="flex: 1; border: none; background: var(--bg-panel); border-radius: 4px; padding: 0.45rem 0; font-size: 1.5rem; font-weight: 500; cursor: pointer; color: var(--text-primary); box-shadow: 0 1px 2px rgba(0,0,0,0.1);">OpenAI</button>
-                <button type="button" data-endpoint="anthropic" onclick="setModelEndpointType('anthropic')" style="flex: 1; border: none; background: transparent; border-radius: 4px; padding: 0.45rem 0; font-size: 1.5rem; font-weight: 500; cursor: pointer; color: var(--text-secondary);">Anthropic</button>
+                <button type="button" data-endpoint="openai" onclick="setModelEndpointType('openai')" style="flex: 1; border: none; background: var(--bg-panel); border-radius: 4px; padding: 0.35rem 0; font-size: 1rem; font-weight: 600; cursor: pointer; color: var(--text-primary); box-shadow: 0 1px 2px rgba(0,0,0,0.1);">OpenAI</button>
+                <button type="button" data-endpoint="anthropic" onclick="setModelEndpointType('anthropic')" style="flex: 1; border: none; background: transparent; border-radius: 4px; padding: 0.35rem 0; font-size: 1rem; font-weight: 600; cursor: pointer; color: var(--text-secondary);">Anthropic</button>
               </div>
             </div>
             <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-              <label style="font-size: 1.5rem; font-weight: 500; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Tool Calling</label>
+              <label style="font-size: 0.9rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.06em;">Tool Calling</label>
               <div id="model-toolchoice-toggle" style="display: flex; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 2px;">
-                <button type="button" data-toolchoice="any" onclick="setModelToolChoice('any')" style="flex: 1; border: none; background: var(--bg-panel); border-radius: 4px; padding: 0.45rem 0; font-size: 1.5rem; font-weight: 500; cursor: pointer; color: var(--text-primary); box-shadow: 0 1px 2px rgba(0,0,0,0.1);" class="active-choice">Force</button>
-                <button type="button" data-toolchoice="auto" onclick="setModelToolChoice('auto')" style="flex: 1; border: none; background: transparent; border-radius: 4px; padding: 0.45rem 0; font-size: 1.5rem; font-weight: 500; cursor: pointer; color: var(--text-secondary);">Auto</button>
+                <button type="button" data-toolchoice="any" onclick="setModelToolChoice('any')" style="flex: 1; border: none; background: var(--bg-panel); border-radius: 4px; padding: 0.35rem 0; font-size: 1rem; font-weight: 600; cursor: pointer; color: var(--text-primary); box-shadow: 0 1px 2px rgba(0,0,0,0.1);" class="active-choice">Force</button>
+                <button type="button" data-toolchoice="auto" onclick="setModelToolChoice('auto')" style="flex: 1; border: none; background: transparent; border-radius: 4px; padding: 0.35rem 0; font-size: 1rem; font-weight: 600; cursor: pointer; color: var(--text-secondary);">Auto</button>
               </div>
             </div>
           </div>

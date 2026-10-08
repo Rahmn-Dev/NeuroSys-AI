@@ -1695,9 +1695,20 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
                     _event_group = "sre." + hashlib.sha256(
                         f"{_event_sid}:{_event_user}".encode()
                     ).hexdigest()
-                    await self.channel_layer.group_send(
-                        _event_group, {"type": "agent.event", "payload": event}
-                    )
+                    if _event_group == self.run_group:
+                        await self.channel_layer.group_send(
+                            _event_group, {"type": "agent.event", "payload": event}
+                        )
+                    else:
+                        # Fresh run on a new chat: this consumer has not joined
+                        # the new group yet (its subscribe round-trip arrives
+                        # later). group_send alone would vanish — deliver
+                        # locally too, and still broadcast for other tabs that
+                        # already watch that chat.
+                        await self.send(text_data=json.dumps(event))
+                        await self.channel_layer.group_send(
+                            _event_group, {"type": "agent.event", "payload": event}
+                        )
                 else:
                     await self.send(text_data=json.dumps(event))
             except Exception:
