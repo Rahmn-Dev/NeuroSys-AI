@@ -162,7 +162,7 @@
   }
 
   .sre-msg-user {
-    background: #1da6ff !important;
+    background: linear-gradient(90deg, #1f6feb 0%, #1da6ff 100%) !important;
     color: #ffffff !important;
     border: 1px solid rgba(255, 255, 255, 0.22) !important;
     box-shadow: 0 4px 16px rgba(29, 166, 255, 0.28);
@@ -6471,7 +6471,7 @@
           arrow.className = 'fa-solid fa-chevron-right';
           arrow.style.cssText = 'font-size:10px;color:var(--text-secondary);width:12px;text-align:center;transition:transform .15s;';
           const labelText = document.createElement('span');
-          labelText.innerHTML = `<i class="fa-solid fa-folder" style="font-size:12px;color:#e3b341;margin-right:6px;"></i>${escapeHtml(node.name)}`;
+          labelText.innerHTML = `<i class="fa-solid fa-folder" style="font-size:12px;color:var(--accent);margin-right:6px;"></i>${escapeHtml(node.name)}`;
           labelText.style.cssText = 'font-size:13px;font-weight:600;color:var(--text-primary);';
           row.appendChild(arrow);
           row.appendChild(labelText);
@@ -7672,7 +7672,7 @@
     margin: 10px 0 4px 0;
     line-height: 1.4;
   }
-  #sre-agent-app .ai-content h1 { font-size: 15px; }
+  #sre-agent-app .ai-content h1 { font-size: 17px; }
   #sre-agent-app .ai-content h2 { font-size: 16px; }
   #sre-agent-app .ai-content h3,
   #sre-agent-app .ai-content h4 { font-size: 15px; }
