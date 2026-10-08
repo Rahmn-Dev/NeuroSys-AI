@@ -149,6 +149,27 @@
     box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.3);
   }
 
+  /* Chat composer: no focus ring/glow on the Ask anything box. */
+  #chat-input:focus {
+    border-color: transparent !important;
+    box-shadow: none !important;
+    outline: none !important;
+  }
+
+  /* Sparkle suggestion swap: shimmer sweep + quick fade while text changes. */
+  #chat-input.sre-shimmer {
+    background-image: linear-gradient(100deg, transparent 30%, rgba(124, 140, 248, 0.22) 50%, transparent 70%) !important;
+    background-size: 220% 100%;
+    background-repeat: no-repeat;
+    animation: sre-shimmer-swap 0.65s ease;
+  }
+  @keyframes sre-shimmer-swap {
+    0% { opacity: 1; background-position: 120% 0; }
+    25% { opacity: 0.25; }
+    45% { opacity: 0.4; background-position: 50% 0; }
+    100% { opacity: 1; background-position: -20% 0; }
+  }
+
   .sre-border {
     border-color: var(--border-color) !important;
   }
@@ -595,27 +616,37 @@
   .composer-pill {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    height: 28px;
-    padding: 0 10px;
-    border-radius: 14px;
+    gap: 8px;
+    height: 30px;
+    padding: 0 14px;
+    border-radius: 15px;
     background: transparent;
     border: 1px solid transparent;
     color: var(--text-secondary);
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 400;
     cursor: pointer;
     white-space: nowrap;
-    max-width: 220px;
+    max-width: 320px;
     overflow: hidden;
     text-overflow: ellipsis;
     transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
   }
 
   .composer-pill:hover {
-    background: var(--bg-panel);
+    background: #edf4fe;
     border-color: var(--border-color);
     color: var(--text-primary);
+  }
+
+  .composer-div {
+    width: 1px;
+    height: 18px;
+    align-self: center;
+    background: var(--border-color);
+    opacity: 0.6;
+    flex-shrink: 0;
+    margin: 0 6px;
   }
 
   .model-picker-panel {
@@ -897,11 +928,17 @@
               tabindex="0">
               {% csrf_token %}
               <div style="display: flex; align-items: flex-end; gap: 12px;">
+                <span id="composer-ai-spark" onclick="sparkSuggest()" title="Saran SRE — klik untuk isi otomatis" style="flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; margin-bottom: 8px; cursor: pointer; color: #7c8cf8; background: transparent; border: none;">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2c.6 4.8 2.5 7.3 4.3 8.2 1.2.6 2.6 1 4.2 1.2l3.5.6-3.5.6c-1.6.2-3 .6-4.2 1.2-1.8.9-3.7 3.4-4.3 8.2-.6-4.8-2.5-7.3-4.3-8.2-1.2-.6-2.6-1-4.2-1.2L0 12l3.5-.6c1.6-.2 3-.6 4.2-1.2C9.5 9.3 11.4 6.8 12 2z"/>
+                    <path opacity=".65" d="M19 2c.2 1.7.9 2.6 1.5 2.9.4.2.9.4 1.5.4l1-.1-1 .7c-.5.3-1 .7-1.3 1.1-.5.6-1 1.7-1.2 3.5-.2-1.8-.7-2.9-1.2-3.5-.3-.4-.8-.8-1.3-1.1l-1-.7 1 .1c.6 0 1.1-.2 1.5-.4.6-.3 1.3-1.2 1.5-2.9z"/>
+                  </svg>
+                </span>
                 <textarea id="chat-input" placeholder="Ask anything" class="sre-input sre-text-strong"
                   style="flex: 1; background: transparent; border: none; font-size: 15px; outline: none; resize: none; overflow-y: auto; padding: 12px 12px; line-height: 1.5; min-height: 46px; max-height: 200px; box-sizing: border-box;"
                   rows="1"></textarea>
                 <button type="submit" id="send-btn" title="Send"
-                  style="background: var(--accent); color: #ffffff; border: none; border-radius: 50%; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; transition: all 0.2s; margin-bottom: 2px;">
+                  style="background: linear-gradient(90deg, #1f6feb 0%, #1da6ff 100%); color: #ffffff; border: none; border-radius: 50%; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; transition: all 0.2s; margin-bottom: 2px; box-shadow: 0 0 18px rgba(42, 120, 249, 0.55), 0 4px 14px rgba(42, 120, 249, 0.35);">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                     stroke-linecap="round" stroke-linejoin="round" style="margin-left: -2px;">
                     <line x1="22" y1="2" x2="11" y2="13"></line>
@@ -909,13 +946,7 @@
                   </svg>
                 </button>
               </div>
-              <div class="composer-toolbar">
-                <button type="button" id="beam-palette-btn" class="composer-pill"
-                  onclick="cycleBeamPalette()" title="Change beam colour"
-                  style="width: 28px; padding: 0; justify-content: center;">
-                  <span id="beam-palette-swatch"
-                    style="width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--border-color); display: inline-block;"></span>
-                </button>
+              <div class="composer-toolbar" style="gap: 4px;">
                 <button type="button" id="model-picker-btn" class="composer-pill" onclick="toggleModelPicker(event)"
                   title="Pilih model yang dipakai untuk run ini">
                   <span id="model-picker-logo" style="display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 6px; font-size: 11px; background: rgba(31,111,235,0.12); border: 1px solid var(--border-color); flex-shrink: 0;">🌐</span>
@@ -923,6 +954,7 @@
                   <i class="fa-solid fa-chevron-up" style="font-size: 9px; opacity: 0.7;"></i>
                 </button>
                 <div id="model-picker-panel" class="model-picker-panel"></div>
+                <span class="composer-div"></span>
                 <div style="position: relative;">
                   <button type="button" id="mode-picker-btn" class="composer-pill"
                     onclick="toggleModePicker(event)" title="Mode agent">
@@ -933,6 +965,7 @@
                   <div id="mode-picker-panel" class="model-picker-panel"
                     style="width: min(330px, 92vw);"></div>
                 </div>
+                <span class="composer-div"></span>
                 <div style="position: relative;">
                   <button type="button" id="permission-picker-btn" class="composer-pill"
                     onclick="togglePermissionPicker(event)" title="Agent authorization">
@@ -943,14 +976,13 @@
                   <div id="permission-picker-panel" class="model-picker-panel"
                     style="width: min(320px, 92vw);"></div>
                 </div>
+                <span class="composer-div"></span>
                 <button type="button" class="composer-pill" onclick="openModelManagerModal(); closeModelPicker(); closeModePicker(); closePermissionPicker();"
                   title="Model Manager: endpoint, provider, API key, status">
                   <i class="fa-solid fa-sliders"></i>
                   <span>Models</span>
                 </button>
                 <span style="flex: 1;"></span>
-                <span id="composer-model-hint" class="sre-text-secondary"
-                  style="font-size: 10px; opacity: 0.7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40%;"></span>
               </div>
             </form>
           </div>
@@ -1622,6 +1654,11 @@
 
       window.eventBelongsHere = function (payload) {
         if (!window.RUN_CONTENT_EVENTS.has(String(payload.type || ''))) return true;
+        // Positive proof first: an event stamped with the open chat's own
+        // session belongs here even if liveRunSessionId was never set (fresh
+        // new chat whose id only arrived via the session_id event).
+        const claimed = payload && payload.session_id ? String(payload.session_id) : '';
+        if (claimed && sessionId && claimed === String(sessionId)) return true;
         return !!(window.liveRunSessionId && sessionId &&
           window.liveRunSessionId === String(sessionId));
       };
@@ -1785,8 +1822,12 @@
           if (window.expectingSession && data.content) {
             window.expectingSession = false;
             sessionId = data.content;
+            // New chat: the submitter stored '' because no id existed yet.
+            // Adopt it now or every content event gets dropped as foreign.
+            if (!window.liveRunSessionId) window.liveRunSessionId = String(data.content);
           } else if (!sessionId && data.content) {
             sessionId = data.content;
+            if (!window.liveRunSessionId) window.liveRunSessionId = String(data.content);
           }
           if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({type: 'subscribe', session_id: sessionId}));
           // A locally submitted turn has already opened its own run card. The
@@ -2210,7 +2251,16 @@
           break;
 
         case 'message_chunk':
-          if (currentAIMsg && currentAIMsg.dataset.sessionId !== String(sessionId || '')) break;
+          if (currentAIMsg && currentAIMsg.dataset.sessionId !== String(sessionId || '')) {
+            // New-chat bubble was created before the server issued the
+            // session id. Adopt it onto the live run instead of dropping the
+            // turn's chunks (which froze the bubble at its first piece).
+            // A bubble stamped for a *different* chat still breaks here.
+            if (!currentAIMsg.dataset.sessionId && window.liveRunSessionId
+                && String(window.liveRunSessionId) === String(sessionId || '')) {
+              currentAIMsg.dataset.sessionId = String(sessionId || '');
+            } else break;
+          }
           if (!window.turnIsOpen() && !(currentTurnWasDirect && currentDirectAnswerSaved)) break;
           if (!currentAIMsg) {
             currentAIMsg = addAIMessage('');
@@ -4532,6 +4582,27 @@
             <span style="font-size: 10px; font-weight: 600; padding: 4px 10px; border-radius: 12px; background: rgba(137, 87, 229, 0.12); color: var(--purple); border: 1px solid rgba(137, 87, 229, 0.3); white-space: nowrap; flex-shrink: 0;">
               <i class="fa-solid fa-lock me-1"></i> Encrypted
             </span>
+          </div>
+        `;
+      } else if (text.includes('Full Access enabled') || text.includes('Need Approval enabled') || text.includes('Permission update rejected')) {
+        const isFull = text.includes('Full Access enabled');
+        const isFallback = text.includes('Permission update rejected');
+        const title = isFull ? 'Full Access enabled' : isFallback ? 'Permission update rejected' : 'Need Approval enabled';
+        const sub = isFull ? 'In-goal actions auto-approved. Hard security boundaries remain enforced.'
+          : isFallback ? 'Falling back to Need Approval.'
+          : 'Mutating actions require Allow Once.';
+        const tone = isFallback ? 'var(--error)' : 'var(--accent)';
+        div.className = 'my-2 w-100';
+        div.style.cssText = 'width: 100%; max-width: 100%; box-sizing: border-box; align-self: stretch; flex-shrink: 0; border-radius: 14px; overflow: hidden; background: var(--bg-panel); border: 1px solid var(--border-color); padding: 12px 16px; margin: 12px 0; box-shadow: 0 4px 15px rgba(0,0,0,0.15);';
+        div.innerHTML = `
+          <div style="display: flex; align-items: center; gap: 12px; width: 100%;">
+            <div style="width: 34px; height: 34px; border-radius: 50%; background: rgba(31, 111, 235, 0.12); border: 1px solid rgba(31, 111, 235, 0.3); display: flex; align-items: center; justify-content: center; color: ${tone}; font-size: 15px; flex-shrink: 0;">
+              <i class="fa-solid fa-circle-info"></i>
+            </div>
+            <div>
+              <div style="font-weight: 700; font-size: 13px; color: var(--text-strong);">${escapeHtml(title)}</div>
+              <div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">${escapeHtml(sub)}</div>
+            </div>
           </div>
         `;
       } else {
@@ -8113,7 +8184,7 @@
     style="background: var(--bg-panel); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 12px; width: 1350px; max-width: 98vw; height: 92vh; display: flex; flex-direction: column; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); overflow: hidden; position: relative; animation: modal-in 0.2s ease-out forwards;">
     
     <!-- Header -->
-    <div style="padding: 1.25rem 1.5rem 1rem; border-bottom: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 4px; background: var(--bg-main);">
+    <div style="padding: 1.25rem 1.5rem 1rem; border-bottom: 1px solid rgba(31, 111, 235, 0.35); display: flex; flex-direction: column; gap: 4px; background: rgba(31, 111, 235, 0.07);">
       <div style="display: flex; justify-content: space-between; align-items: flex-start;">
         <div>
           <h2 style="margin: 0; font-size: 1.5rem; font-weight: 600; letter-spacing: -0.025em; color: var(--text-strong);">Model Configuration</h2>
@@ -8472,15 +8543,18 @@
       return;
     }
     tbody.innerHTML = visibleModels.map(m => `
-      <tr draggable="${dragLocked ? 'false' : 'true'}" data-model-id="${m.id}"
-        ondragstart="event.dataTransfer.setData('text/plain', '${m.id}'); this.style.opacity='0.4';"
-        ondragend="this.style.opacity='1';"
+      <tr data-model-id="${m.id}"
         ondragover="event.preventDefault(); this.style.background='var(--bg-main)';"
         ondragleave="this.style.background='';"
         ondrop="event.preventDefault(); this.style.background=''; const src=event.dataTransfer.getData('text/plain'); if(src && String(src)!=='${m.id}'){ const sorted=[...(currentLoadedAIModels||[])].sort((a,b)=>(a.order-b.order)||(a.id-b.id)).map(x=>String(x.id)); const from=sorted.indexOf(String(src)); const to=sorted.indexOf('${m.id}'); if(from>-1&&to>-1){ sorted.splice(to,0,sorted.splice(from,1)[0]); persistModelOrder(sorted); } }"
-        style="border-bottom: 1px solid var(--border-color); ${dragLocked ? '' : 'cursor: grab;'}">
+        style="border-bottom: 1px solid var(--border-color);">
         <td style="padding: 1rem 0.5rem; width: 40px; text-align: center;">
-          <i class="fa-solid fa-grip-vertical" style="color: var(--text-secondary); opacity: ${dragLocked ? '0.2' : '0.5'}; font-size: 1rem;"></i>
+          <span draggable="${dragLocked ? 'false' : 'true'}"
+            ondragstart="event.dataTransfer.setData('text/plain', '${m.id}'); event.dataTransfer.effectAllowed='move';"
+            title="${dragLocked ? 'Drag aktif saat filter All + tanpa search' : 'Drag untuk ubah urutan'}"
+            style="cursor: ${dragLocked ? 'default' : 'grab'}; display: inline-block; padding: 4px;">
+            <i class="fa-solid fa-grip-vertical" style="color: var(--text-secondary); opacity: ${dragLocked ? '0.2' : '0.5'}; font-size: 1rem;"></i>
+          </span>
         </td>
         <td style="padding: 1rem; white-space: normal;">
           <div style="display: flex; align-items: center; gap: 0.75rem;">
@@ -8563,9 +8637,9 @@
     const meta = providerMeta(pid);
     const s = size || 24;
     if (meta.domain) {
-      return `<img src="https://www.google.com/s2/favicons?sz=64&domain=${meta.domain}" alt="${escapeHtml(meta.label)}" style="width: ${s}px; height: ${s}px; border-radius: 4px; object-fit: contain; flex-shrink: 0; background: #fff; padding: 2px;" onerror="this.onerror=null; this.outerHTML='<span style=\'display:inline-flex; align-items:center; justify-content:center; width:${s}px; height:${s}px; border-radius:4px; font-size:${Math.round(s*0.6)}px; background:${meta.color}22; border:1px solid ${meta.color}66; color:${meta.color}; font-weight:bold;\'>${escapeHtml(meta.fallback)}</span>'"/>`;
+      return `<img src="https://www.google.com/s2/favicons?sz=64&domain=${meta.domain}" alt="${escapeHtml(meta.label)}" style="width: ${s}px; height: ${s}px; border-radius: 14px; object-fit: contain; flex-shrink: 0; background: transparent; padding: 0;" onerror="this.onerror=null; this.outerHTML='<span style=\'display:inline-flex; align-items:center; justify-content:center; width:${s}px; height:${s}px; border-radius:14px; font-size:${Math.round(s*0.6)}px; background:${meta.color}22; border:1px solid ${meta.color}66; color:${meta.color}; font-weight:bold;\'>${escapeHtml(meta.fallback)}</span>'"/>`;
     }
-    return `<span title="${escapeHtml(meta.label)}" style="display: inline-flex; align-items: center; justify-content: center; width: ${s}px; height: ${s}px; border-radius: 4px; font-size: ${Math.round(s * 0.6)}px; background: ${meta.color}22; border: 1px solid ${meta.color}66; color: ${meta.color}; font-weight: bold; flex-shrink: 0;">${escapeHtml(meta.fallback)}</span>`;
+    return `<span title="${escapeHtml(meta.label)}" style="display: inline-flex; align-items: center; justify-content: center; width: ${s}px; height: ${s}px; border-radius: 14px; font-size: ${Math.round(s * 0.6)}px; background: ${meta.color}22; border: 1px solid ${meta.color}66; color: ${meta.color}; font-weight: bold; flex-shrink: 0;">${escapeHtml(meta.fallback)}</span>`;
   }
 
   function getModelProviderValue() {
@@ -9393,7 +9467,7 @@
       <button type="button" class="model-picker-item ${m.value === current ? 'selected' : ''}"
         onclick="selectModeFromPicker('${m.value}')">
         <i class="fa-solid ${m.icon}" style="font-size: 12px; width: 16px; color: var(--accent);"></i>
-        <span style="flex: 1; min-width: 0;">
+        <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px;">
           <span class="mp-name">${m.label}</span>
           <span class="mp-sub" style="font-family: inherit;">${m.hint}</span>
         </span>
@@ -9497,6 +9571,11 @@
     if (swatch) swatch.style.background = `linear-gradient(135deg, ${palette.colors.join(', ')})`;
     const btn = document.getElementById('beam-palette-btn');
     if (btn) btn.title = `Beam color: ${palette.label} - click to change`;
+    const spark = document.getElementById('composer-ai-spark');
+    if (spark) {
+      spark.style.color = palette.colors[0];
+      spark.title = `Beam color: ${palette.label} - click to change`;
+    }
     try { localStorage.setItem('sre_beam_palette', name); } catch (e) { }
   }
 
@@ -9505,6 +9584,43 @@
     const idx = BEAM_PALETTE_ORDER.indexOf(current);
     const next = BEAM_PALETTE_ORDER[(idx + 1) % BEAM_PALETTE_ORDER.length];
     applyBeamPalette(next);
+  }
+
+  // Sparkle: ketik saran SRE bergantian ke input seolah hasil generate.
+  // Beam ikut ganti mengikuti index biar fitur palet tetap hidup.
+  const SRE_SPARK_SUGGESTIONS = [
+    'cek status nginx, lagi active atau down?',
+    'cek kesehatan server: cpu, memory, disk, dan service yang failed',
+    'cari 3 pemakan disk terbesar di root filesystem',
+    'cek 50 baris terakhir error log nginx',
+    'bandingkan kondisi nginx vs ollama, mana yang sehat?',
+    'cek port 80 dan 443 lagi kepake siapa?',
+    'validasi config nginx sebelum reload',
+  ];
+  window.sreSparkIdx = window.sreSparkIdx || 0;
+  window.sreSparkTimers = window.sreSparkTimers || [];
+  function sparkSuggest() {
+    const input = document.getElementById('chat-input');
+    if (!input) return;
+    (window.sreSparkTimers || []).forEach(clearTimeout);
+    window.sreSparkTimers = [];
+    const text = SRE_SPARK_SUGGESTIONS[window.sreSparkIdx % SRE_SPARK_SUGGESTIONS.length];
+    window.sreSparkIdx += 1;
+    try {
+      const pal = BEAM_PALETTE_ORDER[(window.sreSparkIdx - 1) % BEAM_PALETTE_ORDER.length];
+      if (pal) applyBeamPalette(pal);
+    } catch (e) { /* best-effort */ }
+    // Shimmer sweep: teks lama fade-out, tukar di tengah, teks baru shimmer-in.
+    input.classList.remove('sre-shimmer');
+    void input.offsetWidth;
+    input.classList.add('sre-shimmer');
+    window.sreSparkTimers.push(setTimeout(() => {
+      input.value = text;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }, 160));
+    window.sreSparkTimers.push(setTimeout(() => {
+      input.classList.remove('sre-shimmer');
+    }, 680));
   }
 
   // --- Beam state: fast + glowing while the agent works ---
