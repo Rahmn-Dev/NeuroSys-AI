@@ -2184,7 +2184,7 @@
           const taskData = data.task || (data.metadata && data.metadata.task);
           if (taskData) {
             if (taskData.new_status === 'completed') {
-              addAgentStep('Task Completed', taskData.task, 'var(--success)', 'check-circle');
+              addAgentStep('Task Completed', window.sreMarkdownHtml(taskData.task), 'var(--success)', 'check-circle');
             }
             renderInvestigationTimeline();
           }
@@ -2823,24 +2823,40 @@
       } catch (err) { return false; }
     };
 
-    // Status emoji -> ikon/badge sewarna tema. Emoji native beda-beda render
-    // per OS/browser; yang diganti cuma emoji status, bukan semua emoji.
+    // Status emoji -> ikon/badge monokrom biru aksen (senada bg header
+    // tabel). Emoji native beda-beda render per OS/browser; yang diganti
+    // cuma emoji status, bukan semua emoji.
     window.SRE_EMOJI_MAP = [
-      ['✅', '<i class="fa-solid fa-circle-check" style="color:var(--success-text);"></i>'],
-      ['❎', '<i class="fa-solid fa-circle-xmark" style="color:var(--error);"></i>'],
-      ['❌', '<i class="fa-solid fa-circle-xmark" style="color:var(--error);"></i>'],
-      ['✖️', '<i class="fa-solid fa-xmark" style="color:var(--error);"></i>'],
-      ['✖', '<i class="fa-solid fa-xmark" style="color:var(--error);"></i>'],
-      ['✔️', '<i class="fa-solid fa-check" style="color:var(--success-text);"></i>'],
-      ['✔', '<i class="fa-solid fa-check" style="color:var(--success-text);"></i>'],
-      ['⚠️', '<i class="fa-solid fa-triangle-exclamation" style="color:var(--warning);"></i>'],
-      ['⚠', '<i class="fa-solid fa-triangle-exclamation" style="color:var(--warning);"></i>'],
-      ['❗', '<i class="fa-solid fa-circle-exclamation" style="color:var(--error);"></i>'],
-      ['ℹ️', '<i class="fa-solid fa-circle-info" style="color:var(--accent);"></i>'],
-      ['ℹ', '<i class="fa-solid fa-circle-info" style="color:var(--accent);"></i>'],
-      ['🔹', '<span style="display:inline-block;width:.5em;height:.5em;border-radius:2px;background:var(--accent);margin-right:.2em;"></span>'],
-      ['🔸', '<span style="display:inline-block;width:.5em;height:.5em;border-radius:2px;background:var(--warning);margin-right:.2em;"></span>'],
-    ];
+      ['✅', 'circle-check'], ['❎', 'circle-xmark:red'], ['❌', 'circle-xmark:red'],
+      ['✖️', 'xmark:red'], ['✖', 'xmark:red'], ['✔️', 'check'], ['✔', 'check'],
+      ['⚠️', 'triangle-exclamation:warn'], ['⚠', 'triangle-exclamation:warn'],
+      ['❗', 'circle-exclamation'], ['ℹ️', 'circle-info'], ['ℹ', 'circle-info'],
+      ['🔧', 'screwdriver-wrench'], ['🔨', 'hammer'], ['⚙️', 'gear'], ['⚙', 'gear'],
+      ['🛠️', 'screwdriver-wrench'], ['🛠', 'screwdriver-wrench'], ['🧰', 'toolbox'],
+      ['🌐', 'globe'], ['🔍', 'magnifying-glass'], ['📡', 'tower-broadcast'],
+      ['🖥️', 'desktop'], ['🖥', 'desktop'], ['💻', 'laptop'],
+      ['🗄️', 'database'], ['🗄', 'database'], ['💾', 'floppy-disk'], ['💿', 'compact-disc'],
+      ['📁', 'folder'], ['📂', 'folder-open'], ['📄', 'file-lines'], ['📝', 'pen'],
+      ['📦', 'box'], ['🔗', 'link'], ['🔌', 'plug'], ['🔋', 'battery-full'],
+      ['📊', 'chart-column'], ['📈', 'chart-line'], ['📉', 'arrow-trend-down'],
+      ['⚡', 'bolt'], ['🔥', 'fire'], ['💥', 'bolt'], ['🚨', 'bell'],
+      ['🔔', 'bell'], ['🔕', 'bell-slash'], ['📢', 'bullhorn'], ['🎯', 'crosshairs'],
+      ['⏱️', 'stopwatch'], ['⏱', 'stopwatch'], ['⏳', 'hourglass-half'], ['⌛', 'hourglass'],
+      ['🕐', 'clock'], ['📅', 'calendar'],
+      ['🔒', 'lock'], ['🔓', 'lock-open'], ['🔑', 'key'], ['🛡️', 'shield-halved'], ['🛡', 'shield-halved'],
+      ['🚀', 'rocket'], ['💡', 'lightbulb'], ['📌', 'thumbtack'], ['📍', 'location-dot'],
+      ['🧠', 'brain'], ['🤖', 'robot'], ['💬', 'comment'], ['👀', 'eye'],
+      ['👍', 'thumbs-up'], ['👎', 'thumbs-down'], ['⭐', 'star'], ['🌙', 'moon'],
+      ['☀️', 'sun'], ['☀', 'sun'], ['🌡️', 'temperature-half'],
+      ['🧹', 'broom'], ['🗑️', 'trash-can'], ['🗑', 'trash-can'], ['🧪', 'flask'],
+      ['🧭', 'compass'], ['🗺️', 'map'], ['🏠', 'house'], ['🖧', 'network-wired'],
+      ['🔹', null], ['🔸', null],
+    ].map(([emo, icon]) => {
+      if (!icon) return [emo, '<span style="display:inline-block;width:.5em;height:.5em;border-radius:2px;background:var(--accent);margin-right:.2em;"></span>'];
+      const [name, tone] = String(icon).split(':');
+      const color = tone === 'red' ? 'var(--error)' : tone === 'warn' ? '#eab308' : 'var(--accent)';
+      return [emo, `<i class="fa-solid fa-${name}" style="color:${color};"></i>`];
+    });
     // Ganti emoji status di HTML jawaban. Output terminal/code (<pre>)
     // dilewat supaya log tetap apa adanya.
     window.sreEmojifyHtml = function (html) {
@@ -2853,11 +2869,37 @@
       return parts.join('');
     };
 
-    window.renderAnswerContent = function (rawText) {
-      const text = String(rawText == null ? '' : rawText);
+    // Markdown mentah (task, findings) -> HTML bubble. Pisahin separator
+    // tabel yang nempel (lihat fixTables di renderAnswerContent), parse,
+    // terus emojify. Aman dipanggil di step mana pun.
+    window.sreMarkdownHtml = function (rawText) {
+      let src = String(rawText == null ? '' : rawText);
+      const parts = src.split(/(```[\s\S]*?(?:```|$))/g);
+      for (let i = 0; i < parts.length; i += 2) {
+        parts[i] = parts[i].split('\n').map((line) =>
+          line.replace(/\|\|(?=\s*:?-{2,})/, '|\n|')
+        ).join('\n');
+      }
+      src = parts.join('');
+      try { return window.sreEmojifyHtml(marked.parse(src)); } catch (e) { return escapeHtml(src); }
+    };
+
+    window.renderAnswerContent = function (rawText) {      const text = String(rawText == null ? '' : rawText);
       const at = text.indexOf(window.SRE_FINAL_MARKER);
+      // Model kadang nempelin garis separator ke baris header:
+      // "| Cek | Hasil ||-----|" -> pecah jadi header + delimiter agar
+      // marked mau render tabel. Blok kode (```) dilewat.
+      const fixTables = (src) => {
+        const parts = String(src == null ? '' : src).split(/(```[\s\S]*?(?:```|$))/g);
+        for (let i = 0; i < parts.length; i += 2) {
+          parts[i] = parts[i].split('\n').map((line) =>
+            line.replace(/\|\|(?=\s*:?-{2,})/, '|\n|')
+          ).join('\n');
+        }
+        return parts.join('');
+      };
       const md = (chunk) => {
-        try { return window.sreEmojifyHtml(marked.parse(chunk)); } catch (e) { return escapeHtml(chunk); }
+        try { return window.sreEmojifyHtml(marked.parse(fixTables(chunk))); } catch (e) { return escapeHtml(chunk); }
       };
       if (at < 0) {
         return '<div class="sre-answer-body">' + md(text) + '</div>';
@@ -6097,7 +6139,7 @@
                 case 'task_updated':
                   const taskData = evt.task;
                   if (taskData && taskData.new_status === 'completed') {
-                    addAgentStep('Task Completed', taskData.task, 'var(--success)', 'check-circle', null, false, time);
+                    addAgentStep('Task Completed', window.sreMarkdownHtml(taskData.task), 'var(--success)', 'check-circle', null, false, time);
                   }
                   break;
 
@@ -7631,9 +7673,9 @@
     line-height: 1.4;
   }
   #sre-agent-app .ai-content h1 { font-size: 15px; }
-  #sre-agent-app .ai-content h2 { font-size: 14px; }
+  #sre-agent-app .ai-content h2 { font-size: 16px; }
   #sre-agent-app .ai-content h3,
-  #sre-agent-app .ai-content h4 { font-size: 13px; }
+  #sre-agent-app .ai-content h4 { font-size: 15px; }
   #sre-agent-app .ai-content strong,
   #sre-agent-app .ai-content b {
     color: var(--text-primary);
@@ -7648,7 +7690,7 @@
     border-spacing: 0;
     width: 100%;
     margin: 8px 0;
-    border: 1px solid #30363d;
+    border: 1px solid rgba(31, 111, 235, 0.35);
     border-radius: 16px;
     overflow: hidden;
   }
@@ -7656,11 +7698,20 @@
   #sre-agent-app .ai-content th,
   #sre-agent-app .ai-content td {
     border: none;
-    border-bottom: 1px solid #30363d;
-    border-right: 1px solid #30363d;
-    padding: 6px 10px;
+    border-bottom: 1px solid rgba(31, 111, 235, 0.22);
+    border-right: 1px solid rgba(31, 111, 235, 0.22);
+    padding: 8px 12px;
     text-align: left;
     font-size: 13px;
+  }
+  #sre-agent-app .ai-content thead th {
+    background: rgba(31, 111, 235, 0.07);
+    color: var(--accent);
+    font-weight: 700;
+  }
+  #sre-agent-app .ai-content tbody td:first-child {
+    font-weight: 600;
+    color: var(--text-strong);
   }
   #sre-agent-app .ai-content tr:last-child th,
   #sre-agent-app .ai-content tr:last-child td {
