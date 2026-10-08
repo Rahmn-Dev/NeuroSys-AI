@@ -863,11 +863,35 @@ Do NOT stop calling tools until you are ready to call `finish_task`.
                 self.outcome = "failed"
                 from .canonical_lifecycle import normalize_provider_error
                 error_info = normalize_provider_error(e)
+                category = error_info.get("category", "internal_error")
+                # The traceback used to be computed and discarded, so every
+                # opaque failure was undebuggable. Log it server-side (stderr
+                # is collected by the service manager) and audit the category.
+                print(f"[SRE ENGINE ERROR] single-agent loop failed: {type(e).__name__}: {e}\n{error_trace}", flush=True)
+                try:
+                    from .security_boundary import audit as _audit_loop_failure
+                    _audit_loop_failure("agent_loop_failure", "single_agent", category,
+                          session_id=getattr(self, "session_id", ""))
+                except Exception:
+                    pass
                 active_model = getattr(self.llm_with_tools, "active_label", "selected model")
-                detail = getattr(self, "_selected_model_hint", "") or ""
+                if category in {"auth", "quota"}:
+                    tail = "The case stays active; Auto Models will skip unavailable models."
+                    detail = getattr(self, "_selected_model_hint", "") or ""
+                elif category == "internal_error":
+                    # Not auth/quota/context: do not blame credentials. Show
+                    # the sanitized underlying error instead; Auto Models does
+                    # not rotate on this category by design.
+                    from .events import public_text as _public_text
+                    raw = _public_text(str(e)).strip()[:300]
+                    tail = "The case stays active; this was not a credential or quota failure."
+                    detail = f"Underlying error: {raw or type(e).__name__}."
+                else:
+                    tail = "The case stays active; Auto Models will skip unavailable models."
+                    detail = getattr(self, "_selected_model_hint", "") or ""
                 yield evt_error(
-                    f"Single Agent failed on {active_model} ({error_info['category']}). "
-                    "The case stays active; Auto Models will skip unavailable models."
+                    f"Single Agent failed on {active_model} ({category}). "
+                    + tail
                     + (f" {detail}" if detail else "")
                 )
                 break

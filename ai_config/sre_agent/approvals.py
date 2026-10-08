@@ -232,6 +232,15 @@ def consume_for(meta, args):
                     if _sensitive_read_path(Path(token).expanduser().resolve()):
                         audit("tool_decision", meta.name, "hard_block", call_id)
                         raise PermissionError("blocked: protected credential file")
+                # Env-style secret assignment (PASSWORD=..., TOKEN=...) is
+                # credential handling, not a search term: `grep password file`
+                # has no `=`, so the diagnostics use-case keeps passing.
+                if _re.match(
+                    r"(?i)^(?:password|passwd|secret|token|api[_-]?key|private[_-]?key|credentials?)\s*=",
+                    token,
+                ):
+                    audit("tool_decision", meta.name, "hard_block", call_id)
+                    raise PermissionError("blocked: credential assignment")
         except ValueError:
             # Malformed quoting cannot be auto-classified as a protected read;
             # the normal execution policy below will require approval.

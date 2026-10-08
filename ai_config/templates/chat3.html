@@ -447,10 +447,10 @@
     }
   }
 
-  /* The Agent Run card scrolls with the chat like any other message; only its
-     step list scrolls inside the card. No floating/sticky behaviour. */
+  /* The Agent Run card scrolls with the chat like any other message; the
+     step list caps at a short height with its own scroll. */
   .sre-run-body {
-    max-height: 300px;
+    max-height: 280px;
   }
 
   /* Loading placeholders. Any .sre-panel can be filled with these while its
@@ -3533,7 +3533,7 @@
       wrap.className = 'sre-run-card';
       wrap.style.cssText = 'margin-bottom: 10px;';
       wrap.innerHTML = `
-        <div id="${wrapId}-body" class="sre-run-body" style="padding: 14px 16px 16px; display: flex; flex-direction: column; align-items: stretch; max-height: 420px; overflow-y: auto; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 20px; margin: 8px;">
+        <div id="${wrapId}-body" class="sre-run-body" style="padding: 14px 16px 16px; display: flex; flex-direction: column; align-items: stretch; max-height: 280px; overflow-y: auto; background: transparent; border: 1px solid var(--border-color); border-radius: 20px; margin: 8px;">
           <div id="${wrapId}-case" style="display:none; font-size: 10px; font-family: monospace; color: var(--text-secondary); opacity: .7; margin-bottom: 6px;"></div>
         </div>
       `;
@@ -3976,7 +3976,7 @@
                 <div style="flex: 1 1 auto; min-width: 0; width: 100%; align-self: auto; padding: 8px 0 24px;">
                     <div onclick="toggleStep('${stepId}', event)" onmouseover="this.style.background='rgba(127,140,160,.08)'" onmouseout="this.style.background='transparent'" style="display: flex; align-items: center; gap: 10px; padding: 1px 6px; margin: 0 -6px; border-radius: 6px; cursor: pointer; user-select: none;">
                         <span style="display: flex; align-items: baseline; gap: 8px; min-width: 0;">
-                            <span class="sre-tl-title" style="font-size: 14px; font-weight: ${tlStatus === 'active' ? '600' : '500'}; color: ${tlStatus === 'error' ? 'var(--error)' : 'var(--accent)'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${label}</span>
+                            <span class="sre-tl-title" style="font-size: 14px; font-weight: ${tlStatus === 'active' ? '600' : '500'}; color: ${tlStatus === 'error' ? 'var(--error)' : 'var(--text-primary)'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${label}</span>
                             ${initialTimer}
                         </span>
                         <span class="sre-tl-chev" style="display: flex; margin-left: auto; color: var(--text-secondary); opacity: .55; transition: transform .2s; transform: rotate(${tlOpen ? '0deg' : '-90deg'});">${window.sreChevSvg(14)}</span>
@@ -7557,7 +7557,7 @@
     #sre-agent-app .sre-inv-filter button small { min-width: 12px; font-size: 8px; }
   }
   #sre-agent-app .sre-inv-card {
-    border: 1px solid var(--border-color);
+    border: 1px solid #9ecfff;
     border-radius: 16px;
     background: var(--bg-panel);
     overflow: hidden;
