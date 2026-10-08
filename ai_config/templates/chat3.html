@@ -6485,7 +6485,12 @@
 
       window.showPanelSkeleton(messagesDiv, 6);
       try {
-        const res = await fetch(`/api/v1/chat-sessions/${id}/messages/?limit=${window.SRE_PAGE_SIZE}&order=desc`);
+        // Both payloads are independent; fetching them in parallel removes one
+        // full round trip from every chat open.
+        const [res, invRes] = await Promise.all([
+          fetch(`/api/v1/chat-sessions/${id}/messages/?limit=${window.SRE_PAGE_SIZE}&order=desc`),
+          fetch(`/api/v1/chat-sessions/${id}/investigations/`),
+        ]);
         const data = await res.json();
         messagesDiv.innerHTML = welcomeBubbleHtml();
         window.agentSeenEvents = new Set();
@@ -6494,7 +6499,6 @@
         investigations = {};
         activeInvestigationId = null;
 
-        const invRes = await fetch(`/api/v1/chat-sessions/${id}/investigations/`);
         if (invRes.ok) {
           const invData = await invRes.json();
           invData.forEach(inv => {
@@ -6510,7 +6514,6 @@
               activeInvestigationId = inv.id;
             }
           });
-          renderInvestigationTimeline();
         }
 
         window.isLoadingHistory = true;
@@ -6569,8 +6572,9 @@
         if (ws && ws.readyState === WebSocket.OPEN) {
           // `subscribe` is session-scoped; switching chats must leave the old
           // channel group and join the newly opened chat before snapshotting.
+          // The snapshot itself must not block the already-painted history.
           ws.send(JSON.stringify({type: 'subscribe', session_id: sessionId}));
-          await bootstrapActiveRun();
+          bootstrapActiveRun().catch(() => {});
         }
 
       } catch (e) {
