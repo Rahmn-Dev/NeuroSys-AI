@@ -8085,20 +8085,42 @@
 <div id="sudo-modal"
   style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); backdrop-filter: blur(5px); z-index: 9999; align-items: center; justify-content: center;">
   <div
-    style="background: var(--bg-main); padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); width: 350px; display: flex; flex-direction: column; gap: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
-    <div style="display: flex; align-items: center; gap: 10px; color: #f85149;">
-      <i class="fa-solid fa-shield-halved" style="font-size: 20px;"></i>
-      <h3 style="margin: 0; font-size: 16px;">Sudo Privilege Access</h3>
+    style="background: var(--bg-panel); padding: 36px 40px; border-radius: 20px; border: 1px solid var(--border-color); width: 560px; max-width: 92vw; display: flex; flex-direction: column; gap: 20px; box-shadow: 0 25px 60px rgba(0,0,0,0.45); font-family: 'Poppins', sans-serif; position: relative;">
+    <button onclick="document.getElementById('sudo-modal').style.display='none'" title="Close"
+      style="position: absolute; top: 20px; right: 22px; border: none; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 22px; line-height: 1; padding: 4px;">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+    <div style="display: flex; align-items: center; gap: 16px;">
+      <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(229, 72, 77, 0.12); border: 1px solid rgba(229, 72, 77, 0.25); display: flex; align-items: center; justify-content: center; color: #e5484d; font-size: 24px; flex-shrink: 0;">
+        <i class="fa-solid fa-shield-halved"></i>
+      </div>
+      <h3 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.02em; color: var(--text-strong); font-family: 'Poppins', sans-serif;">Sudo Privilege Access</h3>
     </div>
-    <p style="font-size: 12px; color: var(--text-secondary); margin: 0; line-height: 1.4;">Enter your sudo password to
-      allow the agent to run privileged commands. This is <b>End-to-End Encrypted (RSA-OAEP)</b> and is only stored in
-      memory for this session.</p>
-    <input type="password" id="sudo-password-input" placeholder="Password" class="sre-input"
-      style="width: 100%; padding: 10px; border-radius: 6px;">
-    <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 5px;">
+    <p style="font-size: 15px; color: var(--text-secondary); margin: 0; line-height: 1.6;">Enter your sudo password to
+      allow the agent to run privileged commands. This is <b style="color: var(--text-strong);">End-to-End Encrypted
+      (RSA-OAEP)</b> and is only stored in memory for this session.</p>
+    <div style="border: 1px solid rgba(31, 111, 235, 0.35); border-radius: 14px; padding: 6px;">
+      <div style="display: flex; align-items: center; gap: 12px; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 10px; padding: 14px 16px;">
+        <i class="fa-solid fa-lock" style="font-size: 18px; color: var(--text-secondary);"></i>
+        <input type="password" id="sudo-password-input" placeholder="Password" class="sre-input" onkeydown="if(event.key==='Enter'){event.preventDefault();submitSudoPassword();}"
+          style="flex: 1; border: none !important; background: transparent !important; box-shadow: none !important; outline: none !important; font-size: 15px; font-family: 'Poppins', sans-serif; padding: 0;">
+        <button type="button" onclick="toggleSudoPasswordVisibility()" title="Show / hide password"
+          style="border: none; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 18px; padding: 0;">
+          <i id="sudo-password-eye" class="fa-solid fa-eye"></i>
+        </button>
+      </div>
+    </div>
+    <div style="border-top: 1px solid var(--border-color);"></div>
+    <div style="display: flex; gap: 12px; justify-content: flex-end;">
       <button onclick="document.getElementById('sudo-modal').style.display='none'"
-        class="btn btn-secondary btn-sm">Cancel</button>
-      <button id="sudo-save-btn" onclick="submitSudoPassword()" class="btn btn-success btn-sm">Encrypt & Save</button>
+        onmouseover="this.style.background='var(--border-color)'; this.style.color='var(--text-strong)';"
+        onmouseout="this.style.background='var(--bg-main)'; this.style.color='var(--text-secondary)';"
+        style="border: none; background: var(--bg-main); color: var(--text-secondary); border-radius: 12px; padding: 12px 26px; font-size: 15px; font-weight: 500; font-family: 'Poppins', sans-serif; cursor: pointer; transition: all 0.15s;">Cancel</button>
+      <button id="sudo-save-btn" onclick="submitSudoPassword()"
+        onmouseover="this.style.filter='brightness(1.08)'; this.style.boxShadow='0 10px 30px rgba(34, 197, 94, 0.5)';"
+        onmouseout="this.style.filter='none'; this.style.boxShadow='0 8px 24px rgba(34, 197, 94, 0.35)';"
+        style="border: none; border-radius: 12px; padding: 12px 26px; font-size: 15px; font-weight: 600; font-family: 'Poppins', sans-serif; cursor: pointer; color: #fff; background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); box-shadow: 0 8px 24px rgba(34, 197, 94, 0.35); display: inline-flex; align-items: center; gap: 8px; transition: all 0.15s;">
+        <i class="fa-solid fa-lock" style="font-size: 14px;"></i> Encrypt &amp; Save</button>
     </div>
   </div>
 </div>
@@ -8124,8 +8146,16 @@
     return str2ab(binaryString);
   }
 
-  async function submitSudoPassword() {
-    const pwdInput = document.getElementById('sudo-password-input');
+  function toggleSudoPasswordVisibility() {
+    const inp = document.getElementById('sudo-password-input');
+    const eye = document.getElementById('sudo-password-eye');
+    if (!inp) return;
+    const show = inp.type === 'password';
+    inp.type = show ? 'text' : 'password';
+    if (eye) eye.className = show ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye';
+  }
+
+  async function submitSudoPassword() {    const pwdInput = document.getElementById('sudo-password-input');
     const pwd = pwdInput.value;
     if (!pwd) return;
     if (!window.serverRsaPublicKey) {
