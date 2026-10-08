@@ -1970,10 +1970,10 @@ Output strictly the category name."""
                             pass
                         next_heartbeat = time.monotonic() + 15
         cancellation_monitor = asyncio.create_task(cancellation_watchdog())
-        # Multi-agent fans out workers that each run their own loop, so one
-        # wall-clock budget for every mode starves it. Env-overridable per mode.
+        # Give long investigations up to one hour by default. Keep environment
+        # overrides mode-specific so deployments can still tune the ceiling.
         _timeout_env = "SRE_RUN_TIMEOUT_MULTI" if mode == "autonomous_multi" else "SRE_RUN_TIMEOUT"
-        _timeout_default = "900" if mode == "autonomous_multi" else "300"
+        _timeout_default = "3600"
         try:
             run_timeout = int(os.environ.get(_timeout_env, _timeout_default))
         except ValueError:
