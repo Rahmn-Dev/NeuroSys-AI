@@ -754,7 +754,7 @@
 
     <!-- Header bar -->
     <div class="sre-panel sre-chat-header"
-      style="background: var(--bg-main); display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-bottom: 1px solid var(--border-color); position: relative; z-index: 50;">
+      style="background: rgba(227, 238, 254, 0); display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-bottom: 1px solid var(--border-color); position: relative; z-index: 50;">
       <div style="display: flex;flex-wrap: wrap; align-items: center; gap: 10px;">
         <button id="toggle-sidebar-btn"
           onclick="document.getElementById('history-sidebar').style.display='flex'; this.style.display='none';"
@@ -817,7 +817,7 @@
 
       <!-- 1. History Sidebar -->
       <div id="history-sidebar" class="sre-panel"
-        style="backdrop-filter: blur(20px); background: rgba(255, 255, 255, 0); width: 250px; border-right: 1px solid rgba(255,255,255,0.08); display: flex; flex-direction: column; margin: 8px; margin-right: 0;">
+        style="background: rgba(255, 255, 255, 0); width: 250px; border-right: 1px solid rgba(255,255,255,0.08); display: flex; flex-direction: column; margin: 8px; margin-right: 0;">
         <div
           style="border: 1px solid rgb(132 132 132 / 16%); border-top-left-radius: 16px; border-top-right-radius: 16px; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center;">
           <div style="display: flex; gap: 8px;">
@@ -1008,9 +1008,9 @@
 
       <!-- 3. Right Column: Tabs -->
       <div class="sre-panel" id="right-panel"
-        style="backdrop-filter: blur(20px); background: rgba(255, 255, 255, 0); width: 35%; display: flex; flex-direction: column; min-width: 300px; max-width: 80vw; margin: 8px; margin-left: 0;">
+        style="background: rgba(255, 255, 255, 0); width: 35%; display: flex; flex-direction: column; min-width: 300px; max-width: 80vw; margin: 8px; margin-left: 0;">
         <div class="sre-layout"
-          style="border: 1px solid rgb(132 132 132 / 16%); backdrop-filter: blur(20px); background: rgba(255, 255, 255, 0); display: flex; border-bottom: 1px solid rgba(255,255,255,0.08); border-top-left-radius: 16px; border-top-right-radius: 16px; overflow: auto;">
+          style="border: 1px solid rgb(132 132 132 / 16%); background: rgba(255, 255, 255, 0); display: flex; border-bottom: 1px solid rgba(255,255,255,0.08); border-top-left-radius: 16px; border-top-right-radius: 16px; overflow: auto;">
           <div class="tab-btn active sre-text-primary" onclick="window.switchTab('investigation')"
             style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; text-align: center; padding: 12px 10px; font-size: 13px; cursor: pointer; border-bottom: 2px solid var(--accent); transition: background 0.2s;">
             <i class="fa-solid fa-microscope" style="font-size: 14px;"></i> Investigation
@@ -1053,7 +1053,7 @@
 
         <!-- Explorer Tab -->
         <div id="tab-explorer" class="sre-panel tab-content"
-          style="backdrop-filter: blur(20px); background: rgba(255, 255, 255, 0); display: none; flex-direction: column; overflow-y: auto; flex: 1;">
+          style="background: rgba(255, 255, 255, 0); display: none; flex-direction: column; overflow-y: auto; flex: 1;">
           <div style="padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.08);">
             <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
               <i class="fa-solid fa-folder-open" style="color:var(--accent);"></i>
