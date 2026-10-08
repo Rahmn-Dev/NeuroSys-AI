@@ -6844,9 +6844,14 @@
           + '</div>';
         return stat + window.renderArtifactDiff(art.diff);
       }
-      if (lang === 'markdown' || window.isMarkdownArtifact(art)) {
+      // Ekstensi menang atas tebakan action_type: findings.json harus ke
+      // pretty-print JSON, bukan ke-parse sebagai markdown. Hint markdown
+      // cuma dipakai buat file teks polos.
+      const _isMdExt = lang === 'markdown';
+      const _isMdHint = !_isMdExt && (lang === 'text') && window.isMarkdownArtifact(art);
+      if (_isMdExt || _isMdHint) {
         try {
-          return '<div class="sre-md" style="font-size:12px; line-height:1.6; padding:10px 12px; border:1px solid var(--border-color); border-radius:10px; background:var(--bg-main);">' + marked.parse(text) + '</div>';
+          return '<div class="sre-md ai-content" style="font-size:13px; line-height:1.6; padding:10px 12px; border:1px solid var(--border-color); border-radius:10px; background:var(--bg-main);">' + window.sreMarkdownHtml(text) + '</div>';
         } catch (e) { /* fall through to plain */ }
       }
       if (lang === 'json') return window.sreJsonView(text);
@@ -7004,8 +7009,8 @@
                   '<i class="fa-solid fa-chevron-down" id="' + cardId + '-chevron" style="font-size:10px; color:var(--text-secondary); transition:transform 0.2s;"></i>' +
                 '</div>' +
                 '<div id="' + cardId + '-content" style="display:none; border-top:1px solid var(--border-color);">' +
-                  '<div style="padding:7px 12px; background:rgba(0,0,0,0.12); font-size:10px; color:var(--text-secondary); font-family:monospace; border-bottom:1px solid var(--border-color); word-break:break-all;">' +
-                    '<i class="fa-solid fa-folder" style="margin-right:4px;"></i>' + escapeHtml(art.file_path || '') + '</div>' +
+                '<div style="padding:7px 12px; background:rgba(0,0,0,0.12); font-size:10px; color:var(--text-secondary); font-family:monospace; border-bottom:1px solid var(--border-color); word-break:break-all;" title="' + escapeHtml(art.file_path || '') + '">' +
+                  '<i class="fa-solid fa-folder" style="margin-right:4px;"></i>' + escapeHtml(String(art.file_path || '').replace(/^\.neurosys\/sessions\/[^/]+\//, '')) + '</div>' +
                   '<div style="padding:10px 12px;">' +
                     (renderable || ('<pre style="background:var(--bg-panel); color:var(--text-primary); padding:10px; border-radius:6px; overflow:auto; font-size:11px; max-height:220px; border:1px solid var(--border-color); font-family:\'JetBrains Mono\',\'Fira Code\',monospace; line-height:1.5; margin:0; white-space:pre-wrap; word-break:break-word;">' +
                       escapeHtml(String(rawContent).split('\n').slice(0, 12).join('\n')) + (String(rawContent).split('\n').length > 12 ? '\n... (truncated — use Download or Copy)' : '') + '</pre>')) +
