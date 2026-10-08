@@ -1050,6 +1050,7 @@ Output strictly the category name."""
                 effective_goal,
                 workspace_context=ws_dict,
                 max_tools=max_discovery_tools,
+                mode=mode,
             )
 
         yield evt_discovering(
@@ -1279,6 +1280,7 @@ Output strictly the category name."""
                 "_lifecycle": self._lifecycle,
                 "messages": messages,
                 "goal": effective_goal,
+                "agent_mode": mode,
                 "terminal_cwd": terminal_cwd or "",
                 "active_workspace": active_workspace or "",
                 "plan": plan_data if isinstance(plan_data, dict) else {},
@@ -1851,6 +1853,22 @@ Output strictly the category name."""
             yield evt_completed(final_message or f"Task completed in {duration:.1f}s", duration=duration)
             if 'inv_id' in locals() and inv_id:
                 await sync_to_async(lambda _i=inv_id: Investigation.objects.filter(id=_i).update(status="completed"))()
+            if (not terminal_failure and final_message
+                    and 'inv_id' in locals() and inv_id and artifact_mgr):
+                # The failure path always leaves a response.md; a success must
+                # too. Runs that completed without passing the report nodes
+                # above (empty report edge, multi mode's session-level report)
+                # otherwise showed no answer artifact while every failed run
+                # had one.
+                try:
+                    from .events import FINAL_ANSWER_MARKER as _RB_FAM
+                    _rb_text = (final_message or "").replace(_RB_FAM, "").strip()
+                    if _rb_text:
+                        await artifact_mgr.upsert_artifact(
+                            f".neurosys/sessions/{self.session_id}/investigations/{inv_id}/response.md",
+                            _rb_text, action_type="report", case_id=inv_id)
+                except Exception:
+                    pass
             return
 
         # A partial report can still be useful, but it is not a successful

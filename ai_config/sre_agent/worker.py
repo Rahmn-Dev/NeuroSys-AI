@@ -404,7 +404,12 @@ class InvestigationWorker:
         parent_context: Optional[List[dict]] = None,
         expected_diagnostic_domains: Optional[List[str]] = None,
         role: str = "",
+        agent_mode: Optional[str] = None,
     ):
+        # agent_mode only gates multi-specific behavior (approval modal
+        # routing). Guided/single leave it unset and keep the conservative
+        # pre-deny path below.
+        self.agent_mode = agent_mode
         self.state = WorkerState(
             id=worker_id,
             goal=goal,
@@ -562,6 +567,9 @@ class InvestigationWorker:
                     if tool_name_resolved:
                         mapped_args = self.executor._map_args(tool_name_resolved, op_action, target, kwargs)
                         approved, block_reason = self._safety_check(tool_name_resolved, mapped_args)
+                        if not approved and self._multi_may_ask_approval(block_reason):
+                            approved = True
+                            block_reason = ""
                         if not approved:
                             self.state.findings.append({
                                 "tool": "_operator_plan", "args": {"target": target},
@@ -669,6 +677,9 @@ class InvestigationWorker:
 
                 # 3. Safety check
                 approved, block_reason = self._safety_check(tool_name, tool_args)
+                if not approved and self._multi_may_ask_approval(block_reason):
+                    approved = True
+                    block_reason = ""
                 if not approved:
                     prior_denials = sum(1 for f in self.state.findings if f.get("signal") == "BLOCKED")
                     if "approval_required" in block_reason.lower() and prior_denials < 1:
@@ -1193,6 +1204,7 @@ Respond with ONLY valid JSON:
             is_child=True,
             parent_id=self.state.id,
             parent_context=self.state.findings[-3:],
+            agent_mode=getattr(self, "agent_mode", None),
         )
         child._child_depth = self._child_depth + 1
 
@@ -1214,6 +1226,18 @@ Respond with ONLY valid JSON:
             return None
 
     # ── Safety check ─────────────────────────────────────────────────────────
+
+    def _multi_may_ask_approval(self, block_reason: str) -> bool:
+        """True when an approval-gated (never hard-blocked) action in a multi
+        run should open the real operator Allow/Deny modal instead of being
+        pre-denied by the worker. The guarded tool raises approval_required,
+        the lifecycle opens the modal, and a deny/timeout comes back as a
+        tool error the worker pivots from. Guided/single keep the
+        conservative pre-deny path."""
+        return (
+            "approval_required" in (block_reason or "").lower()
+            and getattr(self, "agent_mode", None) == "autonomous_multi"
+        )
 
     def _safety_check(self, tool_name: str, tool_args: dict) -> tuple[bool, str]:
         """Returns (approved: bool, reason: str)."""
@@ -1345,17 +1369,23 @@ class WorkerScheduler:
             except (TypeError, ValueError):
                 parsed_output = None
             output_lower = last_output.strip().lower()
+            # A nonzero exit with real stdout still collected evidence (e.g.
+            # `du` over mixed existing/missing paths). Only call it failed
+            # when there is no usable output or an explicit error payload.
+            _term_stdout = ""
+            if isinstance(parsed_output, dict):
+                _term_stdout = str(parsed_output.get("stdout", "") or "").strip()
             last_tool_status = (
                 "blocked" if last_signal == "BLOCKED" or output_lower.startswith("blocked")
                 else "failed" if (
                     last_signal in {"FAILURE", "CRITICAL"}
                     or (isinstance(parsed_output, dict) and (
                         parsed_output.get("error")
-                        or parsed_output.get("exit_code") not in (None, 0)
+                        or (parsed_output.get("exit_code") not in (None, 0) and not _term_stdout)
                     ))
                     or output_lower.startswith(("error:", "failed:", "permission denied"))
                 )
-                else "completed" if last_signal == "SUCCESS"
+                else "completed" if last_signal == "SUCCESS" or _term_stdout
                 else "unknown"
             )
             active_workers_state[ws.id] = {
@@ -1366,7 +1396,10 @@ class WorkerScheduler:
                 "current_action": current_action,
                 "last_tool": last_tool,
                 "last_tool_status": last_tool_status,
-                "last_tool_result": last_output[:300],
+                # Full finding text is capped at 1500 chars; the UI slice
+                # matches so live and replay render the same terminal card
+                # instead of replay showing a 300-char fragment.
+                "last_tool_result": last_output[:1500],
                 "findings_count": len(ws.findings),
                 "evidence_count": len(ws.confidence.evidence)
             }
@@ -1408,6 +1441,7 @@ class WorkerScheduler:
                     tool_map=self.tool_map,
                     safety=self.safety,
                     max_iterations=spec.get("max_iterations", MAX_WORKER_ITERATIONS),
+                    agent_mode=getattr(self, "mode", None),
                     parent_context=[
                         finding
                         for dep_id in spec.get("depends_on", [])

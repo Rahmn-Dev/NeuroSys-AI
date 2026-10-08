@@ -160,6 +160,7 @@ class ToolDiscoveryAgent:
         user_message: str,
         workspace_context: Optional[Dict] = None,
         max_tools: int = 12,
+        mode: str = "guided",
     ) -> DiscoveryResult:
         """
         Main entry point: analyze user message → discover relevant tools.
@@ -243,20 +244,32 @@ class ToolDiscoveryAgent:
                 unique_results.append((tool, meta))
 
         safe_system_intents = {"system_health", "system_monitoring", "troubleshooting_service", "log_analysis"}
+        is_multi = (mode == "autonomous_multi")
         if intent in safe_system_intents:
             blocked_for_health = {"write_file", "edit_file", "multi_replace_file_content",
-                                  "replace_file_content", "spawn_subagent",
+                                  "replace_file_content",
                                   "safe_execute", "execute_command"}
+            if not is_multi:
+                # Guided/single health stays read-only without delegation.
+                # Multi keeps spawn_subagent: its whole point is parallel
+                # fan-out, and delegation itself is policy-guarded per tool.
+                blocked_for_health.add("spawn_subagent")
             unique_results = [(tool, meta) for tool, meta in unique_results if meta.name not in blocked_for_health]
             seen = {meta.name for _, meta in unique_results}
 
         # Health/service investigations must not expose mutation/edit/delegation
         # tools that are irrelevant to the baseline goal. Other intents retain
-        # the historical fallback set for compatibility.
+        # the historical fallback set for compatibility. Fallbacks only name
+        # tools that are actually registered (single-agent core); dead wrapper
+        # names are resolved server-side via health coverage, not as LLM tools.
+        # Multi keeps spawn_subagent in the fallback so the orchestrator can
+        # always fan out; guided/single behavior is unchanged.
         if intent in safe_system_intents:
-            fallback_tools = ["system_info", "service_manager", "service_config_check", "log_reader", "terminal_execute", "process_manager"]
+            fallback_tools = ["terminal_execute", "read_file", "get_current_directory"]
+            if is_multi:
+                fallback_tools = ["spawn_subagent"] + fallback_tools
         else:
-            fallback_tools = ["safe_execute", "read_file", "get_current_directory", "spawn_subagent", "terminal_execute", "edit_file", "write_file", "list_directory"]
+            fallback_tools = ["read_file", "get_current_directory", "spawn_subagent", "terminal_execute", "edit_file", "write_file"]
         for fallback_tool in fallback_tools:
             tool = self.registry.get_tool(fallback_tool)
             if tool and fallback_tool not in seen:

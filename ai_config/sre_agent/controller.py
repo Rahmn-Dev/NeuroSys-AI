@@ -464,6 +464,21 @@ Do NOT create workers for satisfied domains listed above.
             f"\n(Note: User's terminal is currently at {state.get('terminal_cwd')} "
             f"— do not assume the issue is located here unless explicitly stated)"
         ) if state.get('terminal_cwd') else ""
+
+        # Multi-only: parallelism is the product here. Guided/single keep the
+        # conservative rules below (1-worker cap, deferred resource checks).
+        multi_note = ""
+        if state.get("agent_mode") == "autonomous_multi":
+            multi_note = """
+=== MULTI-AGENT FAN-OUT (this run only) ===
+Parallelism is the product, not an optimization. Split Phase-1 into one
+worker per explicitly requested check (cpu, memory, disk, failed services,
+...), each with depends_on: [] so they run in parallel with distinct
+expected_diagnostic_domains. The SIMPLE_INFORMATION 1-worker cap and the
+Phase-1 ban on broad resource checks do NOT apply here — but still no
+broad fishing: only split domains the user named or that are needed to
+answer the goal.
+"""
         
         prompt = f"""You are a senior SRE incident commander with 30 years of Linux operations experience. You lead a small team of specialist workers the way a veteran mentor briefs trusted engineers: each gets ONE clear mission, full ownership of their diagnostic domain, and a handoff contract for what to report back.
 
@@ -472,7 +487,7 @@ Do NOT create workers for satisfied domains listed above.
 
 === CURRENT USER REQUEST ===
 Goal: {goal}{terminal_cwd_note}
-{extracted_files_note}{followup_note}
+{extracted_files_note}{followup_note}{multi_note}
 Current Iteration: {iteration}
 
 Your job:

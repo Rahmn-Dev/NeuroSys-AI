@@ -918,7 +918,7 @@
                 </button>
                 <button type="button" id="model-picker-btn" class="composer-pill" onclick="toggleModelPicker(event)"
                   title="Pilih model yang dipakai untuk run ini">
-                  <i class="fa-solid fa-microchip" style="font-size: 11px;"></i>
+                  <span id="model-picker-logo" style="display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 6px; font-size: 11px; background: rgba(31,111,235,0.12); border: 1px solid var(--border-color); flex-shrink: 0;">🌐</span>
                   <span id="model-picker-label" style="overflow: hidden; text-overflow: ellipsis;">Model</span>
                   <i class="fa-solid fa-chevron-up" style="font-size: 9px; opacity: 0.7;"></i>
                 </button>
@@ -2002,10 +2002,7 @@
 
         case 'tool_end':
           const resultTxt = (data.result || data.content || '').trim();
-          const resultHtml = resultTxt
-            ? escapeHtml(resultTxt.substring(0, 1000))
-            : '(no output)';
-          addAgentStep('Result', window.sreResultCard(resultHtml), 'var(--success)', 'check-circle', data.step_id, true);
+          addAgentStep('Result', window.sreResultHtml(resultTxt), 'var(--success)', 'check-circle', data.step_id, true);
           break;
 
         case 'approval_required':
@@ -2826,11 +2823,41 @@
       } catch (err) { return false; }
     };
 
+    // Status emoji -> ikon/badge sewarna tema. Emoji native beda-beda render
+    // per OS/browser; yang diganti cuma emoji status, bukan semua emoji.
+    window.SRE_EMOJI_MAP = [
+      ['✅', '<i class="fa-solid fa-circle-check" style="color:var(--success-text);"></i>'],
+      ['❎', '<i class="fa-solid fa-circle-xmark" style="color:var(--error);"></i>'],
+      ['❌', '<i class="fa-solid fa-circle-xmark" style="color:var(--error);"></i>'],
+      ['✖️', '<i class="fa-solid fa-xmark" style="color:var(--error);"></i>'],
+      ['✖', '<i class="fa-solid fa-xmark" style="color:var(--error);"></i>'],
+      ['✔️', '<i class="fa-solid fa-check" style="color:var(--success-text);"></i>'],
+      ['✔', '<i class="fa-solid fa-check" style="color:var(--success-text);"></i>'],
+      ['⚠️', '<i class="fa-solid fa-triangle-exclamation" style="color:var(--warning);"></i>'],
+      ['⚠', '<i class="fa-solid fa-triangle-exclamation" style="color:var(--warning);"></i>'],
+      ['❗', '<i class="fa-solid fa-circle-exclamation" style="color:var(--error);"></i>'],
+      ['ℹ️', '<i class="fa-solid fa-circle-info" style="color:var(--accent);"></i>'],
+      ['ℹ', '<i class="fa-solid fa-circle-info" style="color:var(--accent);"></i>'],
+      ['🔹', '<span style="display:inline-block;width:.5em;height:.5em;border-radius:2px;background:var(--accent);margin-right:.2em;"></span>'],
+      ['🔸', '<span style="display:inline-block;width:.5em;height:.5em;border-radius:2px;background:var(--warning);margin-right:.2em;"></span>'],
+    ];
+    // Ganti emoji status di HTML jawaban. Output terminal/code (<pre>)
+    // dilewat supaya log tetap apa adanya.
+    window.sreEmojifyHtml = function (html) {
+      const parts = String(html == null ? '' : html).split(/(<pre[\s>][\s\S]*?<\/pre>)/gi);
+      for (let i = 0; i < parts.length; i += 2) {
+        let s = parts[i];
+        window.SRE_EMOJI_MAP.forEach(([emo, rep]) => { s = s.split(emo).join(rep); });
+        parts[i] = s;
+      }
+      return parts.join('');
+    };
+
     window.renderAnswerContent = function (rawText) {
       const text = String(rawText == null ? '' : rawText);
       const at = text.indexOf(window.SRE_FINAL_MARKER);
       const md = (chunk) => {
-        try { return marked.parse(chunk); } catch (e) { return escapeHtml(chunk); }
+        try { return window.sreEmojifyHtml(marked.parse(chunk)); } catch (e) { return escapeHtml(chunk); }
       };
       if (at < 0) {
         return '<div class="sre-answer-body">' + md(text) + '</div>';
@@ -3169,6 +3196,40 @@
         + `<div style="padding: 6px 12px; font-size: 11px; font-weight: 700; color: var(--text-strong); border-bottom: 1px solid var(--border-color);">Output</div>`
         + `<pre class="sre-layout" style="padding: 10px 12px; margin: 0; overflow-x: auto; font-size: 12px; max-height: 220px; overflow-y: auto;">${resultHtml}</pre></div>`;
     };
+    // Terminal-style rendering for terminal_execute JSON payloads
+    // ({command, stdout, stderr, exit_code}). Anything else falls back to
+    // plain escaped text, so this is safe to call on any tool result.
+    window.sreTerminalHtml = function (rawText, maxLen) {
+      const txt = String(rawText || '');
+      let parsed = null;
+      try { parsed = JSON.parse(txt); } catch (e) { parsed = null; }
+      if (!parsed || typeof parsed !== 'object' || typeof parsed.stdout === 'undefined' || typeof parsed.command === 'undefined') {
+        const lim = maxLen || 1200;
+        const cut = txt.length > lim ? txt.slice(0, lim) + '\n… (truncated)' : txt;
+        return `<div style="font-family: monospace; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-secondary);">${escapeHtml(cut)}</div>`;
+      }
+      const cmd = String(parsed.command || '');
+      const out = String(parsed.stdout || '');
+      const err = String(parsed.stderr || '');
+      const code = String(parsed.exit_code);
+      const codeColor = code === '0' ? 'var(--success-text)' : 'var(--error)';
+      const body = (out + (err ? '\n' + err : '')).slice(0, maxLen || 1500) || '(no output)';
+      return `<div style="font-family: monospace; font-size: 11px; background: #0d1117; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; margin: 4px 0;">`
+        + `<div style="padding: 6px 10px; border-bottom: 1px solid var(--border-color); color: #79c0ff; white-space: pre-wrap; overflow-wrap: anywhere;"><span style="color: var(--success-text);">$ </span>${escapeHtml(cmd.slice(0, 500))}</div>`
+        + `<div style="padding: 6px 10px; color: #e6edf3; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 200px; overflow-y: auto;">${escapeHtml(body)}</div>`
+        + `<div style="padding: 3px 10px; border-top: 1px solid var(--border-color); font-size: 10px; color: ${codeColor};">exit ${escapeHtml(code)}</div></div>`;
+    };
+    // Result card that auto-detects terminal JSON: terminal card for shell
+    // output, classic Output card otherwise.
+    window.sreResultHtml = function (rawText) {
+      let parsed = null;
+      try { parsed = JSON.parse(String(rawText || '')); } catch (e) { parsed = null; }
+      if (parsed && typeof parsed === 'object' && typeof parsed.stdout !== 'undefined' && typeof parsed.command !== 'undefined') {
+        return window.sreTerminalHtml(rawText, 1500);
+      }
+      const t = String(rawText || '').trim();
+      return window.sreResultCard(t ? escapeHtml(t.substring(0, 1000)) : '(no output)');
+    };
 
     // One neutral look for every phase. The phase itself is carried by its
     // icon, not by a rainbow of hues, so a replayed run reads exactly like the
@@ -3321,7 +3382,7 @@
       `;
       messagesDiv.appendChild(wrap);
       window.agentAutoScroll = window.isPinnedToBottom();
-      setBeamRunning(true);
+      safeBeamRunning(true);
       const body = document.getElementById(wrapId + '-body');
       body.dataset.wrapId = wrapId;
       // The ownership tag must live on the body itself: activeRunWrap points
@@ -3601,7 +3662,7 @@
       // workflow summary, and AI bubble with its terminal pill.
       window.lastRunBody = body;
       toggleRunWrap(wrapId, false);
-      setBeamRunning(false);
+      safeBeamRunning(false);
       window.activeRunWrap = null;
       window.runHeaderPinned = true;
       window.centerRunTurn(wrapId);
@@ -4134,7 +4195,7 @@
         }
         window.activeRunWrap = null;
         window.discardLiveBubble(String(sid || ''));
-        setBeamRunning(false);
+        safeBeamRunning(false);
         stopAllAgentStepTimers();
         addSystemMsg('Run cancelled.', 'circle-xmark');
       }
@@ -4855,7 +4916,7 @@
                         const stepStatus = String(step.tool_status || step.status || 'running').toLowerCase();
                         const stepTone = sreInvTone(stepStatus);
                         const detail = step.last_tool_result
-                          ? '<div style="margin:3px 0 6px;color:var(--text-secondary);font-size:10px;white-space:pre-wrap;overflow-wrap:anywhere;">' + escapeHtml(step.last_tool_result) + '</div>' : '';
+                          ? '<div style="margin:3px 0 6px;">' + window.sreTerminalHtml(step.last_tool_result, 900) + '</div>' : '';
                         const tool = step.last_tool
                           ? '<span class="sre-inv-chip" style="color:' + stepTone + ';margin-left:4px;">' + escapeHtml(step.last_tool) + '</span>' : '';
                         return '<div style="position:relative;margin:0 0 6px;color:var(--text-primary);font-size:11px;">'
@@ -4866,7 +4927,7 @@
                     + '</div>'
                   : '<div class="sre-inv-empty" style="padding:3px 0 6px;">Waiting for worker activity…</div>';
                 const lastResult = worker.last_tool_result && !steps.length
-                  ? '<div style="margin:4px 0 6px;color:var(--text-secondary);font-size:10px;white-space:pre-wrap;overflow-wrap:anywhere;">' + escapeHtml(worker.last_tool_result) + '</div>' : '';
+                  ? '<div style="margin:4px 0 6px;">' + window.sreTerminalHtml(worker.last_tool_result, 900) + '</div>' : '';
                 return '<div style="margin:0 0 10px;padding:9px 10px;border:1px solid var(--border-color);border-radius:10px;background:rgba(127,140,160,.04);">'
                   + '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'
                   + '<span style="font-weight:700;color:var(--text-primary);font-size:11px;">' + escapeHtml(worker.role || ('Worker ' + worker.id)) + '</span>'
@@ -4984,7 +5045,7 @@
                     ${escapeHtml(w.last_tool)}
                 </div>`;
           if (w.last_tool_result) {
-            toolHtml += `<div style="font-size:11px; color:var(--text-secondary); margin:3px 0 0 18px; white-space:pre-wrap; overflow-wrap:anywhere;">${escapeHtml(w.last_tool_result)}</div>`;
+            toolHtml += `<div style="margin:3px 0 0 18px;">${window.sreTerminalHtml(w.last_tool_result, 900)}</div>`;
           }
         }
 
@@ -5863,10 +5924,7 @@
 
                 case 'tool_end':
                   const resultTxt = (evt.result || evt.content || '').trim();
-                  const resultHtml = resultTxt
-                    ? escapeHtml(resultTxt.substring(0, 1000))
-                    : '(no output)';
-                  addAgentStep('Result', window.sreResultCard(resultHtml), 'var(--success)', 'check-circle', evt.step_id, true, time);
+                  addAgentStep('Result', window.sreResultHtml(resultTxt), 'var(--success)', 'check-circle', evt.step_id, true, time);
                   break;
 
                 case 'message_chunk':
@@ -6131,6 +6189,15 @@
       }
     };
 
+    // Beam glow is cosmetic: never let it break session loading if the beam
+    // block hasn't executed (stale cache / partial load).
+    function safeBeamRunning(running) {
+      try {
+        if (typeof setBeamRunning === 'function') setBeamRunning(running);
+        else if (window.setBeamRunning) window.setBeamRunning(running);
+      } catch (e) { /* cosmetic only */ }
+    }
+
     async function loadSession(id) {
 
       const previousSessionId = sessionId;
@@ -6142,7 +6209,7 @@
         isProcessing = false;
         window.setSendButtonState && window.setSendButtonState('idle');
         window.activeRunWrap = null;
-        setBeamRunning(false);
+        safeBeamRunning(false);
       }
       // Claim this chat's live events up front: a run that is still going
       // must stream here the moment we return, not only after a reload.
@@ -6212,6 +6279,29 @@
         window.historyReplaySet = replayMessages;
 
         window.renderHistoryMessages(messages, replayMessages);
+        // Replay backfill: worker_activity events that arrived before their
+        // investigation entry existed (or in another page) left inv.workers
+        // empty, so replay showed plan/findings but no worker flow while live
+        // did. Re-apply every snapshot in order now that all investigations
+        // are known; the merge accumulates the full workflow steps.
+        try {
+          const _waByCase = {};
+          (messages || []).forEach(msg => {
+            const _evts = (msg.metadata && Array.isArray(msg.metadata.events)) ? msg.metadata.events : [];
+            _evts.forEach(evt => {
+              if (evt && evt.type === 'worker_activity' && Array.isArray(evt.workers) && evt.workers.length) {
+                const _cid = evt.case_id || evt.investigation_id || '';
+                if (!_cid) return;
+                (_waByCase[_cid] = _waByCase[_cid] || []).push(evt.workers);
+              }
+            });
+          });
+          Object.keys(_waByCase).forEach(_cid => {
+            const _inv = investigations[_cid];
+            if (_inv && Array.isArray(_inv.workers) && _inv.workers.length) return;
+            _waByCase[_cid].forEach(_w => updateInvestigationWorkerActivity(_w, _cid));
+          });
+        } catch (_e) { /* best-effort */ }
         window.historyReplayWrap = null;
         window.isLoadingHistory = false;
         window.normalizeRunCards();
@@ -7533,9 +7623,20 @@
 
   #sre-agent-app .ai-content h1,
   #sre-agent-app .ai-content h2,
-  #sre-agent-app .ai-content h3 {
-    color: var(--text-strong);
-    margin: 12px 0 6px 0;
+  #sre-agent-app .ai-content h3,
+  #sre-agent-app .ai-content h4 {
+    color: var(--text-primary);
+    font-weight: 700;
+    margin: 10px 0 4px 0;
+    line-height: 1.4;
+  }
+  #sre-agent-app .ai-content h1 { font-size: 15px; }
+  #sre-agent-app .ai-content h2 { font-size: 14px; }
+  #sre-agent-app .ai-content h3,
+  #sre-agent-app .ai-content h4 { font-size: 13px; }
+  #sre-agent-app .ai-content strong,
+  #sre-agent-app .ai-content b {
+    color: var(--text-primary);
   }
 
   #sre-agent-app .ai-content p {
@@ -7543,17 +7644,31 @@
   }
 
   #sre-agent-app .ai-content table {
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     width: 100%;
     margin: 8px 0;
+    border: 1px solid #30363d;
+    border-radius: 16px;
+    overflow: hidden;
   }
 
   #sre-agent-app .ai-content th,
   #sre-agent-app .ai-content td {
-    border: 1px solid #30363d;
+    border: none;
+    border-bottom: 1px solid #30363d;
+    border-right: 1px solid #30363d;
     padding: 6px 10px;
     text-align: left;
     font-size: 13px;
+  }
+  #sre-agent-app .ai-content tr:last-child th,
+  #sre-agent-app .ai-content tr:last-child td {
+    border-bottom: none;
+  }
+  #sre-agent-app .ai-content th:last-child,
+  #sre-agent-app .ai-content td:last-child {
+    border-right: none;
   }
 
   #sre-agent-app .ai-content th {
@@ -7938,183 +8053,171 @@
   }
 </script>
 
-<!-- Manage AI Models Modal -->
+<!-- Manage AI Models Modal (Shadcn Style) -->
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
 <div id="ai-model-modal"
-  style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.45); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); z-index: 9999; align-items: center; justify-content: center;">
+  style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 9999; align-items: center; justify-content: center; font-family: 'Poppins', sans-serif; padding: 1rem;">
+  
   <div
-    style="background: var(--bg-panel); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 18px; width: 980px; max-width: 96%; max-height: 88vh; display: flex; flex-direction: column; box-shadow: 0 15px 45px rgba(0, 0, 0, 0.3); overflow: hidden;">
-
-    <!-- Modal Header -->
-    <div
-      style="padding: 16px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; background: var(--bg-main);">
-      <div class="d-flex align-items-center" style="gap: 12px;">
-        <div
-          style="width: 36px; height: 36px; border-radius: 10px; background: rgba(31, 111, 235, 0.12); border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center; color: var(--accent); font-size: 15px;">
-          <i class="fa-solid fa-sliders"></i>
-        </div>
+    style="background: var(--bg-panel); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 12px; width: 1350px; max-width: 98vw; height: 92vh; display: flex; flex-direction: column; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); overflow: hidden; position: relative; animation: modal-in 0.2s ease-out forwards;">
+    
+    <!-- Header -->
+    <div style="padding: 1.25rem 1.5rem 1rem; border-bottom: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 4px; background: var(--bg-main);">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start;">
         <div>
-          <h3 style="margin: 0; font-size: 16px; font-weight: 700; color: var(--text-strong);">AI Model Manager</h3>
-          <p style="margin: 0; font-size: 11px; color: var(--text-secondary);">Configure LLM providers, model IDs, and
-            endpoints</p>
+          <h2 style="margin: 0; font-size: 1.5rem; font-weight: 600; letter-spacing: -0.025em; color: var(--text-strong);">Model Configuration</h2>
+          <p style="margin: 4px 0 0; font-size: 1.1rem; color: var(--text-secondary);">Manage and configure AI providers, models, and endpoints for your workspace.</p>
         </div>
+        <button onclick="closeModelManagerModal()" style="background: transparent; border: none; color: var(--text-secondary); cursor: pointer; padding: 6px; border-radius: 6px; transition: background 0.15s; display: flex; align-items: center; justify-content: center;" onmouseover="this.style.background='var(--border-color)'; this.style.color='var(--text-strong)';" onmouseout="this.style.background='transparent'; this.style.color='var(--text-secondary)';">
+          <i class="fa-solid fa-xmark" style="font-size: 1.5rem;"></i>
+        </button>
       </div>
-      <button onclick="closeModelManagerModal()" class="btn btn-sm sre-input"
-        style="border-radius: 50%; width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; cursor: pointer;">
-        <i class="fa-solid fa-xmark" style="color: var(--text-secondary);"></i>
-      </button>
     </div>
 
-    <!-- Modal Body -->
-    <div style="padding: 20px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 20px;">
-
-      <!-- Existing Models List -->
-      <div>
-        <div class="d-flex justify-content-between align-items-center mb-3" style="flex-wrap: wrap; gap: 8px;">
-          <div class="d-flex align-items-center" style="gap: 8px;">
-            <h4 style="margin: 0; font-size: 14px; font-weight: 600; color: var(--text-primary);">Configured Models</h4>
-            <span id="model-count-badge" class="badge rounded-pill sre-input"
-              style="font-size: 10px; font-weight: 500; padding: 4px 8px; color: var(--text-secondary);">0 models</span>
+    <!-- Body -->
+    <div style="display: flex; flex: 1; overflow: hidden; background: var(--bg-panel);">
+      
+      <!-- List Section -->
+      <div id="ai-model-list-section" style="flex: 1; display: flex; flex-direction: column; overflow: hidden; transition: flex 0.3s ease;">
+        <div style="padding: 0.85rem 1.5rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; border-bottom: 1px solid var(--border-color); background: var(--bg-main);">
+          
+          <div style="position: relative; flex: 1; min-width: 250px; max-width: 400px;">
+            <i class="fa-solid fa-search" style="position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); font-size: 1.5rem; color: var(--text-secondary);"></i>
+            <input type="text" id="model-table-search" oninput="setModelTableSearch(this.value)" placeholder="Search models..." style="width: 100%; padding: 0.6rem 0.85rem 0.6rem 2.5rem; background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 6px; font-size: 1.5rem; color: var(--text-primary); transition: border-color 0.15s, box-shadow 0.15s; outline: none;" onfocus="this.style.borderColor='var(--accent)'; this.style.boxShadow='0 0 0 2px rgba(31, 111, 235, 0.2)';" onblur="this.style.borderColor='var(--border-color)'; this.style.boxShadow='none';">
           </div>
-          <div class="d-flex align-items-center" style="gap: 8px;">
-            <div id="model-status-filter" style="display: flex; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 16px; padding: 2px; gap: 2px;">
-              <button type="button" data-statusfilter="all" onclick="setModelStatusFilter('all')"
-                style="border: none; border-radius: 14px; padding: 3px 12px; font-size: 11px; font-weight: 600; cursor: pointer;">All</button>
-              <button type="button" data-statusfilter="active" onclick="setModelStatusFilter('active')"
-                style="border: none; border-radius: 14px; padding: 3px 12px; font-size: 11px; font-weight: 600; cursor: pointer;">Active</button>
-              <button type="button" data-statusfilter="inactive" onclick="setModelStatusFilter('inactive')"
-                style="border: none; border-radius: 14px; padding: 3px 12px; font-size: 11px; font-weight: 600; cursor: pointer;">Inactive</button>
+
+          <div style="display: flex; align-items: center; gap: 0.85rem;">
+            <div id="model-status-filter" style="display: flex; background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 6px; padding: 3px;">
+              <button type="button" data-statusfilter="all" onclick="setModelStatusFilter('all')" style="border: none; background: transparent; border-radius: 4px; padding: 0.4rem 1rem; font-size: 1.1rem; font-weight: 500; cursor: pointer; color: var(--text-secondary); transition: all 0.15s;">All</button>
+              <button type="button" data-statusfilter="active" onclick="setModelStatusFilter('active')" style="border: none; background: transparent; border-radius: 4px; padding: 0.4rem 1rem; font-size: 1.1rem; font-weight: 500; cursor: pointer; color: var(--text-secondary); transition: all 0.15s;">Active</button>
+              <button type="button" data-statusfilter="inactive" onclick="setModelStatusFilter('inactive')" style="border: none; background: transparent; border-radius: 4px; padding: 0.4rem 1rem; font-size: 1.1rem; font-weight: 500; cursor: pointer; color: var(--text-secondary); transition: all 0.15s;">Inactive</button>
             </div>
-            <button onclick="openAddAIModelForm()" class="sre-btn-primary btn btn-sm rounded-pill px-3 shadow-sm"
-              style="font-weight: 600; font-size: 12px; border: none;">
-              <i class="fa-solid fa-plus me-1"></i> Add New Model
+            <button onclick="openAddAIModelForm()" style="background: var(--text-primary); color: var(--bg-panel); border: none; border-radius: 6px; padding: 0.6rem 1.2rem; font-size: 1.1rem; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; transition: opacity 0.15s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+              <i class="fa-solid fa-plus" style="font-size: 0.9rem;"></i> Add Model
             </button>
           </div>
         </div>
 
-        <div
-          style="border: 1px solid var(--border-color); border-radius: 12px; overflow-x: auto; background: var(--bg-panel);">
-          <table class="table align-middle mb-0" style="font-size: 12px; color: var(--text-primary); width: 100%;">
-            <thead>
-              <tr
-                style="border-bottom: 1px solid var(--border-color); background: var(--bg-main); color: var(--text-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">
-                <th style="padding: 10px 12px; width: 60px; text-align: center; white-space: nowrap;">Order</th>
-                <th style="padding: 10px 12px; white-space: nowrap;">Display Name</th>
-                <th style="padding: 10px 12px; white-space: nowrap;">Model ID</th>
-                <th style="padding: 10px 12px; white-space: nowrap;">Provider</th>
-                <th style="padding: 10px 12px; white-space: nowrap;">Endpoint (Base URL)</th>
-                <th style="padding: 10px 12px; white-space: nowrap;">API Key</th>
-                <th style="padding: 10px 12px; text-align: center; white-space: nowrap; width: 110px;">Status</th>
-                <th style="padding: 10px 12px; text-align: right; white-space: nowrap; width: 110px;">Action</th>
+        <div style="flex: 1; overflow-y: auto; padding: 0;">
+          <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 1.1rem;">
+            <thead style="position: sticky; top: 0; background: var(--bg-panel); z-index: 5;">
+              <tr style="border-bottom: 1px solid var(--border-color); color: var(--text-secondary);">
+                <th style="padding: 0.85rem 1rem; font-weight: 500; width: 45px;"></th>
+                <th style="padding: 0.85rem 1rem; font-weight: 500; width: 25%;">Provider</th>
+                <th style="padding: 0.85rem 1rem; font-weight: 500; width: 25%;">Model Name</th>
+                <th style="padding: 0.85rem 1rem; font-weight: 500; width: 20%;">Model ID</th>
+                <th style="padding: 0.85rem 1rem; font-weight: 500; text-align: center;">Status</th>
+                <th style="padding: 0.85rem 1rem; font-weight: 500; text-align: right;">Actions</th>
               </tr>
             </thead>
             <tbody id="ai-models-table-body">
-              <tr>
-                <td colspan="8" style="padding: 24px; text-align: center; color: var(--text-secondary);">
-                  <div class="spinner-border spinner-border-sm me-2" role="status" style="color: var(--accent);"></div>
-                  Loading configured models...
-                </td>
-              </tr>
+              <!-- Injected rows here -->
             </tbody>
           </table>
         </div>
       </div>
 
-      <!-- Add/Edit Model Form Card (Hidden by default) -->
-      <div id="ai-model-form-card"
-        style="display: none; border: 1px solid var(--border-color); border-radius: 14px; padding: 18px; background: var(--bg-main);">
-        <div class="d-flex align-items-center" style="gap: 8px; margin-bottom: 16px;">
-          <i class="fa-solid fa-pen-ruler" style="font-size: 14px; color: var(--accent);"></i>
-          <h4 id="ai-model-form-title" style="margin: 0; font-size: 14px; font-weight: 700; color: var(--text-strong);">
-            Add New Model</h4>
+      <!-- Form Section (Slide-in / Separated View) -->
+      <div id="ai-model-form-card" style="display: none; flex-direction: column; width: 480px; min-width: 480px; border-left: 1px solid var(--border-color); background: var(--bg-panel); overflow-y: auto; animation: slide-left 0.2s ease-out forwards;">
+        <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; background: var(--bg-main); position: sticky; top: 0; z-index: 10;">
+          <h3 id="ai-model-form-title" style="margin: 0; font-size: 1.5rem; font-weight: 600; color: var(--text-strong);">Add Model</h3>
+          <button onclick="closeAIModelForm()" style="background: transparent; border: none; color: var(--text-secondary); cursor: pointer; padding: 6px; border-radius: 6px; transition: background 0.15s;" onmouseover="this.style.background='var(--border-color)'; this.style.color='var(--text-strong)';" onmouseout="this.style.background='transparent'; this.style.color='var(--text-secondary)';">
+            <i class="fa-solid fa-xmark" style="font-size: 1.5rem;"></i>
+          </button>
         </div>
 
-        <form id="ai-model-form" onsubmit="saveAIModelForm(event)">
+        <form id="ai-model-form" onsubmit="saveAIModelForm(event)" style="padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
           <input type="hidden" id="model-edit-id" value="">
-          <div class="row g-3 mb-3">
-            <div class="col-md-6">
-              <label class="form-label mb-1"
-                style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">Display Name</label>
-              <input type="text" id="model-name-input" placeholder="e.g. OpenCode Provider (9Router)" required
-                class="sre-input" style="width: 100%; padding: 8px 12px; border-radius: 8px; font-size: 12px;">
-            </div>
-            <div class="col-md-6">
-              <label class="form-label mb-1"
-                style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">Model ID <span
-                  style="opacity: 0.7;">(Target sent to engine)</span></label>
-              <input type="text" id="model-id-input" placeholder="e.g. OPENCODE or GROQ" required class="sre-input"
-                style="width: 100%; padding: 8px 12px; border-radius: 8px; font-size: 12px;">
-            </div>
-            <div class="col-md-6">
-              <label class="form-label mb-1"
-                style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">Provider</label>
-              <input type="text" id="model-provider-input" placeholder="e.g. CLAUDE, NVIDIA, 9router" required
-                class="sre-input" style="width: 100%; padding: 8px 12px; border-radius: 8px; font-size: 12px;">
-            </div>
-            <div class="col-md-6">
-              <label class="form-label mb-1"
-                style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">Endpoint Type</label>
-              <div id="model-endpoint-toggle" style="display: flex; background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 8px; padding: 3px; gap: 3px;">
-                <button type="button" data-endpoint="openai" onclick="setModelEndpointType('openai')"
-                  style="flex: 1; border: none; border-radius: 6px; padding: 6px 4px; font-size: 11px; font-weight: 600; cursor: pointer;">OpenAI-compatible</button>
-                <button type="button" data-endpoint="anthropic" onclick="setModelEndpointType('anthropic')"
-                  style="flex: 1; border: none; border-radius: 6px; padding: 6px 4px; font-size: 11px; font-weight: 600; cursor: pointer;">Anthropic native</button>
+          
+          <!-- Provider -->
+          <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+            <label style="font-size: 1.1rem; font-weight: 500; color: var(--text-primary);">Provider</label>
+            <div id="model-provider-combo" style="position: relative;">
+              <div id="model-provider-selected" onclick="toggleProviderDropdown(event)" style="display: flex; align-items: center; gap: 0.75rem; width: 100%; padding: 0.75rem 1rem; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-main); cursor: pointer; font-size: 1.1rem; transition: border-color 0.15s;" onmouseover="this.style.borderColor='var(--accent)';" onmouseout="this.style.borderColor='var(--border-color)';">
+                <span id="model-provider-logo" style="display:flex; align-items:center;"></span>
+                <span id="model-provider-label" style="flex: 1; font-weight: 500; color: var(--text-strong);">Select Provider...</span>
+                <i class="fa-solid fa-chevron-down" style="color: var(--text-secondary); font-size: 1.5rem;"></i>
               </div>
-              <div id="model-endpoint-hint" style="font-size: 11px; color: var(--text-secondary); margin-top: 4px; opacity: 0.85;"></div>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label mb-1"
-                style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">Tool Calling</label>
-              <div id="model-toolchoice-toggle" style="display: flex; background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 8px; padding: 3px; gap: 3px;">
-                <button type="button" data-toolchoice="any" onclick="setModelToolChoice('any')"
-                  style="flex: 1; border: none; border-radius: 6px; padding: 6px 4px; font-size: 11px; font-weight: 600; cursor: pointer;">Force call</button>
-                <button type="button" data-toolchoice="auto" onclick="setModelToolChoice('auto')"
-                  style="flex: 1; border: none; border-radius: 6px; padding: 6px 4px; font-size: 11px; font-weight: 600; cursor: pointer;">Let model decide</button>
+              <!-- Dropdown -->
+              <div id="model-provider-dropdown" style="display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 50; background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); overflow: hidden;">
+                <div style="padding: 0.6rem; border-bottom: 1px solid var(--border-color); background: var(--bg-main);">
+                  <input type="text" id="model-provider-search" oninput="renderProviderDropdown()" placeholder="Search providers..." style="width: 100%; padding: 0.5rem 0.6rem; border: 1px solid var(--border-color); background: var(--bg-panel); border-radius: 4px; font-size: 1.1rem; outline: none; color: var(--text-primary);">
+                </div>
+                <div id="model-provider-options" style="max-height: 280px; overflow-y: auto; padding: 0.35rem;"></div>
               </div>
-              <div id="model-toolchoice-hint" style="font-size: 11px; color: var(--text-secondary); margin-top: 4px; opacity: 0.85;"></div>
             </div>
-            <div class="col-md-6">
-              <label class="form-label mb-1"
-                style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">Base URL / Endpoint <span
-                  style="opacity: 0.7;">(Optional)</span></label>
-              <input type="text" id="model-baseurl-input" placeholder="e.g. http://localhost:20128/v1" class="sre-input"
-                style="width: 100%; padding: 8px 12px; border-radius: 8px; font-size: 12px;">
+            <input type="hidden" id="model-provider-input" value="9router">
+          </div>
+
+          <!-- Model ID -->
+          <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+            <label style="font-size: 1.1rem; font-weight: 500; color: var(--text-primary);">Model ID</label>
+            <input type="text" id="model-id-input" list="model-id-suggestions" placeholder="e.g. gpt-4o, claude-3-5-sonnet" required style="width: 100%; padding: 0.75rem 1rem; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; font-size: 1.1rem; color: var(--text-primary); outline: none;" onfocus="this.style.borderColor='var(--accent)';" onblur="this.style.borderColor='var(--border-color)';">
+            <datalist id="model-id-suggestions"></datalist>
+          </div>
+
+          <!-- Display Name -->
+          <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+            <label style="font-size: 1.1rem; font-weight: 500; color: var(--text-primary);">Display Name</label>
+            <input type="text" id="model-name-input" placeholder="e.g. OpenAI GPT-4o" required style="width: 100%; padding: 0.75rem 1rem; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; font-size: 1.1rem; color: var(--text-primary); outline: none;" onfocus="this.style.borderColor='var(--accent)';" onblur="this.style.borderColor='var(--border-color)';">
+          </div>
+
+          <!-- API Key -->
+          <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+            <label style="font-size: 1.1rem; font-weight: 500; color: var(--text-primary);">API Key <span style="color: var(--text-secondary); font-weight: 400;">(Optional)</span></label>
+            <div style="position: relative;">
+              <input type="password" id="model-apikey-input" placeholder="Leave blank to use default" style="width: 100%; padding: 0.65rem 2.5rem 0.65rem 0.85rem; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; font-size: 1.1rem; color: var(--text-primary); outline: none;" onfocus="this.style.borderColor='var(--accent)';" onblur="this.style.borderColor='var(--border-color)';">
+              <button type="button" onclick="toggleModelApiKeyVisibility()" style="position: absolute; right: 0.6rem; top: 50%; transform: translateY(-50%); background: transparent; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px;">
+                <i id="model-apikey-eye" class="fa-solid fa-eye" style="font-size: 1.5rem;"></i>
+              </button>
             </div>
-            <div class="col-md-6">
-              <label class="form-label mb-1"
-                style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">API Key <span
-                  style="opacity: 0.7;">(Optional)</span></label>
-              <input type="password" id="model-apikey-input" placeholder="e.g. sk-proj-... or gsk_..." class="sre-input"
-                style="width: 100%; padding: 8px 12px; border-radius: 8px; font-size: 12px;">
+          </div>
+
+          <!-- Base URL -->
+          <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+            <label style="font-size: 1.1rem; font-weight: 500; color: var(--text-primary);">Base URL <span style="color: var(--text-secondary); font-weight: 400;">(Optional)</span></label>
+            <input type="text" id="model-baseurl-input" placeholder="Custom API endpoint" style="width: 100%; padding: 0.75rem 1rem; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; font-size: 1.1rem; color: var(--text-primary); outline: none;" onfocus="this.style.borderColor='var(--accent)';" onblur="this.style.borderColor='var(--border-color)';">
+          </div>
+
+          <!-- Adv Settings -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem;">
+            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+              <label style="font-size: 1.5rem; font-weight: 500; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Endpoint</label>
+              <div id="model-endpoint-toggle" style="display: flex; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 2px;">
+                <button type="button" data-endpoint="openai" onclick="setModelEndpointType('openai')" style="flex: 1; border: none; background: var(--bg-panel); border-radius: 4px; padding: 0.45rem 0; font-size: 1.5rem; font-weight: 500; cursor: pointer; color: var(--text-primary); box-shadow: 0 1px 2px rgba(0,0,0,0.1);">OpenAI</button>
+                <button type="button" data-endpoint="anthropic" onclick="setModelEndpointType('anthropic')" style="flex: 1; border: none; background: transparent; border-radius: 4px; padding: 0.45rem 0; font-size: 1.5rem; font-weight: 500; cursor: pointer; color: var(--text-secondary);">Anthropic</button>
+              </div>
             </div>
-            <div class="col-md-6">
-              <label class="form-label mb-1"
-                style="font-size: 11px; font-weight: 500; color: var(--text-secondary);">Display Order</label>
-              <input type="number" id="model-order-input" value="0" class="sre-input"
-                style="width: 100%; padding: 8px 12px; border-radius: 8px; font-size: 12px;">
-            </div>
-            <div class="col-md-6 d-flex align-items-center">
-              <div class="form-check form-switch mt-3">
-                <input class="form-check-input" type="checkbox" id="model-active-input" checked
-                  style="cursor: pointer; accent-color: var(--accent);">
-                <label class="form-check-label ms-1" for="model-active-input"
-                  style="cursor: pointer; font-size: 12px; font-weight: 500; color: var(--text-primary);">Active
-                  Option</label>
+            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+              <label style="font-size: 1.5rem; font-weight: 500; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Tool Calling</label>
+              <div id="model-toolchoice-toggle" style="display: flex; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 2px;">
+                <button type="button" data-toolchoice="any" onclick="setModelToolChoice('any')" style="flex: 1; border: none; background: var(--bg-panel); border-radius: 4px; padding: 0.45rem 0; font-size: 1.5rem; font-weight: 500; cursor: pointer; color: var(--text-primary); box-shadow: 0 1px 2px rgba(0,0,0,0.1);" class="active-choice">Force</button>
+                <button type="button" data-toolchoice="auto" onclick="setModelToolChoice('auto')" style="flex: 1; border: none; background: transparent; border-radius: 4px; padding: 0.45rem 0; font-size: 1.5rem; font-weight: 500; cursor: pointer; color: var(--text-secondary);">Auto</button>
               </div>
             </div>
           </div>
-          <div id="ai-model-test-result"
-            style="display: none; width: 100%; margin-top: 10px; padding: 10px 14px; border-radius: 8px; font-size: 12px;">
+
+          <!-- Active & Order -->
+          <div style="display: flex; align-items: center; justify-content: space-between; padding-top: 0.25rem;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+              <input type="checkbox" id="model-active-input" checked style="width: 1.15rem; height: 1.15rem; accent-color: var(--text-primary); cursor: pointer;">
+              <span style="font-size: 1.1rem; font-weight: 500; color: var(--text-primary);">Active Status</span>
+            </label>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <label style="font-size: 1.1rem; font-weight: 500; color: var(--text-primary);">Order</label>
+              <input type="number" id="model-order-input" value="0" style="width: 65px; padding: 0.45rem; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; font-size: 1.1rem; color: var(--text-primary); outline: none; text-align: center;" onfocus="this.style.borderColor='var(--accent)';" onblur="this.style.borderColor='var(--border-color)';">
+            </div>
           </div>
-          <div class="d-flex justify-content-end gap-2 pt-3" style="border-top: 1px solid var(--border-color);">
-            <button type="button" id="model-test-btn" onclick="testAIModelForm()" class="btn btn-sm sre-input"
-              style="border-radius: 20px; font-weight: 600; font-size: 12px; padding: 5px 16px; color: var(--purple); border-color: rgba(137, 87, 229, 0.4);">
-              <i class="fa-solid fa-vial me-1"></i> Test Connection
+
+          <div id="ai-model-test-result" style="display: none; padding: 0.75rem; border-radius: 6px; font-size: 1.5rem; font-family: monospace; word-break: break-all;"></div>
+
+          <!-- Actions -->
+          <div style="display: flex; gap: 0.75rem; padding-top: 0.75rem; margin-top: auto; border-top: 1px solid var(--border-color);">
+            <button type="button" id="model-test-btn" onclick="testAIModelForm()" style="flex: 1; background: transparent; border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 6px; padding: 0.65rem; font-size: 1.1rem; font-weight: 500; cursor: pointer; transition: all 0.15s;" onmouseover="this.style.background='var(--bg-main)';">
+              Test Connection
             </button>
-            <button type="button" onclick="closeAIModelForm()" class="btn btn-sm sre-input"
-              style="border-radius: 20px; font-size: 12px; padding: 5px 16px;">Cancel</button>
-            <button type="submit" class="sre-btn-success btn btn-sm px-4 shadow-sm"
-              style="border-radius: 20px; font-weight: 600; font-size: 12px; border: none;">
-              <i class="fa-solid fa-floppy-disk me-1"></i> Save Model
+            <button type="submit" style="flex: 1; background: var(--text-primary); color: var(--bg-panel); border: none; border-radius: 6px; padding: 0.65rem; font-size: 1.1rem; font-weight: 500; cursor: pointer; transition: opacity 0.15s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+              Save Model
             </button>
           </div>
         </form>
@@ -8123,6 +8226,13 @@
     </div>
   </div>
 </div>
+
+<style>
+  @keyframes modal-in { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+  @keyframes slide-left { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+  #ai-models-table-body tr { transition: background-color 0.15s ease; }
+  #ai-models-table-body tr:hover { background-color: rgba(128, 128, 128, 0.05); }
+</style>
 
 <script>
   let currentLoadedAIModels = [];
@@ -8228,8 +8338,8 @@
   function openAddAIModelForm() {
     resetAIModelForm();
     const card = document.getElementById('ai-model-form-card');
-    card.style.display = 'block';
-    document.getElementById('ai-model-form-title').innerText = 'Add New Model';
+    card.style.display = 'flex';
+    document.getElementById('ai-model-form-title').innerText = 'Add Model';
     setTimeout(() => {
       const input = document.getElementById('model-name-input');
       if (input) input.focus();
@@ -8248,64 +8358,111 @@
     if (bar) {
       Array.from(bar.querySelectorAll('button')).forEach(b => {
         const active = b.dataset.statusfilter === window.modelStatusFilter;
-        b.style.background = active ? 'var(--accent)' : 'transparent';
-        b.style.color = active ? '#fff' : 'var(--text-secondary)';
+        b.style.background = active ? 'var(--bg-panel)' : 'transparent';
+        b.style.color = active ? 'var(--text-primary)' : 'var(--text-secondary)';
+        b.style.boxShadow = active ? '0 1px 2px rgba(0,0,0,0.1)' : 'none';
       });
     }
     if (typeof renderModelManagerTable === 'function') renderModelManagerTable();
   }
 
+  function setModelTableSearch(val) {
+    window.modelTableSearch = (val || '').toLowerCase().trim();
+    if (typeof renderModelManagerTable === 'function') renderModelManagerTable();
+  }
+
+  function modelRowMatches(m, filt, q) {
+    if (filt === 'active' && !m.is_active) return false;
+    if (filt === 'inactive' && m.is_active) return false;
+    if (!q) return true;
+    const meta = providerMeta(m.provider);
+    return [m.name, m.model_id, m.provider, meta.label, m.base_url]
+      .filter(Boolean).join(' ').toLowerCase().includes(q);
+  }
+
+  async function persistModelOrder(idsInOrder) {
+    // Tulis ulang order 1..N sesuai urutan drag. API hanya punya save per-row,
+    // jadi kirim berurutan; yang gagal tidak menghentikan sisanya.
+    for (let i = 0; i < idsInOrder.length; i++) {
+      const m = currentLoadedAIModels.find(x => String(x.id) === String(idsInOrder[i]));
+      if (!m || m.order === i + 1) continue;
+      try {
+        await window.wsCall('aimodel.save', {
+          id: m.id, name: m.name, model_id: m.model_id, provider: m.provider,
+          endpoint_type: m.endpoint_type || 'openai', base_url: m.base_url || '',
+          order: i + 1, is_active: m.is_active, tool_choice: m.tool_choice || 'any',
+        });
+        m.order = i + 1;
+      } catch (e) { console.error('Failed to persist order for', m.id, e); }
+    }
+    await loadAIModels();
+    renderModelManagerTable();
+  }
+
+  function moveModelRow(id, dir) {
+    const sorted = [...(currentLoadedAIModels || [])].sort((a, b) => (a.order - b.order) || (a.id - b.id));
+    const idx = sorted.findIndex(x => String(x.id) === String(id));
+    const j = idx + dir;
+    if (idx < 0 || j < 0 || j >= sorted.length) return;
+    const tmp = sorted[idx]; sorted[idx] = sorted[j]; sorted[j] = tmp;
+    persistModelOrder(sorted.map(x => x.id));
+  }
+
   function renderModelManagerTable() {
     const tbody = document.getElementById('ai-models-table-body');
-    const badge = document.getElementById('model-count-badge');
     const filt = window.modelStatusFilter || 'all';
-    const visibleModels = (currentLoadedAIModels || []).filter(m => {
-      if (filt === 'active') return !!m.is_active;
-      if (filt === 'inactive') return !m.is_active;
-      return true;
-    });
-    if (badge) badge.innerText = `${visibleModels.length} of ${currentLoadedAIModels.length} models`;
+    const q = window.modelTableSearch || '';
+    const visibleModels = (currentLoadedAIModels || []).filter(m => modelRowMatches(m, filt, q));
+    const dragLocked = filt !== 'all' || !!q;
 
     if (!tbody) return;
     if (visibleModels.length === 0) {
-      const emptyMsg = filt === 'all'
-        ? 'No models configured. Click <b>Add New Model</b> to create one.'
-        : `No ${filt} models.`;
-      tbody.innerHTML = `<tr><td colspan="8" style="padding: 24px; text-align: center; color: var(--text-secondary);">${emptyMsg}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" style="padding: 3rem; text-align: center; color: var(--text-secondary); font-size: 1.1rem;">No models found.</td></tr>`;
       return;
     }
     tbody.innerHTML = visibleModels.map(m => `
-      <tr style="border-bottom: 1px solid var(--border-color);">
-        <td style="padding: 10px 12px; text-align: center; white-space: nowrap;">
-          <span style="font-family: monospace; font-size: 11px; color: var(--text-secondary); background: var(--bg-main); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">${m.order}</span>
+      <tr draggable="${dragLocked ? 'false' : 'true'}" data-model-id="${m.id}"
+        ondragstart="event.dataTransfer.setData('text/plain', '${m.id}'); this.style.opacity='0.4';"
+        ondragend="this.style.opacity='1';"
+        ondragover="event.preventDefault(); this.style.background='var(--bg-main)';"
+        ondragleave="this.style.background='';"
+        ondrop="event.preventDefault(); this.style.background=''; const src=event.dataTransfer.getData('text/plain'); if(src && String(src)!=='${m.id}'){ const sorted=[...(currentLoadedAIModels||[])].sort((a,b)=>(a.order-b.order)||(a.id-b.id)).map(x=>String(x.id)); const from=sorted.indexOf(String(src)); const to=sorted.indexOf('${m.id}'); if(from>-1&&to>-1){ sorted.splice(to,0,sorted.splice(from,1)[0]); persistModelOrder(sorted); } }"
+        style="border-bottom: 1px solid var(--border-color); ${dragLocked ? '' : 'cursor: grab;'}">
+        <td style="padding: 1rem 0.5rem; width: 40px; text-align: center;">
+          <i class="fa-solid fa-grip-vertical" style="color: var(--text-secondary); opacity: ${dragLocked ? '0.2' : '0.5'}; font-size: 1rem;"></i>
         </td>
-        <td style="padding: 10px 12px; font-weight: 600; color: var(--text-strong); white-space: nowrap;">${m.name}</td>
-        <td style="padding: 10px 12px; white-space: nowrap;">
-          <span style="font-family: monospace; color: var(--accent); background: var(--bg-main); padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 11px;">${m.model_id}</span>
+        <td style="padding: 1rem; white-space: normal;">
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            ${providerLogoHtml(m.provider, 28)}
+            <div style="display: flex; flex-direction: column;">
+              <span style="font-size: 1.1rem; font-weight: 500; color: var(--text-primary); line-height: 1.2;">${escapeHtml(providerMeta(m.provider).label)}</span>
+              <span style="font-size: 0.95rem; color: var(--text-secondary);">${(m.endpoint_type || 'openai') === 'anthropic' ? 'Anthropic' : 'OpenAI'} API</span>
+            </div>
+          </div>
         </td>
-        <td style="padding: 10px 12px; white-space: nowrap;">
-          <span style="font-size: 10px; font-weight: 600; background: rgba(137, 87, 229, 0.12); color: var(--purple); padding: 3px 8px; border-radius: 12px; border: 1px solid rgba(137, 87, 229, 0.3);">${m.provider}</span>
-          <span title="${(m.endpoint_type || 'openai') === 'anthropic' ? 'Anthropic native Messages API' : 'OpenAI-compatible chat-completions'}" style="font-size: 10px; font-weight: 600; background: ${(m.endpoint_type || 'openai') === 'anthropic' ? 'rgba(210,153,34,0.12); color: var(--warning); border: 1px solid rgba(210,153,34,0.3)' : 'rgba(88,166,255,0.12); color: var(--text-strong); border: 1px solid var(--border-color)'}; padding: 3px 8px; border-radius: 12px; margin-left: 4px;">${(m.endpoint_type || 'openai') === 'anthropic' ? 'Anthropic' : 'OpenAI'}</span>
+        <td style="padding: 1rem; font-size: 1.1rem; font-weight: 600; color: var(--text-strong);">
+          ${escapeHtml(m.name)}
         </td>
-        <td style="padding: 10px 12px; font-family: monospace; font-size: 11px; color: var(--text-secondary); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-          ${m.base_url ? m.base_url : '<span style="opacity: 0.5; font-style: italic;">Default</span>'}
+        <td style="padding: 1rem;">
+          <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 1rem; padding: 0.35rem 0.65rem; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-secondary); display: inline-block; word-break: break-word; max-width: 100%;">
+            ${escapeHtml(m.model_id)}
+          </span>
         </td>
-        <td style="padding: 10px 12px; white-space: nowrap;">
-          ${m.has_key ? '<span style="font-size: 10px; font-weight: 600; color: var(--success-text); background: rgba(45, 164, 78, 0.12); border: 1px solid rgba(45, 164, 78, 0.3); padding: 3px 8px; border-radius: 12px;"><i class="fa-solid fa-key me-1"></i>Set</span>' : '<span style="opacity: 0.5; font-style: italic;">Default/Env</span>'}
-        </td>
-        <td style="padding: 10px 12px; text-align: center; white-space: nowrap;">
+        <td style="padding: 1rem; text-align: center; width: 1%; white-space: nowrap;">
           ${m.is_active
-        ? `<span style="font-size: 10px; font-weight: 600; color: var(--success-text); background: rgba(45, 164, 78, 0.12); border: 1px solid rgba(45, 164, 78, 0.3); padding: 3px 8px; border-radius: 12px;"><i class="fa-solid fa-circle-check me-1"></i>Active</span>`
-        : `<span style="font-size: 10px; font-weight: 600; color: var(--text-secondary); background: var(--bg-main); border: 1px solid var(--border-color); padding: 3px 8px; border-radius: 12px;"><i class="fa-solid fa-circle-xmark me-1"></i>Inactive</span>`
+        ? `<div style="display: inline-flex; align-items: center; gap: 6px; padding: 0.35rem 0.75rem; background: rgba(16, 185, 129, 0.1); color: rgb(16, 185, 129); border-radius: 9999px; font-size: 1rem; font-weight: 500;"><div style="width: 8px; height: 8px; border-radius: 50%; background: rgb(16, 185, 129);"></div>Active</div>`
+        : `<div style="display: inline-flex; align-items: center; gap: 6px; padding: 0.35rem 0.75rem; background: var(--bg-main); color: var(--text-secondary); border-radius: 9999px; font-size: 1rem; font-weight: 500;"><div style="width: 8px; height: 8px; border-radius: 50%; background: var(--text-secondary);"></div>Inactive</div>`
       }
         </td>
-        <td style="padding: 10px 12px; text-align: right; white-space: nowrap;">
-          <button onclick="editAIModel(${m.id})" class="btn btn-sm sre-input me-1" style="border-radius: 8px; padding: 3px 8px; font-size: 11px; color: var(--accent);" title="Edit Model">
-            <i class="fa-solid fa-pen-to-square"></i>
-          </button>
-          <button onclick="deleteAIModel(${m.id})" class="btn btn-sm sre-input" style="border-radius: 8px; padding: 3px 8px; font-size: 11px; color: var(--error);" title="Delete Model">
-            <i class="fa-solid fa-trash"></i>
-          </button>
+        <td style="padding: 1rem; text-align: right; width: 1%; white-space: nowrap;">
+          <div style="display: inline-flex; gap: 0.5rem; justify-content: flex-end;">
+            <button onclick="editAIModel(${m.id})" style="display: inline-flex; align-items: center; gap: 6px; background: var(--bg-main); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.5rem 1rem; border-radius: 6px; font-size: 1.05rem; font-weight: 500; cursor: pointer; transition: all 0.15s;" onmouseover="this.style.background='var(--bg-panel)'; this.style.borderColor='var(--accent)';" title="Edit">
+              <i class="fa-solid fa-pen"></i> Edit
+            </button>
+            <button onclick="deleteAIModel(${m.id})" style="display: inline-flex; align-items: center; gap: 6px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: rgb(239, 68, 68); padding: 0.5rem 1rem; border-radius: 6px; font-size: 1.05rem; font-weight: 500; cursor: pointer; transition: all 0.15s;" onmouseover="this.style.background='rgb(239, 68, 68)'; this.style.color='#fff';" title="Delete">
+              <i class="fa-solid fa-trash"></i> Hapus
+            </button>
+          </div>
         </td>
       </tr>
     `).join('');
@@ -8314,6 +8471,130 @@
 
 
 
+
+  /* ---------- Provider catalog: selectable + searchable, with logo ---------- */
+  const AI_PROVIDER_CATALOG = [
+    { id: '9router', label: '9Router', domain: 'router.com', fallback: '9', color: '#1f6feb', baseUrl: 'http://localhost:20128/v1', models: ['OPENCODE', '9router:auto'] },
+    { id: 'openai', label: 'OpenAI', domain: 'openai.com', fallback: 'O', color: '#10a37f', baseUrl: '', models: ['gpt-4o', 'gpt-4o-mini', 'o3-mini'] },
+    { id: 'anthropic', label: 'Anthropic', domain: 'anthropic.com', fallback: 'A', color: '#d97757', baseUrl: '', endpoint: 'anthropic', models: ['claude-sonnet-4-20250514', 'claude-3-5-sonnet-20241022'] },
+    { id: 'deepseek', label: 'DeepSeek', domain: 'deepseek.com', fallback: 'D', color: '#4d6bfe', baseUrl: 'https://api.deepseek.com/v1', models: ['deepseek-chat', 'deepseek-reasoner'] },
+    { id: 'minimax', label: 'MiniMax', domain: 'minimax.io', fallback: 'M', color: '#e5484d', baseUrl: 'https://api.minimax.chat/v1', models: ['MiniMax-Text-01'] },
+    { id: 'mistral', label: 'Mistral AI', domain: 'mistral.ai', fallback: 'M', color: '#ff7000', baseUrl: '', models: ['mistral-large-latest'] },
+    { id: 'groq', label: 'Groq', domain: 'groq.com', fallback: 'G', color: '#f55036', baseUrl: '', models: ['llama-3.3-70b-versatile'] },
+    { id: 'nvidia', label: 'NVIDIA', domain: 'nvidia.com', fallback: 'N', color: '#76b900', baseUrl: 'https://integrate.api.nvidia.com/v1', models: ['nvidia/llama-3.1-nemotron-70b-instruct'] },
+    { id: 'ollama', label: 'Ollama', domain: 'ollama.com', fallback: 'O', color: '#a3a3a3', baseUrl: 'http://127.0.0.1:11434', models: ['qwen2.5-coder:latest'] },
+    { id: 'gemini', label: 'Google Gemini', domain: 'google.com', fallback: 'G', color: '#1a73e8', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/', models: ['gemini-2.0-flash'] },
+    { id: 'xai', label: 'xAI Grok', domain: 'x.ai', fallback: 'X', color: '#cccccc', baseUrl: 'https://api.x.ai/v1', models: ['grok-2-latest'] },
+    { id: 'cohere', label: 'Cohere', domain: 'cohere.com', fallback: 'C', color: '#39594d', baseUrl: 'https://api.cohere.ai/compatibility/v1', models: ['command-r-plus'] },
+    { id: 'together', label: 'Together AI', domain: 'together.ai', fallback: 'T', color: '#7c3aed', baseUrl: 'https://api.together.xyz/v1', models: ['meta-llama/Llama-3.3-70B-Instruct-Turbo'] },
+    { id: 'fireworks', label: 'Fireworks', domain: 'fireworks.ai', fallback: 'F', color: '#f97316', baseUrl: 'https://api.fireworks.ai/inference/v1', models: ['accounts/fireworks/models/llama-v3p1-70b-instruct'] },
+    { id: 'openrouter', label: 'OpenRouter', domain: 'openrouter.ai', fallback: 'O', color: '#8b5cf6', baseUrl: 'https://openrouter.ai/api/v1', models: ['anthropic/claude-3.5-sonnet'] },
+    { id: 'perplexity', label: 'Perplexity', domain: 'perplexity.ai', fallback: 'P', color: '#20b8cd', baseUrl: 'https://api.perplexity.ai', models: ['llama-3.1-sonar-large-128k-online'] },
+    { id: 'qwen', label: 'Qwen', domain: 'qwen.ai', fallback: 'Q', color: '#6c5ce7', baseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', models: ['qwen-max'] },
+    { id: 'moonshot', label: 'Moonshot', domain: 'moonshot.ai', fallback: 'M', color: '#fbbf24', baseUrl: 'https://api.moonshot.ai/v1', models: ['moonshot-v1-8k'] },
+    { id: 'zhipu', label: 'Zhipu', domain: 'zhipuai.cn', fallback: 'Z', color: '#0ea5e9', baseUrl: 'https://open.bigmodel.cn/api/paas/v4/', models: ['glm-4-plus'] },
+    { id: 'azure', label: 'Azure OpenAI', domain: 'azure.microsoft.com', fallback: 'A', color: '#0078d4', baseUrl: '', models: ['gpt-4o'] },
+    { id: 'bedrock', label: 'AWS Bedrock', domain: 'aws.amazon.com', fallback: 'B', color: '#ff9900', baseUrl: '', models: ['anthropic.claude-3-5-sonnet-20241022-v2:0'] },
+    { id: 'huggingface', label: 'Hugging Face', domain: 'huggingface.co', fallback: 'H', color: '#ff9d0a', baseUrl: 'https://api-inference.huggingface.co/v1', models: ['meta-llama/Llama-3.3-70B-Instruct'] },
+    { id: 'xiaomi', label: 'Xiaomi MiMo', domain: 'mimo.mi.com', fallback: 'X', color: '#ff6900', baseUrl: '', models: [] },
+    { id: 'cerebras', label: 'Cerebras', domain: 'cerebras.ai', fallback: 'C', color: '#ff4c00', baseUrl: 'https://api.cerebras.ai/v1', models: ['llama3.1-8b'] },
+    { id: 'other', label: 'Other / Custom', domain: '', fallback: 'O', color: '#6b7280', baseUrl: '', models: [] },
+  ];
+
+  function providerMeta(pid) {
+    const key = String(pid || '').toLowerCase();
+    return AI_PROVIDER_CATALOG.find(p => p.id === key)
+      || AI_PROVIDER_CATALOG.find(p => p.label.toLowerCase() === key)
+      || { id: key || 'other', label: pid || 'Other', domain: '', fallback: pid.charAt(0).toUpperCase() || 'O', color: '#6b7280', baseUrl: '', models: [] };
+  }
+
+  function providerLogoHtml(pid, size) {
+    const meta = providerMeta(pid);
+    const s = size || 24;
+    if (meta.domain) {
+      return `<img src="https://www.google.com/s2/favicons?sz=64&domain=${meta.domain}" alt="${escapeHtml(meta.label)}" style="width: ${s}px; height: ${s}px; border-radius: 4px; object-fit: contain; flex-shrink: 0; background: #fff; padding: 2px;" onerror="this.onerror=null; this.outerHTML='<span style=\'display:inline-flex; align-items:center; justify-content:center; width:${s}px; height:${s}px; border-radius:4px; font-size:${Math.round(s*0.6)}px; background:${meta.color}22; border:1px solid ${meta.color}66; color:${meta.color}; font-weight:bold;\'>${escapeHtml(meta.fallback)}</span>'"/>`;
+    }
+    return `<span title="${escapeHtml(meta.label)}" style="display: inline-flex; align-items: center; justify-content: center; width: ${s}px; height: ${s}px; border-radius: 4px; font-size: ${Math.round(s * 0.6)}px; background: ${meta.color}22; border: 1px solid ${meta.color}66; color: ${meta.color}; font-weight: bold; flex-shrink: 0;">${escapeHtml(meta.fallback)}</span>`;
+  }
+
+  function getModelProviderValue() {
+    const el = document.getElementById('model-provider-input');
+    return (el && el.value ? el.value : '9router').toLowerCase();
+  }
+
+  function setModelProviderValue(pid, opts) {
+    const meta = providerMeta(pid);
+    const input = document.getElementById('model-provider-input');
+    const label = document.getElementById('model-provider-label');
+    const logo = document.getElementById('model-provider-logo');
+    if (input) input.value = meta.id;
+    if (label) label.textContent = meta.label;
+    if (logo) logo.innerHTML = providerLogoHtml(meta.id, 20);
+    renderModelIdSuggestions();
+    if (!(opts && opts.keepOpen)) closeProviderDropdown();
+    const base = document.getElementById('model-baseurl-input');
+    if (base && !base.value && meta.baseUrl && !(opts && opts.noPrefill)) base.placeholder = meta.baseUrl;
+    if (meta.endpoint && !(opts && opts.noEndpoint)) setModelEndpointType(meta.endpoint);
+  }
+
+  function toggleProviderDropdown(e) {
+    if (e) e.stopPropagation();
+    const dd = document.getElementById('model-provider-dropdown');
+    if (!dd) return;
+    const open = dd.style.display !== 'none';
+    if (open) { dd.style.display = 'none'; return; }
+    dd.style.display = 'block';
+    const s = document.getElementById('model-provider-search');
+    if (s) { s.value = ''; s.focus(); }
+    renderProviderDropdown();
+  }
+
+  function closeProviderDropdown() {
+    const dd = document.getElementById('model-provider-dropdown');
+    if (dd) dd.style.display = 'none';
+  }
+
+  function renderProviderDropdown() {
+    const box = document.getElementById('model-provider-options');
+    const q = ((document.getElementById('model-provider-search') || {}).value || '').toLowerCase().trim();
+    if (!box) return;
+    const list = AI_PROVIDER_CATALOG.filter(p =>
+      !q || p.label.toLowerCase().includes(q) || p.id.includes(q));
+    box.innerHTML = list.length ? list.map(p => `
+      <div onclick="setModelProviderValue('${p.id}')"
+        style="display: flex; align-items: center; gap: 1rem; padding: 0.5rem; border-radius: 6px; cursor: pointer; font-size: 1.1rem; transition: background 0.15s;"
+        onmouseover="this.style.background='var(--bg-main)'" onmouseout="this.style.background='transparent'">
+        ${providerLogoHtml(p.id, 20)}
+        <span style="flex: 1; font-weight: 500; color: var(--text-primary);">${escapeHtml(p.label)}</span>
+      </div>`).join('')
+      : `<div style="padding: 1rem; font-size: 1.1rem; color: var(--text-secondary); text-align: center;">Not found.<br><button type="button" onclick="setModelProviderValue(document.getElementById('model-provider-search').value.trim() || 'other')" style="margin-top: 0.5rem; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 4px; padding: 0.25rem 0.5rem; font-size: 1rem; cursor: pointer; color: var(--text-primary);">Use Custom</button></div>`;
+  }
+
+  function renderModelIdSuggestions() {
+    const dl = document.getElementById('model-id-suggestions');
+    const hint = document.getElementById('model-id-hint');
+    if (!dl) return;
+    const meta = providerMeta(getModelProviderValue());
+    dl.innerHTML = (meta.models || []).map(m => `<option value="${escapeHtml(m)}">`).join('');
+    if (hint) hint.textContent = (meta.models || []).length
+      ? `${meta.models.length} Model ID populer ${meta.label} — klik kolom Model ID untuk pilih, atau Test Connection untuk ID valid dari endpoint.`
+      : 'Ketik Model ID lalu Test Connection untuk melihat ID valid dari endpoint.';
+  }
+
+  function toggleModelApiKeyVisibility() {
+    const inp = document.getElementById('model-apikey-input');
+    const eye = document.getElementById('model-apikey-eye');
+    if (!inp) return;
+    const show = inp.type === 'password';
+    inp.type = show ? 'text' : 'password';
+    if (eye) eye.className = show ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye';
+  }
+
+  document.addEventListener('click', function (e) {
+    const combo = document.getElementById('model-provider-combo');
+    const dd = document.getElementById('model-provider-dropdown');
+    if (dd && dd.style.display !== 'none' && combo && !combo.contains(e.target)) closeProviderDropdown();
+  });
 
   const MODEL_ENDPOINT_INFO = {
     'openai': { hint: 'Chat-completions transport (OpenAI, 9Router, proxy apapun). Default untuk semua provider.', placeholder: 'http://localhost:20128/v1' },
@@ -8336,33 +8617,33 @@
 
   function setModelToolChoice(val) {
     const toggle = document.getElementById('model-toolchoice-toggle');
-    const hint = document.getElementById('model-toolchoice-hint');
     if (!toggle) return;
     toggle.querySelectorAll('[data-toolchoice]').forEach(b => {
       const on = b.dataset.toolchoice === val;
       b.classList.toggle('active-choice', on);
-      b.style.background = on ? 'var(--accent)' : 'transparent';
-      b.style.color = on ? '#fff' : 'var(--text-secondary)';
+      b.style.background = on ? 'var(--bg-panel)' : 'transparent';
+      b.style.color = on ? 'var(--text-primary)' : 'var(--text-secondary)';
+      b.style.boxShadow = on ? '0 1px 2px rgba(0,0,0,0.1)' : 'none';
     });
-    if (hint) hint.textContent = MODEL_TOOLCHOICE_HINTS[val] || '';
   }
 
   function setModelEndpointType(val) {
     const toggle = document.getElementById('model-endpoint-toggle');
-    const hint = document.getElementById('model-endpoint-hint');
-    const base = document.getElementById('model-baseurl-input');
     const v = (val === 'anthropic') ? 'anthropic' : 'openai';
     if (toggle) {
       toggle.dataset.value = v;
       Array.from(toggle.querySelectorAll('button')).forEach(b => {
         const active = b.dataset.endpoint === v;
-        b.style.background = active ? 'var(--accent)' : 'transparent';
-        b.style.color = active ? '#fff' : 'var(--text-secondary)';
+        b.style.background = active ? 'var(--bg-panel)' : 'transparent';
+        b.style.color = active ? 'var(--text-primary)' : 'var(--text-secondary)';
+        b.style.boxShadow = active ? '0 1px 2px rgba(0,0,0,0.1)' : 'none';
       });
     }
+    const base = document.getElementById('model-baseurl-input');
     const info = MODEL_ENDPOINT_INFO[v];
-    if (hint) hint.textContent = info.hint;
-    if (base && !base.value) base.placeholder = info.placeholder;
+    if (base && !base.value && info) base.placeholder = info.placeholder;
+    const hint = document.getElementById('model-endpoint-hint');
+    if (hint && info) hint.textContent = info.hint;
   }
 
   function getModelEndpointType() {
@@ -8378,8 +8659,7 @@
     if (nameInput) nameInput.value = '';
     const idInput = document.getElementById('model-id-input');
     if (idInput) idInput.value = '';
-    const providerInput = document.getElementById('model-provider-input');
-    if (providerInput) providerInput.value = '9router';
+    setModelProviderValue('9router', { keepOpen: true, noPrefill: true });
     setModelEndpointType('openai');
     setModelToolChoice('any');
     const baseUrlInput = document.getElementById('model-baseurl-input');
@@ -8400,7 +8680,7 @@
     document.getElementById('model-edit-id').value = m.id;
     document.getElementById('model-name-input').value = m.name;
     document.getElementById('model-id-input').value = m.model_id;
-    document.getElementById('model-provider-input').value = m.provider || '';
+    setModelProviderValue(m.provider || '9router', { keepOpen: true });
     setModelEndpointType(m.endpoint_type || 'openai');
     setModelToolChoice(m.tool_choice || 'any');
     document.getElementById('model-baseurl-input').value = m.base_url || '';
@@ -8954,15 +9234,18 @@
       const selected = isSelected ? 'selected' : '';
       const isAnthropic = (m.endpoint_type || 'openai') === 'anthropic';
       const missingKey = m.has_key === false;
+      const logo = (typeof providerLogoHtml === 'function') ? providerLogoHtml(m.provider, 26) : '🌐';
+      const provLabel = (typeof providerMeta === 'function') ? providerMeta(m.provider).label : (m.provider || '?');
       return `
         <button type="button" class="model-picker-item ${selected}" onclick="selectModelFromPicker('${escapeHtml(m.model_id)}')">
           <i class="fa-solid ${isSelected ? 'fa-circle-check' : 'fa-circle'}" style="color: ${isSelected ? 'var(--success-text)' : 'var(--text-secondary)'}; font-size: 12px;"></i>
+          ${logo}
           <span style="flex: 1; min-width: 0;">
             <span class="mp-name">${escapeHtml(m.name)}</span>
             <span class="mp-sub">${escapeHtml(m.model_id)}</span>
           </span>
+          <span class="mp-badge" title="${escapeHtml(provLabel)}" style="display: inline-flex; align-items: center; gap: 4px;">${escapeHtml(provLabel)}</span>
           <span class="mp-badge ${isAnthropic ? 'anthropic' : 'openai'}">${isAnthropic ? 'anthropic' : 'openai'}</span>
-          <span class="mp-badge">${escapeHtml(m.provider || '?')}</span>
           ${missingKey ? '<span class="mp-badge" title="No API key saved for this model" style="color:#f85149; border-color:rgba(248,81,73,0.4);">no key</span>' : ''}
         </button>`;
     }).join('');
@@ -8988,12 +9271,25 @@
   function updateModelPickerLabel() {
     const selector = document.getElementById('model-selector');
     const label = document.getElementById('model-picker-label');
+    const logoEl = document.getElementById('model-picker-logo');
     const hint = document.getElementById('composer-model-hint');
     if (!selector) return;
     const value = selector.value;
-    if (label) label.textContent = value || 'Model';
-    if (!hint) return;
     const match = (currentLoadedAIModels || []).find(m => m.model_id === value);
+    if (label) label.textContent = (match && match.name) ? match.name : (value || 'Model');
+    if (logoEl) {
+      if (match && typeof providerLogoHtml === 'function') {
+        const meta = providerMeta(match.provider);
+        logoEl.innerHTML = providerLogoHtml(meta.id, 14);
+        logoEl.title = meta.label;
+        logoEl.style.background = 'transparent';
+        logoEl.style.borderColor = 'var(--border-color)';
+      } else {
+        logoEl.textContent = '🌐';
+        logoEl.title = '';
+      }
+    }
+    if (!hint) return;
     if (!match) {
       hint.textContent = '';
       return;
@@ -9180,6 +9476,7 @@
       }, 1200);
     }
   }
+  window.setBeamRunning = setBeamRunning;
 
   // Load models on page load and bind change listener
 
