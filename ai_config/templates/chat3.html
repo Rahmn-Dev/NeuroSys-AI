@@ -2815,7 +2815,14 @@
       'denied_timeout', 'security_blocked', 'error', 'finalized', 'expired', 'superseded'];
     window.turnState = window.turnState || 'idle';
     window.openTurn = function () { window.turnState = 'running'; };
-    window.closeTurn = function () { window.turnState = 'idle'; };
+    window.closeTurn = function () {
+      window.turnState = 'idle';
+      // The live flag is what pins the bubble header; drop it the moment the
+      // turn ends so archived answers scroll like ordinary history again.
+      document.querySelectorAll('.agent-msg.sre-msg-ai[data-live="1"]').forEach(b => {
+        b.removeAttribute('data-live');
+      });
+    };
     window.turnIsOpen = function () { return window.turnState !== 'idle'; };
 
     window.ensureRunWrap = function () {
@@ -3112,6 +3119,17 @@
     // is still unknown when the skeleton is born, and a keyed lookup simply
     // missed it and built a second bubble with a second avatar.
     window.liveBubbles = window.liveBubbles || {};
+    // Exactly one turn is live at a time, so exactly one bubble carries the
+    // flag that pins its header. Anything else still flagged is stale.
+    window.markLiveBubble = function (bubble) {
+      try {
+        if (!bubble) return;
+        document.querySelectorAll('.agent-msg.sre-msg-ai[data-live="1"]').forEach(b => {
+          if (b !== bubble) b.removeAttribute('data-live');
+        });
+        bubble.setAttribute('data-live', '1');
+      } catch (err) { /* best-effort */ }
+    };
     // A packaged turn skeleton: bot avatar on the left, one column on the
     // right holding the run card now and the answer panel later.
     // On send, the answer bubble is born first and the run seats its chain
@@ -3126,6 +3144,7 @@
         if (prev && prevPanel && !prevPanel.textContent.trim()) {
           prev.wrap = wrap;
           window.seatChain(prev.bubble, wrap);
+          window.markLiveBubble(prev.bubble);
           if (typeof currentAIMsg !== 'undefined' && !currentAIMsg) currentAIMsg = prev.bubble;
           return prev;
         }
@@ -3133,6 +3152,7 @@
         bubble.dataset.sessionId = sid;
         messagesDiv.appendChild(bubble);
         window.seatChain(bubble, wrap);
+        window.markLiveBubble(bubble);
         const column = bubble.querySelector(':scope > .agent-msg-body');
         const entry = { bubble: bubble, column: column, wrap: wrap, claimed: false, sid: sid };
         window.liveBubbles[sid] = entry;
@@ -5347,7 +5367,13 @@
 
     function scrollToBottom(force) {
       if (window.isLoadingHistory) return;
-      if (!force && window.runHeaderPinned) return;
+      if (!force && window.runHeaderPinned) {
+        // A pinned run owns the scroll position, so this used to bail out
+        // silently and left the reader scrolled up with no way back. While a
+        // run holds the pin, leaving the follow position still offers Latest.
+        if (!window.agentAutoScroll && !window.isPinnedToBottom()) window.showJumpToLatest();
+        return;
+      }
       if (force) {
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
         window.hideJumpToLatest();
@@ -5364,6 +5390,13 @@
 
     window.centerRunTurn = function (wrapId) {
       if (window.isLoadingHistory || !messagesDiv) return;
+      // Centering the live turn used to run on every step and every streamed
+      // chunk, and it wrote scrollTop unconditionally: scrolling up to read an
+      // older answer was undone the moment the agent took its next step, which
+      // read as the page yanking itself back down. Once the reader has left the
+      // follow position, the view is theirs - the Latest button is the way
+      // back, exactly as it already is for ordinary new content.
+      if (!window.agentAutoScroll && !window.isPinnedToBottom()) return;
       const wrap = document.getElementById(wrapId);
       const bubbleId = wrap && wrap.dataset.bubbleId;
       const bubble = (bubbleId && document.getElementById(bubbleId))
@@ -7713,6 +7746,21 @@
      chain of thought, the answer, then the audit. The pill opens the chain. */
   #sre-agent-app .sre-bubble-head {
     display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+  }
+  /* While a run is live its bubble header pins to the top of the chat column,
+     so the live status pill stays readable however far up the reader scrolls.
+     The negative margin cancels the panel's own 1rem padding (bootstrap p-3)
+     so the bar sits flush with the top edge instead of floating below it, and
+     it is scoped to the live bubble so archived turns keep scrolling normally. */
+  #sre-agent-app .agent-msg.sre-msg-ai[data-live="1"] .sre-bubble-head {
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    margin: -1rem -1rem 0.5rem;
+    padding: 1rem 1rem 0.5rem;
+    background: var(--bg-panel);
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 1px 0 var(--border-color);
   }
   #sre-agent-app .sre-run-toggle {
     margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
