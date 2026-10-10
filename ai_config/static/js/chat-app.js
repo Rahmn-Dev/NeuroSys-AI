@@ -2489,7 +2489,11 @@
       let tlStatus = 'success';
       if (/^(Error|Cancelled|Failed)/i.test(label) || iconName === 'x-circle') tlStatus = 'error';
       else if (!window.isLoadingHistory && !isEnd && !customTimer) tlStatus = 'active';
-      const tlOpen = tlStatus === 'active' || !window.isLoadingHistory;
+      // Replayed steps open with their content visible: the run card itself is
+      // already collapsed, so collapsing every step inside it as well would
+      // make reviewing a past run an accordion-clicking chore. Individual
+      // steps can still be folded with their chevron.
+      const tlOpen = true;
       // Operator-requested accent for landed tasks: green icon/text on a
       // mint card instead of the neutral timeline look.
       const isTaskDone = /^Task Completed/i.test(String(label || ''));

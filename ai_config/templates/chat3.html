@@ -10,7 +10,7 @@
   mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
 </script>
 
-<link rel="stylesheet" href="{% static 'css/chat.css' %}?v=2">
+<link rel="stylesheet" href="{% static 'css/chat.css' %}?v=3">
 
 <link rel="stylesheet" href="{% static 'vendor/fontawesome-6.4.0.min.css' %}" integrity="sha384-iw3OoTErCYJJB9mCa8LNS2hbsQ7M3C0EpIsO/H5+EGAkPGc6rk+V8i04oW/K5xq0" />
 <!-- lucide was unpinned @latest (resolved to 1.54.0 on 2026-10-10); now vendored and pinned. -->
@@ -382,7 +382,7 @@
   // Django-provided values for the static chat bundles below.
   window.WORKSPACE_PROJECT_ROOT = "{{ project_root }}" || "";
 </script>
-<script src="{% static 'js/chat-app.js' %}?v=2"></script>
+<script src="{% static 'js/chat-app.js' %}?v=3"></script>
 
 
 <!-- Architecture Modal -->

@@ -1203,7 +1203,7 @@
   #sre-agent-app .sre-agent-step[data-status="active"] [id^="step-content-"] {
     animation: sreReveal .55s ease both;
   }
-  .sre-agent-step { animation: sreStepIn 0.35s ease both; border: 0 !important; background: transparent !important; box-shadow: none !important; border-radius: 0 !important; }
+  .sre-agent-step { animation: sreStepIn 0.35s ease both; border: 0 !important; background: transparent !important; box-shadow: none !important; border-radius: 0 !important; margin-bottom: 0px !important; }
   /* The run card is a real bordered box in live and in replay alike. Owned by
      a class with !important so no inline or legacy rule can quietly drop the
      edges when the body is expanded. */
