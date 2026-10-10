@@ -283,7 +283,7 @@
 
       <!-- 3. Right Column: Tabs -->
       <div class="sre-panel" id="right-panel"
-        style="background: rgba(255, 255, 255, 0); width: 35%; display: flex; flex-direction: column; min-width: 300px; max-width: 80vw; margin: 8px; margin-left: 0;">
+        style="background: rgba(255, 255, 255, 0); width: calc(35% - 20px); display: flex; flex-direction: column; min-width: 300px; max-width: 80vw; margin: 8px; margin-left: 0;">
         <div class="sre-layout"
           style="border: 1px solid rgb(132 132 132 / 16%); background: rgba(255, 255, 255, 0); display: flex; border-bottom: 1px solid rgba(255,255,255,0.08); border-top-left-radius: 16px; border-top-right-radius: 16px; overflow: auto;">
           <div class="tab-btn active sre-text-primary" onclick="window.switchTab('investigation')"
@@ -382,7 +382,7 @@
   // Django-provided values for the static chat bundles below.
   window.WORKSPACE_PROJECT_ROOT = "{{ project_root }}" || "";
 </script>
-<script src="{% static 'js/chat-app.js' %}?v=4"></script>
+<script src="{% static 'js/chat-app.js' %}?v=5"></script>
 
 
 <!-- Architecture Modal -->

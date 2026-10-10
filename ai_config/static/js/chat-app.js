@@ -6088,11 +6088,31 @@
     let isResizing = false;
 
     if (panelResizer && rightPanel) {
+      // Restore the operator's last width before anything paints it at the
+      // default. Clamped so a stale value from another screen size cannot
+      // wedge the column open or shut.
+      try {
+        const saved = parseInt(localStorage.getItem('sre-right-width') || '', 10);
+        const maxW = Math.round(window.innerWidth * 0.8);
+        if (saved >= 300 && saved <= maxW) {
+          rightPanel.style.width = saved + 'px';
+          rightPanel.style.flex = 'none';
+        }
+      } catch (e) { /* best-effort */ }
+
       panelResizer.addEventListener('mousedown', (e) => {
         isResizing = true;
         document.body.style.cursor = 'col-resize';
         panelResizer.style.background = 'var(--accent)';
         e.preventDefault();
+      });
+
+      // Double-click the grip to forget the saved width and go back to default.
+      panelResizer.addEventListener('dblclick', () => {
+        try { localStorage.removeItem('sre-right-width'); } catch (e) { /* best-effort */ }
+        rightPanel.style.width = '';
+        rightPanel.style.flex = '';
+        if (window.fitTerminal) window.fitTerminal();
       });
 
       document.addEventListener('mousemove', (e) => {
@@ -6115,6 +6135,10 @@
           isResizing = false;
           document.body.style.cursor = 'default';
           panelResizer.style.background = 'rgba(255,255,255,0.05)';
+          try {
+            const w = parseInt(rightPanel.style.width || '', 10);
+            if (w >= 300) localStorage.setItem('sre-right-width', String(w));
+          } catch (e) { /* best-effort */ }
           if (window.fitTerminal) {
             window.fitTerminal();
           }
