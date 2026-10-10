@@ -20,9 +20,29 @@
     }
   }
 
+  // Date label for the floating pill and the turn-rail tooltip. Pure: no DOM,
+  // no network. Today / Yesterday keep it glanceable, older dates read like
+  // "Oct 10" (year appended across New Year).
+  window.sreDateLabel = function (ts) {
+    try {
+      const d = new Date(ts);
+      if (isNaN(d.getTime())) return '';
+      const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const diffDays = Math.round((today - day) / 86400000);
+      if (diffDays === 0) return 'Today';
+      if (diffDays === 1) return 'Yesterday';
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const sameYear = d.getFullYear() === today.getFullYear();
+      return months[d.getMonth()] + ' ' + d.getDate() + (sameYear ? '' : ', ' + d.getFullYear());
+    } catch (e) {
+      return '';
+    }
+  };
   // One turn-rail row worth of data for a user question bubble: the question
   // with attachment footers stripped, the following answer's excerpt, and the
-  // display timestamp. Reads the live DOM but never mutates it.
+  // display timestamp + date. Reads the live DOM but never mutates it.
   window.turnRailEntry = function (userEl) {
     const raw = userEl.dataset.originalText || userEl.textContent || '';
     const q = raw.replace(/\n\n\[Context Attached: [^\]]+\]/g, '').trim();
@@ -32,7 +52,9 @@
     const a = ansEl ? ansEl.textContent.trim().slice(0, 220) : '';
     let t = '';
     try { t = userEl.dataset.created ? chatTimeLabel(userEl.dataset.created) : ''; } catch (e) { /* best-effort */ }
-    return { el: userEl, q: q || '(empty question)', a: a, t: t };
+    let d = '';
+    try { d = userEl.dataset.created ? window.sreDateLabel(userEl.dataset.created) : ''; } catch (e) { /* best-effort */ }
+    return { el: userEl, q: q || '(empty question)', a: a, t: t, d: d };
   };
   // ============================================
   // 1. FUNGSI BULK EDIT (Global)

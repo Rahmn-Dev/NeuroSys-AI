@@ -1619,7 +1619,9 @@
         const tip = root.tip;
         tip.innerHTML =
           '<p class="sre-tip-q">' + escapeHtml(entry.q) + '</p>' +
-          (entry.t ? '<div class="sre-tip-t">' + escapeHtml(entry.t) + '</div>' : '') +
+          ((entry.d || entry.t)
+            ? '<div class="sre-tip-t">' + escapeHtml([entry.d, entry.t].filter(Boolean).join(' · ')) + '</div>'
+            : '') +
           '<p class="sre-tip-a">' + escapeHtml(entry.a || 'Agent is working on this…') + '</p>';
         tip.classList.add('sre-show');
         // Center the card on the strip, clamped inside the column above the
@@ -1678,25 +1680,8 @@
     // While reading history the pill shows the date of whatever is at the top
     // of the view. Bubbles carry their server timestamp in dataset.created;
     // the scan below just finds the first dated bubble peeking under the top
-    // edge. Hari ini / Kemarin keep it glanceable like the reference UI.
-    window.sreDateLabel = function (ts) {
-      try {
-        const d = new Date(ts);
-        if (isNaN(d.getTime())) return '';
-        const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-        const now = new Date();
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const diffDays = Math.round((today - day) / 86400000);
-        if (diffDays === 0) return 'Hari ini';
-        if (diffDays === 1) return 'Kemarin';
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-        let label = d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
-        if (d.getFullYear() !== today.getFullYear()) return label;
-        return d.getDate() + ' ' + months[d.getMonth()];
-      } catch (e) {
-        return '';
-      }
-    };
+    // edge. The label itself (Today / Yesterday / ...) lives in chat-utils.js
+    // so the turn-rail tooltip and the smoke tests share it.
 
     window.chatDatePillUpdate = function () {
       try {
