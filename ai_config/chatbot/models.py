@@ -30,6 +30,12 @@ class ChatMessage(models.Model):
     metadata = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)  # Waktu pesan dikirim
 
+    class Meta:
+        # History queries always filter one session and order by time
+        # (list + scroll-up pagination). Without this the DB sorts the whole
+        # session's messages on every page as chats grow.
+        indexes = [models.Index(fields=['session', 'created_at'])]
+
     def __str__(self):
         return f"{self.role}: {self.message[:50]}..."
     

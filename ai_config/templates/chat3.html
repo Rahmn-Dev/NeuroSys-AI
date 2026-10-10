@@ -4,20 +4,22 @@
 {% block title %}NeuroSysAI SRE Agent{% endblock %}
 
 {% block content %}
-<script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+<script src="{% static 'vendor/mermaid-10.6.1.min.js' %}" integrity="sha384-+NGfjU8KzpDLXRHduEqW+ZiJr2rIg+cidUVk7B51R5xK7cHwMKQfrdFwGdrq1Bcz"></script>
+<script src="{% static 'vendor/svg-pan-zoom-3.6.1.min.js' %}" integrity="sha384-yc/c2Lk1s2V2ir1rxvjo8YyVD9PlOlYTqpNr3Wm1WIuAA30GlDYNx6U5104OiavY"></script>
 <script>
   mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
 </script>
 
 <link rel="stylesheet" href="{% static 'css/chat.css' %}?v=2">
 
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
-<script src="https://unpkg.com/lucide@latest"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" />
-<script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<link rel="stylesheet" href="{% static 'vendor/fontawesome-6.4.0.min.css' %}" integrity="sha384-iw3OoTErCYJJB9mCa8LNS2hbsQ7M3C0EpIsO/H5+EGAkPGc6rk+V8i04oW/K5xq0" />
+<!-- lucide was unpinned @latest (resolved to 1.54.0 on 2026-10-10); now vendored and pinned. -->
+<script src="{% static 'vendor/lucide-1.54.0.min.js' %}" integrity="sha384-q/80k7p5yAW6rdXVRCtTPWF4WkahaeBUF9R9H0P8zGqaYzqdEEdxlY5uZltyvsbI"></script>
+<link rel="stylesheet" href="{% static 'vendor/xterm-5.3.0.css' %}" integrity="sha384-LJcOxlx9IMbNXDqJ2axpfEQKkAYbFjJfhXexLfiRJhjDU81mzgkiQq8rkV0j6dVh" />
+<script src="{% static 'vendor/xterm-5.3.0.js' %}" integrity="sha384-/nfmYPUzWMS6v2atn8hbljz7NE0EI1iGx34lJaNzyVjWGDzMv+ciUZUeJpKA3Glc"></script>
+<script src="{% static 'vendor/xterm-addon-fit-0.8.0.js' %}" integrity="sha384-AQLWHRKAgdTxkolJcLOELg4E9rE89CPE2xMy3tIRFn08NcGKPTsELdvKomqji+DL"></script>
+<!-- was an unversioned URL silently serving marked 15.0.12; now vendored byte-identical and pinned. -->
+<script src="{% static 'vendor/marked-15.0.12.min.js' %}" integrity="sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+"></script>
 
 <div class="rbt-main-content area-left-expanded area-right-expanded"
   style="background: rgba(255, 255, 255, 0); display: block; margin-right: 1px; margin-bottom: 1px; margin-left: 100px; margin-top: 65px;">
@@ -567,7 +569,8 @@
 <script src="{% static 'js/chat-crypto.js' %}?v=1"></script>
 
 <!-- Manage AI Models Modal (Shadcn Style) -->
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Poppins vendored (weights 400/500/600/700); no more Google Fonts request. -->
+<link rel="stylesheet" href="{% static 'vendor/poppins.css' %}" integrity="sha384-nRolIEOKsja+a8HAVbNrxgDRUEjo0lYE9REU2HHX9i502wavU+Mbi/zCqHIlMYHS" />
 <div id="ai-model-modal"
   style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 9999; align-items: center; justify-content: center; font-family: 'Poppins', sans-serif; padding: 1rem;">
   
