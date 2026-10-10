@@ -1,0 +1,1490 @@
+/* NeuroSysAI chat styles, extracted from templates/chat3.html. Order preserved: theme block, app block, patch block. */
+  :root {
+    --bg-main: #0d1117;
+    --bg-panel: #161b22;
+    --border-color: #21262d;
+    --border-input: #30363d;
+    --text-primary: #c9d1d9;
+    --text-secondary: #8b949e;
+    --text-strong: #f0f6fc;
+    --accent: #1f6feb;
+    --accent-hover: #388bfd;
+    --success: #238636;
+    --success-text: #3fb950;
+    --error: #f85149;
+    --warning: #d29922;
+    --purple: #8957e5;
+  }
+
+  details[open]>summary .fa-chevron-down {
+    transform: rotate(180deg);
+  }
+
+  body.active-light-mode {
+    --bg-main: #f6f8fa;
+    --bg-panel: #ffffff;
+    --border-color: #d0d7de;
+    --border-input: #d0d7de;
+    --text-primary: #24292f;
+    --text-secondary: #57606a;
+    --text-strong: #0969da;
+    --accent: #0969da;
+    --accent-hover: #0349b4;
+    --success: #2da44e;
+    --success-text: #1a7f37;
+    --error: #cf222e;
+    --warning: #9a6700;
+    --purple: #8250df;
+  }
+
+  .sre-layout {
+    background: linear-gradient(135deg, #0a0c10 0%, #161b22 50%, #0a0c10 100%);
+    color: var(--text-primary);
+    font-family: 'Poppins', 'Segoe UI', sans-serif;
+  }
+
+  #chat-messages,
+  #chat-input,
+  .sre-panel {
+    font-family: 'Poppins', 'Segoe UI', sans-serif;
+  }
+
+  .sre-panel {
+    background: rgba(22, 27, 34, 0.5);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 16px;
+  }
+
+  .sre-input {
+    background: var(--bg-main) !important;
+    border: 1px solid var(--border-input) !important;
+    color: var(--text-primary) !important;
+  }
+
+  /* Override bootstrap-select plugin hijacking on header dropdowns */
+  .bootstrap-select:has(#model-selector),
+  .bootstrap-select:has(#permission-selector),
+  .bootstrap-select:has(#mode-selector),
+  div.bootstrap-select.sre-input {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: auto !important;
+    box-shadow: none !important;
+    display: inline-block !important;
+  }
+
+  select#model-selector,
+  select#permission-selector,
+  select#mode-selector {
+    display: inline-flex !important;
+    align-items: center !important;
+    opacity: 1 !important;
+    position: relative !important;
+    width: auto !important;
+    height: 32px !important;
+    box-sizing: border-box !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    z-index: 100 !important;
+    background-color: var(--bg-main) !important;
+    color: var(--text-primary) !important;
+  }
+
+  .sre-chat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .sre-header-actions {
+    display: block;
+    text-align: right;
+    min-width: 0;
+  }
+
+  .sre-header-actions > * {
+    margin-left: 12px;
+    vertical-align: middle;
+  }
+
+  #permission-selector {
+    margin-right: 8px;
+  }
+
+  @media (max-width: 1100px) {
+    .sre-header-actions {
+      text-align: left;
+    }
+  }
+
+
+  div.bootstrap-select>button.dropdown-toggle[data-id="model-selector"],
+  div.bootstrap-select>button.dropdown-toggle[data-id="permission-selector"],
+  div.bootstrap-select>button.dropdown-toggle[data-id="mode-selector"],
+  div.bootstrap-select>div.dropdown-menu {
+    display: none !important;
+  }
+
+
+  .sre-input:focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.3);
+  }
+
+  /* Chat composer: no focus ring/glow on the Ask anything box. */
+  #chat-input:focus {
+    border-color: transparent !important;
+    box-shadow: none !important;
+    outline: none !important;
+  }
+
+  /* Sparkle suggestion swap: shimmer sweep + quick fade while text changes. */
+  #chat-input.sre-shimmer {
+    background-image: linear-gradient(100deg, transparent 30%, rgba(124, 140, 248, 0.22) 50%, transparent 70%) !important;
+    background-size: 220% 100%;
+    background-repeat: no-repeat;
+    animation: sre-shimmer-swap 0.65s ease;
+  }
+  @keyframes sre-shimmer-swap {
+    0% { opacity: 1; background-position: 120% 0; }
+    25% { opacity: 0.25; }
+    45% { opacity: 0.4; background-position: 50% 0; }
+    100% { opacity: 1; background-position: -20% 0; }
+  }
+
+  .sre-border {
+    border-color: var(--border-color) !important;
+  }
+
+  .sre-text-strong {
+    color: var(--text-strong) !important;
+  }
+
+  .sre-text-secondary {
+    color: var(--text-secondary) !important;
+  }
+
+  .sre-msg-user {
+    background: linear-gradient(90deg, #1f6feb 0%, #1da6ff 100%) !important;
+    color: #ffffff !important;
+    border: 1px solid rgba(255, 255, 255, 0.22) !important;
+    box-shadow: 0 4px 16px rgba(29, 166, 255, 0.28);
+  }
+
+  /* iMessage-style send: the bubble springs up into place with a slight
+     overshoot, and the tap target reacts while it travels. */
+  @keyframes sre-send-pop {
+    0% { opacity: 0; transform: translateY(14px) scale(0.94); }
+    55% { opacity: 1; transform: translateY(-2px) scale(1.015); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  @keyframes sre-send-stamp {
+    0% { opacity: 0; transform: translateY(8px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes sre-send-press {
+    0% { transform: scale(1); }
+    35% { transform: scale(0.86); }
+    70% { transform: scale(1.06); }
+    100% { transform: scale(1); }
+  }
+
+  .sre-msg-user.sre-sending {
+    animation: sre-send-pop 420ms cubic-bezier(.22, 1.2, .36, 1) both;
+  }
+
+  .sre-msg-user.sre-sending + .sre-msg-time.sre-sending {
+    animation: sre-send-stamp 320ms ease-out 120ms both;
+  }
+
+  #send-btn.sre-press {
+    animation: sre-send-press 260ms ease-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sre-msg-user.sre-sending,
+    .sre-msg-user.sre-sending + .sre-msg-time.sre-sending,
+    #send-btn.sre-press { animation: none; }
+  }
+
+  .sre-msg-edit-btn:hover {
+    background: rgba(0, 0, 0, 0.34) !important;
+    color: #ffffff !important;
+  }
+
+  .sre-msg-ai {
+    /* The wrapper row merely holds the avatar + bubble card; the card itself
+       contributes the background/border/shadow, so nothing more here. */
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  .lucide {
+    width: 16px;
+    height: 16px;
+    display: inline-block;
+    vertical-align: middle;
+  }
+
+  .sre-btn-primary {
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%) !important;
+    color: #ffffff !important;
+    border-radius: 9999px !important;
+    box-shadow: 0 4px 12px rgba(9, 105, 218, 0.2);
+    transition: all 0.2s ease;
+  }
+
+  .sre-btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(9, 105, 218, 0.3);
+  }
+
+  .sre-btn-success {
+    background: linear-gradient(135deg, var(--success) 0%, #2ea043 100%) !important;
+    color: #ffffff !important;
+    border-radius: 9999px !important;
+    box-shadow: 0 4px 12px rgba(45, 164, 78, 0.2);
+    transition: all 0.2s ease;
+  }
+
+  .sre-btn-success:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(45, 164, 78, 0.3);
+  }
+
+  .sre-agent-step {
+    background: var(--bg-panel);
+    opacity: 0.95;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    max-width: 85%;
+    width: 100%;
+    flex-shrink: 0;
+  }
+
+  .sre-step-header {
+    background: rgba(0, 0, 0, 0.02);
+  }
+
+  @keyframes spin-anim {
+    from {
+      transform: rotate(0deg);
+    }
+
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .spin-anim {
+    animation: spin-anim 1s linear infinite;
+  }
+
+  .sre-step-content {
+    padding: 0 14px 10px 14px;
+    border-top: 1px solid var(--border-color);
+    margin-top: 4px;
+    padding-top: 10px;
+  }
+
+  .sre-timer {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-family: monospace;
+    background: transparent;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    opacity: .85;
+    white-space: nowrap;
+  }
+
+  .sre-history-item {
+    padding: 12px;
+    background: var(--bg-main);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .sre-history-item:hover {
+    border-color: var(--accent);
+    background: var(--bg-panel);
+  }
+
+  .sre-history-item.active {
+    background: rgba(31, 111, 235, 0.15);
+    border-color: var(--accent);
+  }
+
+  .sre-history-item.bulk-selected {
+    background: rgba(137, 87, 229, 0.15) !important;
+    border-color: var(--purple) !important;
+    box-shadow: 0 0 0 1px rgba(137, 87, 229, 0.4) !important;
+  }
+
+  .delete-single-history-btn {
+    opacity: 0;
+    transition: opacity 0.2s ease, color 0.2s ease;
+  }
+
+  .sre-history-item:hover .delete-single-history-btn {
+    opacity: 1;
+  }
+
+
+  .sre-history-title {
+    font-size: 13px;
+    color: var(--text-strong);
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sre-history-date {
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+
+  /* ==========================================================
+     CONVERSATION BEAM — rotating conic-gradient ring around the
+     composer. Slow drift while idle, faster + glowing while the
+     agent is running. @property keeps the angle animatable.
+     ========================================================== */
+  @property --beam-angle {
+    syntax: '<angle>';
+    initial-value: 0deg;
+    inherits: false;
+  }
+
+  .beam-wrap {
+    position: relative;
+    width: 100%;
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 3px;
+    border-radius: 29px;
+    isolation: isolate;
+  }
+
+  /* Palette: soft, low-saturation sweep (like a refined color picker)
+     instead of a harsh rainbow. Symmetric stops keep the blend silky. */
+  .beam-layer {
+    position: absolute;
+    inset: 0;
+    border-radius: 30px;
+    padding: 2.5px;
+    background: conic-gradient(from var(--beam-angle),
+        #7c8cf8 0%,
+        #a996ef 14%,
+        #8fb6f0 28%,
+        #74cfc4 42%,
+        #8fb6f0 58%,
+        #b294ec 72%,
+        #7c8cf8 86%,
+        #7c8cf8 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    animation: beam-spin 9s linear infinite;
+    opacity: 0.45;
+    filter: saturate(0.85);
+    pointer-events: none;
+    transition: opacity 0.35s ease, filter 0.35s ease;
+    z-index: 0;
+  }
+
+  .beam-wrap.beam-running .beam-layer {
+    animation-duration: 2.4s;
+    opacity: 0.78;
+    filter: saturate(0.95) drop-shadow(0 0 6px rgba(140, 160, 240, 0.45));
+  }
+
+  .beam-wrap.beam-done .beam-layer {
+    animation-duration: 4s;
+    opacity: 0.55;
+  }
+
+  @keyframes beam-spin {
+    to {
+      --beam-angle: 360deg;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .beam-layer {
+      animation: none !important;
+    }
+  }
+
+  /* The Agent Run card scrolls with the chat like any other message; the
+     step list caps at a short height with its own scroll. */
+  .sre-run-body {
+    max-height: 280px;
+  }
+
+  /* Loading placeholders. Any .sre-panel can be filled with these while its
+     content is fetched, so a slow request never looks like an empty panel. */
+  .sre-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px;
+  }
+
+  .sre-skeleton .sk-line {
+    height: 11px;
+    border-radius: 6px;
+    background: linear-gradient(90deg,
+      rgba(127, 140, 160, 0.10) 0%,
+      rgba(127, 140, 160, 0.22) 35%,
+      rgba(127, 140, 160, 0.10) 70%);
+    background-size: 220% 100%;
+    animation: sre-shimmer 1.25s ease-in-out infinite;
+  }
+
+  .sre-skeleton .sk-line.w90 { width: 90%; }
+  .sre-skeleton .sk-line.w70 { width: 70%; }
+  .sre-skeleton .sk-line.w45 { width: 45%; }
+
+  @keyframes sre-shimmer {
+    from { background-position: 140% 0; }
+    to { background-position: -60% 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sre-skeleton .sk-line { animation: none; }
+  }
+
+  /* Hidden state selects: the real <select> stays in the DOM for the
+     existing JS (options, value, change events) but the header shows
+     the in-composer model picker instead. Declared after the header
+     dropdown overrides so the !important display:none wins. */
+  select#model-selector,
+  select#mode-selector,
+  select#permission-selector {
+    display: none !important;
+  }
+
+  /* Phase label in the Agent Run header: a shimmer sweep over the word so the
+     current agent phase (observing / exploring / planning / ...) reads as
+     live instead of a static "running" pill. */
+  /* The status dot keeps its meaning on a light surface. */
+  body.active-light-mode .sre-agent-dot {
+    background: #6e7781;
+    opacity: 0.9;
+  }
+
+  body.active-light-mode .sre-agent-dot[data-state="running"] {
+    background: #0969da;
+  }
+
+  body.active-light-mode .sre-agent-dot[data-state="done"] {
+    background: #1a7f37;
+    box-shadow: 0 0 6px rgba(26, 127, 55, 0.35);
+  }
+
+  /* Status dot next to the assistant's name. It carries information instead of
+     decoration: steady when idle, breathing while the agent is working. */
+  .sre-agent-dot {
+    display: inline-block;
+    width: 7px; height: 7px;
+    margin-left: 7px;
+    border-radius: 50%;
+    vertical-align: middle;
+    background: var(--text-secondary);
+    opacity: 0.55;
+    transition: background 0.25s ease, opacity 0.25s ease, box-shadow 0.25s ease;
+  }
+
+  .sre-agent-dot[data-state="running"] {
+    background: var(--accent);
+    opacity: 1;
+    animation: sre-dot-breathe 1.6s ease-in-out infinite;
+  }
+
+  .sre-agent-dot[data-state="done"] {
+    background: var(--success-text);
+    opacity: 0.9;
+    box-shadow: 0 0 6px rgba(63, 185, 80, 0.45);
+  }
+
+  @keyframes sre-dot-breathe {
+    0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(31, 111, 235, 0.45); }
+    50% { transform: scale(1.25); box-shadow: 0 0 0 4px rgba(31, 111, 235, 0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sre-agent-dot[data-state="running"] { animation: none; }
+  }
+
+  .sre-run-phase {
+    background-color: rgba(88, 166, 255, 0.15);
+    background-image: linear-gradient(100deg,
+      var(--text-secondary) 0%,
+      var(--text-strong) 22%,
+      #ffffff 38%,
+      var(--accent) 50%,
+      #ffffff 62%,
+      var(--text-strong) 78%,
+      var(--text-secondary) 100%);
+    background-size: 260% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    animation: neuro-phase-shimmer 2.6s linear infinite;
+  }
+
+  .sre-run-phase::-webkit-scrollbar { display: none; }
+
+  /* If the browser cannot clip the gradient to the glyphs, keep the word
+     readable instead of invisible. */
+  @supports not ((-webkit-background-clip: text) or (background-clip: text)) {
+    .sre-run-phase {
+      -webkit-text-fill-color: var(--text-strong);
+      color: var(--text-strong);
+    }
+  }
+
+  @keyframes neuro-phase-shimmer {
+    from { background-position: 180% 0; }
+    to { background-position: -80% 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sre-run-phase { animation: none; }
+  }
+
+  .ws-chip {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 14px;
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+
+  .ws-chip:hover {
+    background: var(--bg-panel);
+    color: var(--text-primary);
+    border-color: var(--accent);
+  }
+
+  /* Composer toolbar: model picker + mode + model manager sit with the
+     input box, not in the header. */
+  .composer-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 4px 2px 6px;
+    position: relative;
+  }
+
+  .composer-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 30px;
+    padding: 0 14px;
+    border-radius: 15px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 400;
+    cursor: pointer;
+    white-space: nowrap;
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+
+  .composer-pill:hover {
+    background: #edf4fe;
+    border-color: var(--border-color);
+    color: var(--text-primary);
+  }
+
+  .composer-div {
+    width: 1px;
+    height: 18px;
+    align-self: center;
+    background: var(--border-color);
+    opacity: 0.6;
+    flex-shrink: 0;
+    margin: 0 6px;
+  }
+
+  .model-picker-panel {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 0;
+    width: min(420px, 92vw);
+    max-height: 320px;
+    overflow-y: auto;
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+    padding: 8px;
+    z-index: 60;
+  }
+
+  .model-picker-panel.open {
+    display: block;
+  }
+
+  .model-picker-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    background: transparent;
+    cursor: pointer;
+    color: var(--text-primary);
+  }
+
+  .model-picker-item:hover {
+    background: var(--bg-panel);
+  }
+
+  .model-picker-item.selected {
+    border-color: var(--accent);
+    background: var(--bg-panel);
+  }
+
+  .model-picker-item .mp-name {
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .model-picker-item .mp-sub {
+    font-size: 10px;
+    color: var(--text-secondary);
+    font-family: monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .model-picker-item.inactive-row {
+    opacity: 0.45;
+  }
+
+  .mp-badge {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    padding: 2px 6px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+
+  .mp-badge.anthropic {
+    color: var(--warning);
+    border-color: rgba(210, 153, 34, 0.4);
+    background: rgba(210, 153, 34, 0.12);
+  }
+
+  .mp-badge.openai {
+    color: var(--accent);
+    border-color: var(--border-color);
+    background: rgba(88, 166, 255, 0.12);
+  }
+
+  #sre-agent-app pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+
+  #sre-agent-app code {
+    background: #21262d;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 13px;
+    color: #79c0ff;
+  }
+
+  #sre-agent-app ul,
+  #sre-agent-app ol {
+    padding-left: 20px;
+  }
+
+  @keyframes sreStepIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+  /* Streaming reply: each arriving chunk settles in, and while the answer is
+     still being written the newest text carries a travelling highlight so it
+     reads as "still arriving" instead of a static block. */
+  @keyframes sreReveal {
+    from { opacity: .35; transform: translateY(3px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes sreSweep {
+    from { background-position: 200% 0; }
+    to { background-position: -60% 0; }
+  }
+  @keyframes srePulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(88, 166, 255, .45); }
+    50% { box-shadow: 0 0 0 6px rgba(88, 166, 255, 0); }
+  }
+  #sre-agent-app .ai-content.sre-streaming > * {
+    animation: sreReveal .28s ease both;
+  }
+  /* --- Investigation panel -------------------------------------------------
+     Cards with a quiet surface, a hairline that lights up on hover, and rows
+     that read as one system instead of loose inline styles. */
+  #sre-agent-app .sre-inv-filter {
+    --sre-filter-count: 5;
+    position: relative;
+    isolation: isolate;
+    display: grid;
+    grid-template-columns: repeat(var(--sre-filter-count), minmax(0, 1fr));
+    gap: 0;
+    padding: 4px;
+    margin: 0 0 10px;
+    border: 1px solid color-mix(in srgb, var(--border-color) 75%, transparent);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--bg-panel) 72%, transparent);
+    -webkit-backdrop-filter: blur(18px) saturate(1.45);
+    backdrop-filter: blur(18px) saturate(1.45);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 5px 16px rgba(0,0,0,.06);
+  }
+  #sre-agent-app .sre-inv-filter::before {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    top: 4px;
+    bottom: 4px;
+    left: 4px;
+    width: calc((100% - 8px) / var(--sre-filter-count));
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border-color));
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--accent) 15%, var(--bg-panel));
+    box-shadow: 0 2px 8px rgba(0,0,0,.08), inset 0 1px 0 rgba(255,255,255,.28);
+    transform: translateX(calc(var(--sre-filter-index, 0) * 100%));
+    transition: transform .38s cubic-bezier(.22,.85,.25,1), background .2s ease;
+    pointer-events: none;
+  }
+  #sre-agent-app .sre-inv-filter button {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 7px 3px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 10px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color .2s ease, transform .2s ease;
+  }
+  #sre-agent-app .sre-inv-filter button:hover { color: var(--text-primary); }
+  #sre-agent-app .sre-inv-filter button:active { transform: scale(.97); }
+  #sre-agent-app .sre-inv-filter button.is-active { color: var(--text-primary); }
+  #sre-agent-app .sre-inv-filter button small {
+    min-width: 14px;
+    padding: 1px 3px;
+    border-radius: 999px;
+    background: rgba(127,140,160,.12);
+    color: var(--text-secondary);
+    font-size: 9px;
+    line-height: 1.2;
+  }
+  #sre-agent-app .sre-inv-filter button.is-active small {
+    background: color-mix(in srgb, var(--accent) 17%, transparent);
+    color: var(--accent);
+  }
+  #sre-agent-app .sre-inv-date {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+  }
+  #sre-agent-app .sre-inv-date i { font-size: 10px; opacity: .75; }
+  @media (max-width: 440px) {
+    #sre-agent-app .sre-inv-filter button { gap: 2px; font-size: 9px; }
+    #sre-agent-app .sre-inv-filter button small { min-width: 12px; font-size: 8px; }
+  }
+  #sre-agent-app .sre-inv-card {
+    border: 1px solid #9ecfff;
+    border-radius: 16px;
+    background: var(--bg-panel);
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
+    transition: box-shadow .18s ease, border-color .18s ease, transform .18s ease;
+  }
+  #sre-agent-app .sre-inv-card:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .08);
+  }
+  #sre-agent-app .sre-inv-card[data-open="1"] {
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--border-color));
+    box-shadow: 0 4px 18px rgba(0, 0, 0, .09);
+  }
+  @supports not (color: color-mix(in srgb, red 50%, blue)) {
+    #sre-agent-app .sre-inv-card[data-open="1"] { border-color: var(--accent); }
+  }
+  #sre-agent-app .sre-inv-head {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    padding: 12px 14px; background: transparent; border: 0;
+    text-align: left; cursor: pointer; user-select: none;
+    transition: background .18s ease;
+  }
+  #sre-agent-app .sre-inv-head:hover { background: rgba(127, 140, 160, .07); }
+  #sre-agent-app .sre-inv-head:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: -2px;
+  }
+  #sre-agent-app .sre-inv-chev {
+    flex: none; display: flex; color: var(--text-secondary);
+    font-size: 10px; transition: transform .2s ease;
+  }
+  #sre-agent-app .sre-inv-card[data-open="1"] .sre-inv-chev { transform: rotate(90deg); }
+  #sre-agent-app .sre-inv-title {
+    flex: 1; min-width: 0; font-size: 13px; font-weight: 600;
+    color: var(--text-primary);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #sre-agent-app .sre-inv-badge {
+    flex: none; font-size: 10px; font-weight: 700; letter-spacing: .3px;
+    text-transform: uppercase; padding: 3px 10px; border-radius: 999px;
+    border: 1px solid transparent; background: color-mix(in srgb, currentColor 12%, transparent);
+  }
+  @supports not (color: color-mix(in srgb, red 50%, blue)) {
+    #sre-agent-app .sre-inv-badge { background: rgba(127, 140, 160, .14); }
+  }
+  #sre-agent-app .sre-inv-meta {
+    padding: 0 14px 10px 36px; font-size: 11px; color: var(--text-secondary);
+    display: flex; gap: 10px; flex-wrap: wrap;
+  }
+  #sre-agent-app .sre-inv-bar {
+    height: 3px; background: var(--border-color); overflow: hidden;
+  }
+  #sre-agent-app .sre-inv-bar > i {
+    display: block; height: 100%; background: var(--success-text);
+    transition: width .35s ease;
+  }
+  #sre-agent-app .sre-inv-body { padding: 14px; border-top: 1px solid var(--border-color); }
+  #sre-agent-app .sre-inv-section {
+    display: flex; align-items: center; gap: 6px; margin-bottom: 8px;
+    font-size: 10.5px; font-weight: 700; letter-spacing: .4px;
+    text-transform: uppercase; color: var(--text-secondary);
+  }
+  #sre-agent-app .sre-inv-section + .sre-inv-section { margin-top: 16px; }
+  #sre-agent-app .sre-inv-row {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 6px 8px; border-radius: 8px;
+    transition: background .15s ease;
+  }
+  #sre-agent-app .sre-inv-row:hover { background: rgba(127, 140, 160, .08); }
+  #sre-agent-app .sre-inv-dot {
+    flex: none; width: 18px; height: 18px; margin-top: 1px;
+    border-radius: 50%; border: 1px solid currentColor;
+    display: flex; align-items: center; justify-content: center; font-size: 9px;
+  }
+  #sre-agent-app .sre-inv-text {
+    flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.55;
+    color: var(--text-primary); word-break: break-word;
+  }
+  #sre-agent-app .sre-inv-chip {
+    font-size: 10px; font-weight: 600; padding: 1px 6px;
+    border-radius: 6px; white-space: nowrap;
+  }
+  #sre-agent-app .sre-inv-finding {
+    display: flex; gap: 10px; padding: 10px 12px; border-radius: 12px;
+    border: 1px solid var(--border-color); background: var(--bg-main);
+    margin-bottom: 8px;
+    transition: box-shadow .18s ease, border-color .18s ease;
+  }
+  #sre-agent-app .sre-inv-finding:hover {
+    box-shadow: 0 3px 12px rgba(0, 0, 0, .07);
+  }
+  #sre-agent-app .sre-inv-finding > .sre-inv-stripe {
+    flex: none; width: 3px; border-radius: 99px; background: currentColor;
+  }
+  #sre-agent-app .sre-inv-more {
+    color: var(--accent); font-size: 11px; cursor: pointer; white-space: nowrap;
+    text-decoration: underline; text-underline-offset: 2px;
+  }
+  /* The completion summary reads as a badge tucked under the reply: same width
+     as the answer panel, rounded, attached instead of floating as its own
+     block. */
+  #sre-agent-app .sre-run-audit {
+    margin: 6px 0 2px;
+    border-radius: 12px !important;
+    overflow: hidden;
+    border: 1px solid var(--border-color) !important;
+    background: var(--bg-main) !important;
+    width: 100%;
+    box-sizing: border-box;
+    transition: border-color .18s ease;
+  }
+  #sre-agent-app .sre-run-audit:hover { border-color: var(--success-text) !important; }
+  #sre-agent-app .sre-run-audit > summary {
+    border-radius: 11px;
+    background: rgba(63, 185, 80, .12) !important;
+  }
+  #sre-agent-app .sre-run-audit > summary strong { color: var(--success-text) !important; }
+  #sre-agent-app .sre-run-audit > summary span { color: var(--success-text) !important; }
+  #sre-agent-app .sre-run-audit > div {
+    background: transparent !important;
+    border-top: 1px solid var(--border-color) !important;
+  }
+  #sre-agent-app .sre-panel > .sre-run-audit,
+  #sre-agent-app .agent-msg-body > .sre-run-audit {
+    width: 100%;
+  }
+  #sre-agent-app .sre-run-audit > summary::-webkit-details-marker { display: none; }
+  #sre-agent-app .sre-run-audit[open] > summary .fa-chevron-down { transform: rotate(180deg); }
+  /* --- Unified answer bubble: the agent's work lives inside the card -----
+     One card per turn: avatar, header with the status pill, the collapsible
+     chain of thought, the answer, then the audit. The pill opens the chain. */
+  #sre-agent-app .sre-bubble-head {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+  }
+  /* While a run is live its bubble header pins to the top of the chat column,
+     so the live status pill stays readable however far up the reader scrolls.
+     The negative margin cancels the panel's own 1rem padding (bootstrap p-3)
+     so the bar sits flush with the top edge instead of floating below it, and
+     it is scoped to the live bubble so archived turns keep scrolling normally. */
+  #sre-agent-app .agent-msg.sre-msg-ai[data-live="1"] .sre-bubble-head {
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    margin: -1rem -1rem 0.5rem;
+    padding: 1rem 1rem 0.5rem;
+    background: var(--bg-panel);
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 1px 0 var(--border-color);
+  }
+  /* --- Turn rail: a chat outline down the left edge of the column. One strip
+     per question turn; hover previews the question and its answer, click jumps
+     straight to it. The strip for the turn currently on screen stretches long. */
+  #sre-turn-rail {
+    position: absolute;
+    left: 4px;
+    top: 0;
+    bottom: 190px;
+    width: 30px;
+    z-index: 15;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  #sre-turn-rail .sre-turn-mark {
+    pointer-events: auto;
+    background: none;
+    border: none;
+    padding: 4px 8px;
+    margin: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #sre-turn-rail .sre-turn-bar {
+    display: block;
+    width: 14px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--text-secondary);
+    opacity: .38;
+    transition: width .18s, opacity .18s, background .18s;
+  }
+  #sre-turn-rail .sre-turn-mark:hover .sre-turn-bar,
+  #sre-turn-rail .sre-turn-mark.sre-active .sre-turn-bar {
+    opacity: 1;
+  }
+  #sre-turn-rail .sre-turn-mark:hover .sre-turn-bar {
+    width: 20px;
+  }
+  #sre-turn-rail .sre-turn-mark.sre-active .sre-turn-bar {
+    width: 26px;
+    background: var(--text-strong, var(--text-primary));
+  }
+  #sre-turn-tip {
+    position: absolute;
+    left: 42px;
+    z-index: 30;
+    width: max-content;
+    max-width: 330px;
+    display: none;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(0,0,0,.35);
+    padding: 10px 12px;
+    font-family: 'Poppins', 'Segoe UI', sans-serif;
+  }
+  #sre-turn-tip.sre-show { display: block; }
+  #sre-turn-tip .sre-tip-q {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-strong, var(--text-primary));
+    margin: 0 0 2px;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  #sre-turn-tip .sre-tip-t {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+  }
+  #sre-turn-tip .sre-tip-a {
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--text-secondary);
+    margin: 0;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+  }
+  @media (max-width: 640px) {
+    #sre-turn-rail, #sre-turn-tip { display: none !important; }
+  }
+  #sre-agent-app .sre-run-toggle {
+    margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 700; padding: 4px 10px 4px 8px;
+    border-radius: 999px; border: 1px solid transparent;
+    background: rgba(88, 166, 255, .12); color: var(--accent);
+    cursor: pointer; user-select: none; flex: none; font-family: inherit;
+    transition: background .15s ease, transform .1s ease;
+  }
+  #sre-agent-app .sre-run-toggle:hover { background: rgba(88, 166, 255, .22); }
+  #sre-agent-app .sre-run-toggle:active { transform: scale(.96); }
+  #sre-agent-app .sre-run-toggle.sre-done {
+    background: rgba(63, 185, 80, .13); color: var(--success-text);
+  }
+  #sre-agent-app .sre-run-toggle.sre-done:hover { background: rgba(63, 185, 80, .22); }
+  #sre-agent-app .sre-run-toggle.sre-failed {
+    background: rgba(248, 81, 73, .12); color: var(--error);
+  }
+  #sre-agent-app .sre-run-toggle.sre-failed:hover { background: rgba(248, 81, 73, .2); }
+  #sre-agent-app .sre-run-toggle.sre-hidden { display: none; }
+  #sre-agent-app .sre-run-toggle .sre-run-dur {
+    font-family: monospace; font-size: 11px; font-weight: 600; opacity: .85;
+  }
+  #sre-agent-app .sre-run-toggle svg { display: block; }
+  #sre-agent-app .sre-run-toggle .sre-run-chev { display: flex; opacity: .7; transition: transform .2s ease; }
+  #sre-agent-app .sre-cot:empty { display: none; }
+  /* The run card sheds its own chrome once nested: the bubble owns it. */
+
+  #sre-agent-app .sre-art-locate {
+    cursor: pointer; transition: background .15s ease, color .15s ease;
+  }
+  #sre-agent-app .sre-art-locate:hover {
+    background: rgba(127, 140, 160, .16); color: var(--accent);
+  }
+  /* A blocked prompt stays in the transcript as evidence, but blurred and
+     collapsed until the operator chooses to read it. Never deleted: deleting
+     evidence is what made blocked turns vanish from history. */
+  #sre-agent-app .sre-msg-user.sre-quarantined {
+    background: rgba(248, 81, 73, .14) !important;
+    border: 1px solid rgba(248, 81, 73, .55) !important;
+    box-shadow: 0 4px 16px rgba(248, 81, 73, .14);
+  }
+  #sre-agent-app .sre-msg-user.sre-quarantined .sre-quarantine-veil {
+    background: rgba(248, 81, 73, .10);
+  }
+  #sre-agent-app .sre-quarantine { position: relative; }
+  #sre-agent-app .sre-quarantine-body {
+    filter: blur(7px); user-select: none; pointer-events: none;
+    max-height: 110px; overflow: hidden;
+  }
+  #sre-agent-app .sre-quarantine.sre-open .sre-quarantine-body {
+    filter: none; user-select: text; pointer-events: auto; max-height: none;
+  }
+  #sre-agent-app .sre-quarantine-veil {
+    position: absolute; inset: 0; display: flex; align-items: center;
+    justify-content: center; gap: 8px; cursor: pointer;
+    background: rgba(248, 81, 73, .07); border: 1px dashed rgba(248, 81, 73, .5);
+    border-radius: 12px; color: var(--error);
+    font-size: 12px; font-weight: 700; font-family: inherit; width: 100%;
+  }
+  #sre-agent-app .sre-quarantine.sre-open .sre-quarantine-veil {
+    position: static; margin-top: 8px; padding: 4px 10px;
+    background: transparent; border-style: solid; width: auto;
+  }
+  /* A blocked turn reads red on both bubbles. The AI bubble keeps its
+     status pill: the chain is still openable, only its colours change. */
+  #sre-agent-app .sre-blocked-turn .sre-panel {
+    background: rgba(248, 81, 73, .08) !important;
+    border-color: rgba(248, 81, 73, .45) !important;
+    box-shadow: 0 4px 18px rgba(248, 81, 73, .10) !important;
+  }
+  #sre-agent-app .sre-blocked-turn .sre-panel strong { color: var(--error) !important; }
+  #sre-agent-app .sre-inv-empty {
+    padding: 12px; font-size: 12px; color: var(--text-secondary); font-style: italic;
+  }
+  #sre-agent-app .sre-reasoning[open] > summary .sre-reasoning-chev {
+    transform: rotate(90deg);
+  }
+  #sre-agent-app .sre-reasoning > summary::-webkit-details-marker {
+    display: none;
+  }
+  #sre-agent-app .sre-reasoning > summary:hover {
+    color: var(--text-primary);
+  }
+  #sre-agent-app .sre-answer-body > :first-child {
+    margin-top: 0;
+  }
+  @supports (-webkit-background-clip: text) or (background-clip: text) {
+    #sre-agent-app .ai-content.sre-streaming .sre-live-text {
+      background-image: linear-gradient(90deg,
+        var(--text-primary) 0%, var(--text-primary) 42%,
+        color-mix(in srgb, var(--accent) 45%, var(--text-primary)) 52%,
+        var(--text-primary) 62%, var(--text-primary) 100%);
+      background-size: 260% 100%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      animation: sreSweep 3.2s ease-in-out infinite;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #sre-agent-app .ai-content.sre-streaming > *,
+    #sre-agent-app .ai-content.sre-streaming .sre-live-text {
+      animation: none !important;
+    }
+  }
+  /* The reasoning trace: the step being worked on is the only one that moves,
+     so the eye follows the run instead of scanning a static list. */
+  #sre-agent-app .sre-agent-step[data-status="active"] > .sre-tl-dot {
+    animation: srePulse 1.8s ease-out infinite;
+  }
+  #sre-agent-app .sre-agent-step[data-status="active"] .sre-tl-title {
+    animation: sreReveal .5s ease both;
+  }
+  #sre-agent-app .sre-agent-step[data-status="active"] [id^="step-content-"] {
+    animation: sreReveal .55s ease both;
+  }
+  .sre-agent-step { animation: sreStepIn 0.35s ease both; border: 0 !important; background: transparent !important; box-shadow: none !important; border-radius: 0 !important; }
+  /* The run card is a real bordered box in live and in replay alike. Owned by
+     a class with !important so no inline or legacy rule can quietly drop the
+     edges when the body is expanded. */
+  #sre-agent-app .sre-run-card {
+    background: var(--bg-panel) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .06) !important;
+    overflow: hidden !important;
+    width: 100% !important;
+    box-sizing: border-box;
+    /* align-self: stretch here collapsed the card to a single pixel: the card is
+       a flex item, and stretching it against a container whose own height comes
+       from its content left a 1px box with a full-height header spilling out of
+       it. Its size is its content. */
+    align-self: auto !important;
+    flex: 0 0 auto;
+    height: auto !important;
+    min-height: min-content;
+  }
+  #sre-agent-app .sre-run-card > .sre-run-head {
+    background: rgba(127, 140, 160, .06);
+    transition: background .2s;
+  }
+  #sre-agent-app .sre-run-card[data-open="1"] > .sre-run-head {
+    background: rgba(127, 140, 160, .12);
+    border-bottom: 1px solid var(--border-color);
+    border-radius: 12px 12px 0 0;
+  }
+  /* The timeline surface inside the run card is its own bordered, rounded
+     panel, in both live and replayed runs. Colours come from the app
+     variables, so light and dark each read correctly instead of a hardcoded
+     white. While the card is open the top corners tuck under the header. */
+  #sre-agent-app .sre-run-card > .sre-run-body {
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, .04);
+    min-height: min-content;
+    align-self: auto;
+    flex: 0 0 auto;
+  }
+  #sre-agent-app .sre-run-card[data-open="1"] > .sre-run-body {
+    border-top-left-radius: 12px !important;
+    border-top-right-radius: 12px !important;
+  }
+  .sre-tl-dot svg { display: block; }
+  .sre-tl-chev svg { display: block; }
+
+  #sre-agent-app a {
+    color: #58a6ff;
+  }
+
+  #sre-agent-app .ai-content h1,
+  #sre-agent-app .ai-content h2,
+  #sre-agent-app .ai-content h3,
+  #sre-agent-app .ai-content h4 {
+    color: var(--text-primary);
+    font-weight: 700;
+    margin: 10px 0 4px 0;
+    line-height: 1.4;
+  }
+  #sre-agent-app .ai-content h1 { font-size: 17px; }
+  #sre-agent-app .ai-content h2 { font-size: 16px; }
+  #sre-agent-app .ai-content h3,
+  #sre-agent-app .ai-content h4 { font-size: 15px; }
+  #sre-agent-app .ai-content strong,
+  #sre-agent-app .ai-content b {
+    color: var(--text-primary);
+  }
+
+  #sre-agent-app .ai-content p {
+    margin: 6px 0;
+  }
+
+  #sre-agent-app .ai-content table {
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
+    margin: 8px 0;
+    border: 1px solid rgba(31, 111, 235, 0.35);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  #sre-agent-app .ai-content th,
+  #sre-agent-app .ai-content td {
+    border: none;
+    border-bottom: 1px solid rgba(31, 111, 235, 0.22);
+    border-right: 1px solid rgba(31, 111, 235, 0.22);
+    padding: 8px 12px;
+    text-align: left;
+    font-size: 13px;
+  }
+  #sre-agent-app .ai-content thead th {
+    background: rgba(31, 111, 235, 0.07);
+    color: var(--accent);
+    font-weight: 700;
+  }
+  #sre-agent-app .ai-content tbody td:first-child {
+    font-weight: 600;
+    color: var(--text-strong);
+  }
+  #sre-agent-app .ai-content tr:last-child th,
+  #sre-agent-app .ai-content tr:last-child td {
+    border-bottom: none;
+  }
+  #sre-agent-app .ai-content th:last-child,
+  #sre-agent-app .ai-content td:last-child {
+    border-right: none;
+  }
+
+  #sre-agent-app .ai-content th {
+    background: var(--bg-panel);
+    color: var(--text-strong);
+  }
+
+  #sre-agent-app .ai-content {
+    color: var(--text-primary);
+    word-break: break-word;
+  }
+
+  #sre-agent-app .ai-content pre {
+    background: var(--bg-panel);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 10px 12px;
+    overflow-x: auto;
+    font-size: 12px;
+  }
+
+  #sre-agent-app .ai-content code {
+    background: var(--bg-panel);
+    color: var(--text-strong);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 12px;
+  }
+
+  #sre-agent-app .ai-content pre code {
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: inherit;
+  }
+
+  #sre-agent-app .ai-content blockquote {
+    border-left: 3px solid var(--warning);
+    margin: 8px 0;
+    padding: 6px 12px;
+    color: var(--text-secondary);
+    background: var(--bg-panel);
+    border-radius: 0 6px 6px 0;
+  }
+
+  #sre-agent-app .ai-content ul {
+    padding-left: 22px;
+  }
+
+  #sre-agent-app .ai-content input[type="checkbox"] {
+    accent-color: var(--success);
+  }
+
+  #chat-messages::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  #chat-messages::-webkit-scrollbar-thumb {
+    background: #30363d;
+    border-radius: 3px;
+  }
+
+  #chat-messages::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .sre-agent-step {
+    background: var(--bg-panel);
+    opacity: 0.95;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    overflow: hidden;
+  }
+
+  .sre-step-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    cursor: pointer;
+    background: rgba(0, 0, 0, 0.02);
+  }
+
+  .sre-step-header:hover {
+    background: rgba(0, 0, 0, 0.04);
+  }
+
+  .sre-step-content {
+    padding: 0 14px 10px 14px;
+    display: none;
+    border-top: 1px solid var(--border-color);
+    margin-top: 4px;
+    padding-top: 10px;
+  }
+
+  .sre-step-content.open {
+    display: block;
+  }
+
+  .sre-timer {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-family: monospace;
+    background: transparent;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    opacity: .85;
+    white-space: nowrap;
+  }
+
+  .sre-history-item {
+    padding: 12px;
+    background: #ffffff;
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    position: relative;
+  }
+
+  .sre-history-item:hover {
+    border-color: rgba(42, 120, 249, 0.45);
+    background: rgba(42, 120, 249, 0.05);
+  }
+
+  .sre-history-item.active {
+    background: rgba(42, 120, 249, 0.12);
+    border-color: rgba(42, 120, 249, 0.5);
+    box-shadow: 0 2px 10px rgba(42, 120, 249, 0.12);
+  }
+
+  .sre-history-item.active .sre-history-title {
+    color: var(--accent);
+  }
+
+  .sre-history-check {
+    display: none;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--success); color: #fff;
+    align-items: center; justify-content: center; flex-shrink: 0;
+    font-size: 11px;
+  }
+  .sre-history-item.run-completed .sre-history-check,
+  .sre-history-item.run-failed .sre-history-check { display: inline-flex; }
+  .sre-history-item.run-failed .sre-history-check { background: var(--error); }
+  .sre-history-item.run-failed .sre-history-check i::before { content: "\f00d"; }
+
+  .sre-history-chev {
+    display: none;
+    color: var(--accent); font-size: 14px; flex-shrink: 0;
+  }
+  .sre-history-item.active .sre-history-chev { display: inline-flex; }
+
+  .sre-history-title {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sre-history-date {
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+  @keyframes modal-in { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+  @keyframes slide-left { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+  #ai-models-table-body tr { transition: background-color 0.15s ease; }
+  #ai-models-table-body tr:hover { background-color: rgba(128, 128, 128, 0.05); }

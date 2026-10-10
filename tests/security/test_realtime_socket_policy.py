@@ -2,7 +2,25 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).parents[2]
-CHAT = (ROOT / "ai_config/templates/chat3.html").read_text()
+
+
+def _read(rel):
+    try:
+        return (ROOT / rel).read_text()
+    except OSError:
+        return ""
+
+
+# The chat page ships as a thin template plus static bundles loaded in
+# document order. Policy assertions below cover the shipped page as a whole,
+# so the bundles are concatenated in the same order the template loads them.
+CHAT = (
+    (ROOT / "ai_config/templates/chat3.html").read_text()
+    + _read("ai_config/static/js/chat-utils.js")
+    + _read("ai_config/static/js/chat-app.js")
+    + _read("ai_config/static/js/chat-crypto.js")
+    + _read("ai_config/static/js/chat-models.js")
+)
 LAYOUT = (ROOT / "ai_config/templates/layout/layout1.html").read_text()
 NETWORK = (ROOT / "ai_config/templates/network_security.html").read_text()
 CONSUMERS = (ROOT / "ai_config/ai_config/consumers.py").read_text()
@@ -72,7 +90,10 @@ def test_agent_snapshot_backstop_keeps_running_while_socket_is_open():
 def test_switching_history_sessions_resubscribes_the_run_socket():
     load_session = CHAT[CHAT.index("async function loadSession(id)") : CHAT.index("// --- Explorer Logic ---")]
     assert "type: 'subscribe', session_id: sessionId" in load_session
-    assert "await bootstrapActiveRun();" in load_session
+    # The snapshot must still run, but it must not block the already-painted
+    # history: awaiting it here reintroduced the multi-second open-chat delay.
+    assert "bootstrapActiveRun()" in load_session
+    assert "await bootstrapActiveRun();" not in load_session
 
 
 def test_rehydrated_active_run_restores_live_pill_and_state_row():
