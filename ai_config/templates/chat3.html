@@ -3130,6 +3130,142 @@
         bubble.setAttribute('data-live', '1');
       } catch (err) { /* best-effort */ }
     };
+
+    // --- Turn rail: chat outline navigation ---
+    // One strip per question turn down the left edge of the chat column.
+    // Hover previews the question and its answer, click jumps straight to the
+    // turn, and the strip for the turn on screen stretches long.
+    window.turnRail = window.turnRail || { marks: [] };
+
+    window.turnRailRoot = function () {
+      const host = messagesDiv && messagesDiv.parentElement;
+      if (!host) return null;
+      if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+      let rail = document.getElementById('sre-turn-rail');
+      if (!rail) {
+        rail = document.createElement('div');
+        rail.id = 'sre-turn-rail';
+        host.appendChild(rail);
+      }
+      let tip = document.getElementById('sre-turn-tip');
+      if (!tip) {
+        tip = document.createElement('div');
+        tip.id = 'sre-turn-tip';
+        host.appendChild(tip);
+      }
+      return { rail: rail, tip: tip };
+    };
+
+    window.turnRailEntry = function (userEl) {
+      const raw = userEl.dataset.originalText || userEl.textContent || '';
+      const q = raw.replace(/\n\n\[Context Attached: [^\]]+\]/g, '').trim();
+      let sib = userEl.nextElementSibling;
+      while (sib && !(sib.classList && sib.classList.contains('agent-msg'))) sib = sib.nextElementSibling;
+      const ansEl = sib && sib.querySelector('.ai-content');
+      const a = ansEl ? ansEl.textContent.trim().slice(0, 220) : '';
+      let t = '';
+      try { t = userEl.dataset.created ? chatTimeLabel(userEl.dataset.created) : ''; } catch (e) { /* best-effort */ }
+      return { el: userEl, q: q || '(empty question)', a: a, t: t };
+    };
+
+    // A turn is a user question bubble; every direct .sre-msg-user child of the
+    // scroll column is one, in document order.
+    window.refreshTurnRail = function () {
+      try {
+        const root = window.turnRailRoot();
+        if (!root || !messagesDiv) return;
+        const users = Array.from(messagesDiv.children)
+          .filter(el => el.classList && el.classList.contains('sre-msg-user'));
+        root.rail.innerHTML = '';
+        window.turnRailHide();
+        window.turnRail.marks = users.map((u) => {
+          const entry = window.turnRailEntry(u);
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'sre-turn-mark';
+          b.setAttribute('aria-label', entry.q.slice(0, 80));
+          b.innerHTML = '<span class="sre-turn-bar"></span>';
+          b.addEventListener('click', () => window.turnRailJump(entry.el));
+          b.addEventListener('mouseenter', () => window.turnRailTip(entry, b));
+          b.addEventListener('mouseleave', () => window.turnRailHide());
+          root.rail.appendChild(b);
+          return { mark: b, el: u };
+        });
+        root.rail.style.display = users.length ? '' : 'none';
+        window.turnRailActive();
+      } catch (err) { /* best-effort */ }
+    };
+
+    window.turnRailJump = function (el) {
+      try {
+        if (!el || !document.contains(el) || !messagesDiv) return;
+        const r = el.getBoundingClientRect();
+        const host = messagesDiv.getBoundingClientRect();
+        messagesDiv.scrollTo({ top: messagesDiv.scrollTop + r.top - host.top - 56, behavior: 'smooth' });
+      } catch (err) { /* best-effort */ }
+    };
+
+    window.turnRailTip = function (entry, mark) {
+      try {
+        const root = window.turnRailRoot();
+        if (!root || !messagesDiv) return;
+        const tip = root.tip;
+        tip.innerHTML =
+          '<p class="sre-tip-q">' + escapeHtml(entry.q) + '</p>' +
+          (entry.t ? '<div class="sre-tip-t">' + escapeHtml(entry.t) + '</div>' : '') +
+          '<p class="sre-tip-a">' + escapeHtml(entry.a || 'Agent is working on this…') + '</p>';
+        tip.classList.add('sre-show');
+        // Center the card on the strip, clamped inside the column above the
+        // floating composer so it never slides under the input bar.
+        const host = messagesDiv.parentElement.getBoundingClientRect();
+        const mr = mark.getBoundingClientRect();
+        let top = mr.top - host.top + (mr.height / 2) - (tip.offsetHeight / 2);
+        top = Math.max(8, Math.min(top, host.height - tip.offsetHeight - 190));
+        tip.style.top = Math.round(top) + 'px';
+      } catch (err) { /* best-effort */ }
+    };
+
+    window.turnRailHide = function () {
+      const tip = document.getElementById('sre-turn-tip');
+      if (tip) tip.classList.remove('sre-show');
+    };
+
+    // The deepest turn that has crossed into view owns the long strip.
+    window.turnRailActive = function () {
+      try {
+        if (!messagesDiv) return;
+        const host = messagesDiv.getBoundingClientRect();
+        let pick = null;
+        (window.turnRail.marks || []).forEach(m => {
+          if (!document.contains(m.el)) return;
+          if (m.el.getBoundingClientRect().top <= host.top + 140) pick = m;
+        });
+        (window.turnRail.marks || []).forEach(m => m.mark.classList.toggle('sre-active', m === pick));
+      } catch (err) { /* best-effort */ }
+    };
+
+    window.turnRailActiveSchedule = function () {
+      if (window.turnRailQueued) return;
+      window.turnRailQueued = true;
+      requestAnimationFrame(() => {
+        window.turnRailQueued = false;
+        try { window.turnRailActive(); window.turnRailHide(); } catch (e) { /* best-effort */ }
+      });
+    };
+
+    // Rebuild on every turn-level change: history load, older-page prepend,
+    // new question, new answer. Step rows land inside the run body, not as
+    // direct children, so streaming never triggers a rebuild by itself.
+    window.turnRailObserve = function () {
+      if (window.turnRailInit || !messagesDiv) return;
+      window.turnRailInit = true;
+      let t = null;
+      new MutationObserver(() => {
+        if (t) clearTimeout(t);
+        t = setTimeout(() => { try { window.refreshTurnRail(); } catch (e) { /* best-effort */ } }, 400);
+      }).observe(messagesDiv, { childList: true });
+      window.refreshTurnRail();
+    };
     // A packaged turn skeleton: bot avatar on the left, one column on the
     // right holding the run card now and the answer panel later.
     // On send, the answer bubble is born first and the run seats its chain
@@ -5450,8 +5586,10 @@
           window.agentAutoScroll = false;
           if (messagesDiv.scrollHeight > messagesDiv.clientHeight + 200) window.showJumpToLatest();
         }
+        window.turnRailActiveSchedule && window.turnRailActiveSchedule();
       }, { passive: true });
     }
+    window.turnRailObserve && window.turnRailObserve();
 
     // --- Form submit ---
     form.addEventListener('submit', (e) => {
@@ -6600,6 +6738,7 @@
         window.hideJumpToLatest();
         ensureConnectionCard();
         lucide.createIcons();
+        window.refreshTurnRail && window.refreshTurnRail();
         loadArtifacts();
         renderInvestigationTimeline();
         if (ws && ws.readyState === WebSocket.OPEN) {
@@ -7761,6 +7900,98 @@
     background: var(--bg-panel);
     border-radius: 14px 14px 0 0;
     box-shadow: 0 1px 0 var(--border-color);
+  }
+  /* --- Turn rail: a chat outline down the left edge of the column. One strip
+     per question turn; hover previews the question and its answer, click jumps
+     straight to it. The strip for the turn currently on screen stretches long. */
+  #sre-turn-rail {
+    position: absolute;
+    left: 4px;
+    top: 0;
+    bottom: 190px;
+    width: 30px;
+    z-index: 15;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  #sre-turn-rail .sre-turn-mark {
+    pointer-events: auto;
+    background: none;
+    border: none;
+    padding: 4px 8px;
+    margin: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #sre-turn-rail .sre-turn-bar {
+    display: block;
+    width: 14px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--text-secondary);
+    opacity: .38;
+    transition: width .18s, opacity .18s, background .18s;
+  }
+  #sre-turn-rail .sre-turn-mark:hover .sre-turn-bar,
+  #sre-turn-rail .sre-turn-mark.sre-active .sre-turn-bar {
+    opacity: 1;
+  }
+  #sre-turn-rail .sre-turn-mark:hover .sre-turn-bar {
+    width: 20px;
+  }
+  #sre-turn-rail .sre-turn-mark.sre-active .sre-turn-bar {
+    width: 26px;
+    background: var(--text-strong, var(--text-primary));
+  }
+  #sre-turn-tip {
+    position: absolute;
+    left: 42px;
+    z-index: 30;
+    width: max-content;
+    max-width: 330px;
+    display: none;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(0,0,0,.35);
+    padding: 10px 12px;
+    font-family: 'Poppins', 'Segoe UI', sans-serif;
+  }
+  #sre-turn-tip.sre-show { display: block; }
+  #sre-turn-tip .sre-tip-q {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-strong, var(--text-primary));
+    margin: 0 0 2px;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  #sre-turn-tip .sre-tip-t {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+  }
+  #sre-turn-tip .sre-tip-a {
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--text-secondary);
+    margin: 0;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+  }
+  @media (max-width: 640px) {
+    #sre-turn-rail, #sre-turn-tip { display: none !important; }
   }
   #sre-agent-app .sre-run-toggle {
     margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
