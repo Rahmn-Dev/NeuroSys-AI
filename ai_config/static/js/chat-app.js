@@ -996,15 +996,9 @@
         timeDiv.classList.add('sre-sending');
       }
       messagesDiv.appendChild(timeDiv);
-      // Older prompts keep their text, but only the latest is currency: the
-      // delete affordance lives on the newest bubble alone.
-      try {
-        const _allUser = messagesDiv.querySelectorAll('.sre-msg-user');
-        _allUser.forEach((_el, _idx) => {
-          const _del = _el.querySelector('[data-delete-msg="1"]');
-          if (_del) _del.style.display = _idx === _allUser.length - 1 ? '' : 'none';
-        });
-      } catch (err) { /* best-effort */ }
+      // Every prompt keeps its own actions: editing repaints in place and
+      // resends below, deleting removes the turn and its direct reply, so
+      // there is no reason to limit either to the newest bubble.
       scrollToBottom();
     }
 
@@ -1014,15 +1008,9 @@
       event.stopPropagation();
       const el = btn.closest('[data-msg-id], .sre-msg-user, .agent-msg.sre-msg-ai');
       if (!el) return;
-      // Only the newest user message can be deleted, which keeps the
-      // cascade to its direct AI reply predictable.
-      if (el.classList.contains('sre-msg-user')) {
-        const all = Array.from(messagesDiv.querySelectorAll('.sre-msg-user'));
-        if (el !== all[all.length - 1]) {
-          addSystemMsg('Only the latest message can be deleted.', 'circle-info');
-          return;
-        }
-      }
+      // Any turn can go: the server deletes a user message together with the
+      // AI/tool messages up to the next user message, plus the turn's
+      // investigations, so later turns keep their own context.
       const msgId = el.dataset.msgId;
       if (!msgId) {
         addSystemMsg('Message still loading, try again in a moment.', 'circle-info');
@@ -1065,12 +1053,9 @@
         addSystemMsg('Stop the current run first, then edit the message.', 'circle-info');
         return;
       }
-      // Only the newest prompt can be revised; older turns are history.
-      const bubbles = Array.from(messagesDiv.querySelectorAll('.sre-msg-user'));
-      if (bubble !== bubbles[bubbles.length - 1]) {
-        addSystemMsg('Only the latest message can be edited. Start a new chat to ask something else.', 'circle-info');
-        return;
-      }
+      // Any prompt can be revised: the bubble is repainted in place and the
+      // revised request is sent again as a fresh turn below, leaving the rest
+      // of history untouched.
       const original = (bubble.dataset.rawText || bubble.textContent || '').trim();
       // Hold the bubble's rendered width, otherwise it collapses to the
       // textarea's intrinsic width and the card shrinks to a thin strip.
