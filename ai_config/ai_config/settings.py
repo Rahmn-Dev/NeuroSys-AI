@@ -66,12 +66,18 @@ CORS_ALLOWED_ORIGINS = [
     "https://experimental.rahmn.tech",
     "http://localhost:8000",
     "http://127.0.0.1:8000",
+    # Legion LAN IP: phones/laptops on the same Wi-Fi open the app through
+    # this address. Without it every POST (login included) is rejected with
+    # 403 CSRF verification failed. Update if DHCP hands out a new address.
+    "http://192.168.101.25:8000",
 ]
 
 CSRF_TRUSTED_ORIGINS = [
     "https://experimental.rahmn.tech",
     "http://localhost:8000",
     "http://127.0.0.1:8000",
+    # Same LAN-IP reason as above: the Origin header must match exactly.
+    "http://192.168.101.25:8000",
 ]
 # The app is served over HTTPS through the tunnel/reverse proxy, so Django
 # sees plain http unless it is told to trust the forwarded scheme. Without this
