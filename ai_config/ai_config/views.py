@@ -319,7 +319,11 @@ from django.shortcuts import render, redirect
 from django_ratelimit.decorators import ratelimit
 
 @ratelimit(key='ip', rate='3/1m', block=False)
+@never_cache
 def user_login(request):
+    # never_cache: a cached login form carries a dead CSRF token, and every
+    # submit from it is rejected with 403 on all devices at once. Same class
+    # of incident as the stale chat3 tab (see 4ebeb57).
     ip_address = request.META.get('REMOTE_ADDR')
     cache_key = f'login_attempts:{ip_address}'
     attempts = cache.get(cache_key, 0)
@@ -368,6 +372,7 @@ from io import BytesIO
 from django.contrib import messages
 from django.shortcuts import redirect, render
 
+@never_cache
 def setup_2fa(request):
     # Check if the user is authenticated
     if not request.user.is_authenticated:
