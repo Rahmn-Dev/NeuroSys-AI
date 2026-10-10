@@ -1232,6 +1232,7 @@
     window.openTurn = function () { window.turnState = 'running'; };
     window.closeTurn = function () {
       window.turnState = 'idle';
+      window.freshTurnTop = null;
       // The live flag is what pins the bubble header; drop it the moment the
       // turn ends so archived answers scroll like ordinary history again.
       document.querySelectorAll('.agent-msg.sre-msg-ai[data-live="1"]').forEach(b => {
@@ -3939,6 +3940,26 @@
       // follow position, the view is theirs - the Latest button is the way
       // back, exactly as it already is for ordinary new content.
       if (!window.agentAutoScroll && !window.isPinnedToBottom()) return;
+      // A just-sent turn is anchored with its question at the top. While the
+      // anchor is on screen and the whole turn still fits, there is nothing to
+      // center: moving it would only shove the question down to the middle.
+      // Once the anchor scrolls off or the answer outgrows the viewport, the
+      // anchor is spent and normal centering resumes.
+      if (window.freshTurnTop) {
+        if (!document.contains(window.freshTurnTop)) {
+          window.freshTurnTop = null;
+        } else {
+          const hostRect = messagesDiv.getBoundingClientRect();
+          const anchorRect = window.freshTurnTop.getBoundingClientRect();
+          const anchorVisible = anchorRect.top >= hostRect.top - 2
+            && anchorRect.bottom <= hostRect.bottom + 2;
+          if (!anchorVisible) {
+            window.freshTurnTop = null;
+          } else if (messagesDiv.scrollHeight <= messagesDiv.clientHeight + 4) {
+            return;
+          }
+        }
+      }
       const wrap = document.getElementById(wrapId);
       const bubbleId = wrap && wrap.dataset.bubbleId;
       const bubble = (bubbleId && document.getElementById(bubbleId))
@@ -3967,14 +3988,29 @@
     };
 
     // A new turn inserts its user bubble, run card, and empty AI bubble in the
-    // same task. Defer the forced follow until those changes have been laid out
-    // so the starting state is fully visible, even if the user was reading up.
+    // same task. The fresh question is anchored at the top of the column so
+    // the question and its answer read together; forcing the very bottom
+    // instead buried the question above the fold on every send. Defer until
+    // layout settles so the starting state is fully visible, even if the user
+    // was reading up. Streaming keeps following the tail from there.
     window.scrollToNewTurn = function () {
       if (window.isLoadingHistory || !messagesDiv) return;
       window.runHeaderPinned = false;
       window.agentAutoScroll = true;
+      const users = messagesDiv.querySelectorAll(':scope > .sre-msg-user');
+      window.freshTurnTop = users.length ? users[users.length - 1] : null;
       const follow = () => {
-        if (!window.isLoadingHistory) scrollToBottom(true);
+        if (window.isLoadingHistory) return;
+        const anchor = window.freshTurnTop;
+        if (anchor && document.contains(anchor)) {
+          const r = anchor.getBoundingClientRect();
+          const host = messagesDiv.getBoundingClientRect();
+          const maxScroll = Math.max(0, messagesDiv.scrollHeight - messagesDiv.clientHeight);
+          messagesDiv.scrollTop = Math.max(0, Math.min(maxScroll, messagesDiv.scrollTop + r.top - host.top - 12));
+          window.hideJumpToLatest();
+          return;
+        }
+        scrollToBottom(true);
       };
       if (typeof requestAnimationFrame === 'function') {
         requestAnimationFrame(() => requestAnimationFrame(follow));

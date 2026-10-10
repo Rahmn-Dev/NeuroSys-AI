@@ -1,7 +1,17 @@
 const fs = require('node:fs');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
-const html = fs.readFileSync('ai_config/templates/chat3.html','utf8');
+function read(p) {
+ try { return fs.readFileSync(p, 'utf8'); } catch (e) { return ''; }
+}
+// The chat page ships as a thin template plus static bundles loaded in
+// document order. Assertions below cover the shipped page as a whole, so the
+// bundles are concatenated in the same order the template loads them.
+const html = read('ai_config/templates/chat3.html')
+ + read('ai_config/static/js/chat-utils.js')
+ + read('ai_config/static/js/chat-app.js')
+ + read('ai_config/static/js/chat-crypto.js')
+ + read('ai_config/static/js/chat-models.js');
 const api = fs.readFileSync('ai_config/chatbot/api.py','utf8');
 const engine = fs.readFileSync('ai_config/sre_agent/engine.py','utf8');
 function extract(name) {
@@ -67,7 +77,7 @@ passed++;
 const scrollHelperStart = html.indexOf('function scrollToBottom(force)');
 const scrollHelperEnd = html.indexOf('// A new turn inserts its user bubble', scrollHelperStart);
 const scrollHelpers = html.slice(scrollHelperStart, scrollHelperEnd);
-assert.match(scrollHelpers, /if \(!force && window\.runHeaderPinned\) return/);
+assert.match(scrollHelpers, /if \(!force && window\.runHeaderPinned\) \{[\s\S]*window\.showJumpToLatest\(\);[\s\S]*return;/);
 assert.match(scrollHelpers, /window\.centerRunTurn = function[\s\S]*groupCenter[\s\S]*viewCenter/);
 assert.match(html, /messagesDiv\.addEventListener\('scroll',[\s\S]*window\.agentAutoScroll = false/);
 const finalizeStart = html.indexOf('function finalizeRunWrap(');
