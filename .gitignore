@@ -176,3 +176,6 @@ ai_config/ai_security/network-traffic-anomaly-detection/
 
 # node deps (installed locally for cytoscape dev only)
 node_modules/
+
+# collectstatic output (generated WhiteNoise serving dir, rebuilt on deploy)
+ai_config/staticfiles/

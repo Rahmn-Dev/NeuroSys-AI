@@ -1003,7 +1003,7 @@
     left: 4px;
     top: 0;
     bottom: 190px;
-    width: 30px;
+    width: 48px;
     z-index: 15;
     display: flex;
     flex-direction: column;
@@ -1017,7 +1017,7 @@
     pointer-events: auto;
     background: none;
     border: none;
-    padding: 4px 8px;
+    padding: 4px 6px;
     margin: 0;
     cursor: pointer;
     display: flex;
@@ -1026,7 +1026,7 @@
   }
   #sre-turn-rail .sre-turn-bar {
     display: block;
-    width: 14px;
+    width: 16px;
     height: 3px;
     border-radius: 2px;
     background: var(--text-secondary);
@@ -1038,15 +1038,15 @@
     opacity: 1;
   }
   #sre-turn-rail .sre-turn-mark:hover .sre-turn-bar {
-    width: 20px;
+    width: 26px;
   }
   #sre-turn-rail .sre-turn-mark.sre-active .sre-turn-bar {
-    width: 26px;
+    width: 40px;
     background: var(--text-strong, var(--text-primary));
   }
   #sre-turn-tip {
     position: absolute;
-    left: 42px;
+    left: 58px;
     z-index: 30;
     width: max-content;
     max-width: 330px;
