@@ -904,14 +904,8 @@
 
 
 
-    function chatTimeLabel(ts) {
-      try {
-        const d = ts ? new Date(ts) : new Date();
-        return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-      } catch (e) {
-        return '';
-      }
-    }
+    // chatTimeLabel lives in chat-utils.js (shared + unit-tested there).
+
 
     // Paints (or repaints) a prompt bubble. Reused when a prompt is revised so
     // the edited bubble looks exactly like a freshly sent one.
@@ -1577,17 +1571,8 @@
       return { rail: rail, tip: tip };
     };
 
-    window.turnRailEntry = function (userEl) {
-      const raw = userEl.dataset.originalText || userEl.textContent || '';
-      const q = raw.replace(/\n\n\[Context Attached: [^\]]+\]/g, '').trim();
-      let sib = userEl.nextElementSibling;
-      while (sib && !(sib.classList && sib.classList.contains('agent-msg'))) sib = sib.nextElementSibling;
-      const ansEl = sib && sib.querySelector('.ai-content');
-      const a = ansEl ? ansEl.textContent.trim().slice(0, 220) : '';
-      let t = '';
-      try { t = userEl.dataset.created ? chatTimeLabel(userEl.dataset.created) : ''; } catch (e) { /* best-effort */ }
-      return { el: userEl, q: q || '(empty question)', a: a, t: t };
-    };
+    // turnRailEntry lives in chat-utils.js (shared + unit-tested there).
+
 
     // A turn is a user question bubble; every direct .sre-msg-user child of the
     // scroll column is one, in document order.

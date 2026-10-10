@@ -4,6 +4,36 @@
     div.textContent = text;
     return div.innerHTML;
   }
+
+  // Pure display helpers shared by the chat bundles. They live here (instead
+  // of chat-app.js) so the frontend smoke tests can load this small bundle
+  // alone, without booting the whole app. No DOM writes, no network.
+  function chatTimeLabel(ts) {
+    try {
+      const d = ts ? new Date(ts) : new Date();
+      // new Date('garbage') does not throw - it yields an Invalid Date whose
+      // toLocaleTimeString() is the literal string "Invalid Date".
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+      return '';
+    }
+  }
+
+  // One turn-rail row worth of data for a user question bubble: the question
+  // with attachment footers stripped, the following answer's excerpt, and the
+  // display timestamp. Reads the live DOM but never mutates it.
+  window.turnRailEntry = function (userEl) {
+    const raw = userEl.dataset.originalText || userEl.textContent || '';
+    const q = raw.replace(/\n\n\[Context Attached: [^\]]+\]/g, '').trim();
+    let sib = userEl.nextElementSibling;
+    while (sib && !(sib.classList && sib.classList.contains('agent-msg'))) sib = sib.nextElementSibling;
+    const ansEl = sib && sib.querySelector('.ai-content');
+    const a = ansEl ? ansEl.textContent.trim().slice(0, 220) : '';
+    let t = '';
+    try { t = userEl.dataset.created ? chatTimeLabel(userEl.dataset.created) : ''; } catch (e) { /* best-effort */ }
+    return { el: userEl, q: q || '(empty question)', a: a, t: t };
+  };
   // ============================================
   // 1. FUNGSI BULK EDIT (Global)
   // ============================================

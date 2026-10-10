@@ -1,0 +1,12 @@
+{
+  "name": "neurosys-frontend-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Smoke tests for the pure frontend helpers (no browser needed).",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0"
+  }
+}
