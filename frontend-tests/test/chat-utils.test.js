@@ -61,6 +61,63 @@ describe('chatTimeLabel', () => {
   });
 });
 
+describe('sreDateLabel', () => {
+  let window;
+  before(() => { window = bootDom(); });
+
+  function isoDaysAgo(n) {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return d.toISOString();
+  }
+
+  it('says Today for a current timestamp', () => {
+    assert.equal(window.sreDateLabel(new Date().toISOString()), 'Today');
+  });
+
+  it('says Yesterday for the previous day', () => {
+    assert.equal(window.sreDateLabel(isoDaysAgo(1)), 'Yesterday');
+  });
+
+  it('renders older dates English-style without the year', () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 5);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const expected = months[d.getMonth()] + ' ' + d.getDate();
+    // Skipped when the 5-day window crosses New Year (year gets appended).
+    if (d.getFullYear() === new Date().getFullYear()) {
+      assert.equal(window.sreDateLabel(d.toISOString()), expected);
+    }
+  });
+
+  it('appends the year across New Year', () => {
+    assert.match(window.sreDateLabel('2020-03-04T10:00:00Z'), /^Mar 4, 2020$/);
+  });
+
+  it('returns empty string for garbage input', () => {
+    assert.equal(window.sreDateLabel('not-a-date'), '');
+    assert.equal(window.sreDateLabel(''), '');
+  });
+});
+
+describe('turnRailEntry date field', () => {
+  it('carries the English date label alongside the time', () => {
+    const window = bootDom(`
+      <div class="sre-msg-user" data-created="2020-03-04T10:00:00Z">old question</div>
+      <div class="agent-msg sre-msg-ai"><div class="ai-content">old answer</div></div>`);
+    const entry = window.turnRailEntry(window.document.querySelector('.sre-msg-user'));
+    assert.equal(entry.d, 'Mar 4, 2020');
+    assert.match(entry.t, /^\d{2}[.:]\d{2}$/);
+  });
+
+  it('leaves the date empty when the bubble has no timestamp', () => {
+    const window = bootDom(`<div class="sre-msg-user">no time</div>`);
+    const entry = window.turnRailEntry(window.document.querySelector('.sre-msg-user'));
+    assert.equal(entry.d, '');
+    assert.equal(entry.t, '');
+  });
+});
+
 describe('turnRailEntry', () => {
   it('extracts question, answer excerpt and time from a turn', () => {
     const window = bootDom(`
