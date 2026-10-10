@@ -4037,6 +4037,53 @@
     }
     window.turnRailObserve && window.turnRailObserve();
 
+    // --- Left nav full-hide (chat page only) ---
+    // The header button only collapses the nav to its 90px icon rail. This
+    // toggle slides the rail away completely and gives the width to the chat
+    // column; the choice sticks in localStorage. The chat opens hidden unless
+    // the operator explicitly showed it before.
+    window.sreLeftPanelApply = function (hide) {
+      try {
+        const panel = document.querySelector('.popup-dashboardleft-section');
+        const column = document.querySelector('#sre-agent-app')
+          && document.querySelector('#sre-agent-app').closest('.rbt-main-content');
+        if (panel) panel.classList.toggle('sre-left-hidden', !!hide);
+        if (column) column.style.marginLeft = hide ? '8px' : '100px';
+        const btn = document.getElementById('sre-left-toggle');
+        if (btn) {
+          btn.innerHTML = hide ? '<i class="fa-solid fa-chevron-right"></i>' : '<i class="fa-solid fa-chevron-left"></i>';
+          btn.title = hide ? 'Show navigation' : 'Hide navigation';
+        }
+        try { localStorage.setItem('sre-left-panel', hide ? 'hidden' : 'shown'); } catch (e) { /* best-effort */ }
+      } catch (err) { /* best-effort */ }
+    };
+
+    window.sreLeftPanelInit = function () {
+      try {
+        if (document.getElementById('sre-left-toggle')) return;
+        const btn = document.createElement('button');
+        btn.id = 'sre-left-toggle';
+        btn.type = 'button';
+        btn.addEventListener('click', () => {
+          const panel = document.querySelector('.popup-dashboardleft-section');
+          const hidden = panel ? !panel.classList.contains('sre-left-hidden') : true;
+          window.sreLeftPanelApply(hidden);
+        });
+        document.body.appendChild(btn);
+        let saved = null;
+        try { saved = localStorage.getItem('sre-left-panel'); } catch (e) { /* best-effort */ }
+        // main.js runs after this bundle and forces .show() + collapsed, so
+        // apply on top of it once layout settles.
+        const apply = () => window.sreLeftPanelApply(saved ? saved === 'hidden' : true);
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(() => requestAnimationFrame(apply));
+        } else {
+          setTimeout(apply, 0);
+        }
+      } catch (err) { /* best-effort */ }
+    };
+    window.sreLeftPanelInit();
+
     // --- Form submit ---
     form.addEventListener('submit', (e) => {
       e.preventDefault();
