@@ -1673,6 +1673,78 @@
       }).observe(messagesDiv, { childList: true });
       window.refreshTurnRail();
     };
+
+    // --- Floating date pill (WhatsApp-style) ---
+    // While reading history the pill shows the date of whatever is at the top
+    // of the view. Bubbles carry their server timestamp in dataset.created;
+    // the scan below just finds the first dated bubble peeking under the top
+    // edge. Hari ini / Kemarin keep it glanceable like the reference UI.
+    window.sreDateLabel = function (ts) {
+      try {
+        const d = new Date(ts);
+        if (isNaN(d.getTime())) return '';
+        const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const diffDays = Math.round((today - day) / 86400000);
+        if (diffDays === 0) return 'Hari ini';
+        if (diffDays === 1) return 'Kemarin';
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+        let label = d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
+        if (d.getFullYear() !== today.getFullYear()) return label;
+        return d.getDate() + ' ' + months[d.getMonth()];
+      } catch (e) {
+        return '';
+      }
+    };
+
+    window.chatDatePillUpdate = function () {
+      try {
+        if (!messagesDiv) return;
+        const host = messagesDiv.parentElement;
+        if (!host) return;
+        if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+        let pill = document.getElementById('sre-date-pill');
+        if (!pill) {
+          pill = document.createElement('div');
+          pill.id = 'sre-date-pill';
+          host.appendChild(pill);
+        }
+        // Only while reading up; at the live bottom the date is simply today.
+        if (window.isPinnedToBottom && window.isPinnedToBottom()) {
+          pill.classList.remove('sre-show');
+          return;
+        }
+        const hostRect = messagesDiv.getBoundingClientRect();
+        let stamp = '';
+        const kids = messagesDiv.children;
+        for (let i = 0; i < kids.length; i++) {
+          const el = kids[i];
+          if (!el.dataset || !el.dataset.created) continue;
+          const r = el.getBoundingClientRect();
+          if (r.bottom > hostRect.top + 60 && r.top < hostRect.bottom) {
+            stamp = el.dataset.created;
+            break;
+          }
+        }
+        const label = stamp ? window.sreDateLabel(stamp) : '';
+        if (!label) {
+          pill.classList.remove('sre-show');
+          return;
+        }
+        if (pill.textContent !== label) pill.textContent = label;
+        pill.classList.add('sre-show');
+      } catch (err) { /* best-effort */ }
+    };
+
+    window.chatDatePillSchedule = function () {
+      if (window.datePillQueued) return;
+      window.datePillQueued = true;
+      requestAnimationFrame(() => {
+        window.datePillQueued = false;
+        try { window.chatDatePillUpdate(); } catch (e) { /* best-effort */ }
+      });
+    };
     // A packaged turn skeleton: bot avatar on the left, one column on the
     // right holding the run card now and the answer panel later.
     // On send, the answer bubble is born first and the run seats its chain
@@ -4033,6 +4105,7 @@
           if (messagesDiv.scrollHeight > messagesDiv.clientHeight + 200) window.showJumpToLatest();
         }
         window.turnRailActiveSchedule && window.turnRailActiveSchedule();
+        window.chatDatePillSchedule && window.chatDatePillSchedule();
       }, { passive: true });
     }
     window.turnRailObserve && window.turnRailObserve();
@@ -5232,6 +5305,7 @@
         ensureConnectionCard();
         lucide.createIcons();
         window.refreshTurnRail && window.refreshTurnRail();
+        window.chatDatePillSchedule && window.chatDatePillSchedule();
         loadArtifacts();
         renderInvestigationTimeline();
         if (ws && ws.readyState === WebSocket.OPEN) {
