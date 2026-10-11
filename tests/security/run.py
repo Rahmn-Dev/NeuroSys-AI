@@ -17,6 +17,14 @@ cases = list(tree.iter("testcase"))
 def passed(case):
     return not any(case.find(tag) is not None for tag in ("failure", "error", "skipped"))
 def category(name):
+    # OWASP LLM labeled corpora get their own rows so the report maps
+    # directly onto the thesis tables.
+    if name.startswith("test_llm07_"):
+        return "llm07_prompt_leakage"
+    if name.startswith("test_llm02_"):
+        return "llm02_disclosure"
+    if name.startswith("test_llm05_"):
+        return "llm05_output_handling"
     if not name.startswith("test_attack_"):
         return "regression_and_benign"
     if "eve_" in name:

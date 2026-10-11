@@ -1,7 +1,7 @@
 {
   "scope": "Deterministic fixtures, mocked model/tools/firewall, temporary SQLite; not live LLM or IDS efficacy",
-  "tests": 86,
-  "passed": 86,
+  "tests": 396,
+  "passed": 396,
   "pytest_exit_code": 0,
   "groups": {
     "action_privilege_boundary": {
@@ -20,13 +20,28 @@
       "rate_percent": 100.0
     },
     "regression_and_benign": {
-      "passed": 32,
-      "total": 32,
+      "passed": 329,
+      "total": 329,
       "rate_percent": 100.0
     },
     "malformed_eve": {
       "passed": 10,
       "total": 10,
+      "rate_percent": 100.0
+    },
+    "llm07_prompt_leakage": {
+      "passed": 4,
+      "total": 4,
+      "rate_percent": 100.0
+    },
+    "llm02_disclosure": {
+      "passed": 6,
+      "total": 6,
+      "rate_percent": 100.0
+    },
+    "llm05_output_handling": {
+      "passed": 3,
+      "total": 3,
       "rate_percent": 100.0
     }
   }
