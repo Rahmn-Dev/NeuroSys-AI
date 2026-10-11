@@ -18,11 +18,14 @@ _LOOKUP_KINDS = {"time_lookup", "date_lookup", "host_lookup", "file_lookup"}
 
 # Safety override, not a routing heuristic: these must never be answered from
 # conversation memory without the guarded pipeline and its approval checks.
+# Note: \.env lives outside the \b(...)\b group on purpose. A leading \b
+# needs a word/non-word transition, and "." after a space has none, so
+# "contents of .env" used to slip through to the router unguarded.
 _NEVER_DIRECT = re.compile(
     r"\b(password|passwd|secret|token|api[\s_-]?key|private[\s_-]?key|credential|"
-    r"sudoers|\.env\b|id_rsa|shadow\b|htpasswd|"
+    r"sudoers|id_rsa|shadow\b|htpasswd|"
     r"drop\s+(table|database)|truncate\s+table|rm\s+-[rf]{2}|mkfs|dd\s+if=|"
-    r"shutdown|reboot|kill\s+-9\s+1|chmod\s+777\s+/|>\s*/dev/sd)\b",
+    r"shutdown|reboot|kill\s+-9\s+1|chmod\s+777\s+/|>\s*/dev/sd)\b|\.env\b",
     re.I,
 )
 
