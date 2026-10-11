@@ -22,6 +22,17 @@
     <meta name="msapplication-navbutton-color" content="#563789">
     <meta name="apple-mobile-web-app-status-bar-style" content="#563789">
     <!-- Custom Browser Color End -->
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      /* Mobile: form first, decorative side hidden; OTP input stays at 16px+
+         so iOS does not auto-zoom on focus. Page-local, global CSS untouched. */
+      @media (max-width: 1199px) {
+        .main__media { display: none !important; }
+        .main__intro { min-height: 100svh; }
+      }
+      form input, form textarea { font-size: 16px; }
+      .btn { min-height: 48px; }
+    </style>
 
   </head>
 
