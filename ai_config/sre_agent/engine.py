@@ -522,7 +522,8 @@ class SREAgentEngine:
         from .thread_memory import (build_activity_context, build_thread_context,
                                     get_session_memory, is_recap_request, record_turn)
         raw_history = await self._fetch_history(db_session_id, limit=24)
-        history = await sync_to_async(relevant_prior_turns)(user_message, raw_history)
+        history = await sync_to_async(relevant_prior_turns)(
+            user_message, raw_history, chronology_fallback=True)
         _mid = await self._save_message(db_session_id, "user", user_message)
         yield evt_message_saved("user", _mid)
         # Direct chat still has a lightweight run trace: Thinking only, with
@@ -869,49 +870,13 @@ class SREAgentEngine:
         if resume_requires_verification:
             yield evt_status("Resume safety active: verifying prior side effects before any retry.")
 
-        # Deterministic one-step lookups do not need provider reasoning, workspace
-        # exploration, or prior-case context.
-        from .direct_chat import is_lookup_turn as _is_simple_lookup
-        # Same bar as the router gate: a comparative or analytical question that
-        # merely mentions a lookup word must reach tools, not a canned answer.
-        if case_info["kind"] in {"time_lookup", "date_lookup", "host_lookup", "file_lookup"} and _is_simple_lookup(
-            user_message
-        ):
-            from datetime import datetime
-            from zoneinfo import ZoneInfo
-            now = datetime.now(ZoneInfo(getattr(settings, "TIME_ZONE", "Asia/Jakarta")))
-            if case_info["kind"] == "time_lookup":
-                answer = f"Sekarang pukul {now.strftime('%H:%M:%S %Z')}."
-            elif case_info["kind"] == "date_lookup":
-                answer = f"Sekarang tanggal {now.strftime('%d-%m-%Y')}."
-            elif case_info["kind"] == "host_lookup":
-                lookup = effective_goal.lower()
-                if any(term in lookup for term in ("where am i", "pwd", "current directory", "direktori mana", "dimana direktori", "di mana direktori", "direktori saya", "direktori aktif", "direktori saat ini", "posisi direktori", "lokasi direktori", "folder mana", "dimana folder", "di mana folder")):
-                    answer = f"Direktori aktif saat ini: `{active_workspace or terminal_cwd or os.getcwd()}`."
-                elif "hostname" in lookup or "nama host" in lookup:
-                    import socket
-                    answer = f"Hostname saat ini: `{socket.gethostname()}`."
-                elif "uptime" in lookup or "lama nyala" in lookup:
-                    seconds = int(float(open('/proc/uptime', encoding='utf-8').read().split()[0]))
-                    answer = f"Sistem sudah aktif selama {seconds // 3600} jam {(seconds % 3600) // 60} menit."
-                else:
-                    import getpass
-                    answer = f"User sistem saat ini: `{getpass.getuser()}`."
-            else:
-                import re as path_re
-                attached = path_re.search(r"file://([^\]\s]+)", user_message)
-                resolved_file = selected_file or (attached.group(1) if attached else "")
-                answer = (f"File tersebut berada di `{resolved_file}`."
-                          if resolved_file else "Lokasi file belum tersedia pada context case ini.")
-            _mid = await self._save_message(db_session_id, "ai", answer)
-            yield evt_message_saved("ai", _mid)
-            await sync_to_async(lambda: Investigation.objects.filter(id=self._active_case_id).update(status="completed"))()
-            await self._lifecycle.atransition("finalization", "completed", "fast_lookup_completed", {
-                "summary": answer, "case_id": self._active_case_id,
-            })
-            yield evt_message_chunk(answer)
-            yield evt_completed(answer, duration=time.time() - start_time)
-            return
+        # One-step lookups (time, date, host, file location) are answered by
+        # the model through the normal tool path, never from a canned string.
+        # The canned path was faster, but it froze the phrasing and could not
+        # tell "what time now" from "what time in London" - both got the same
+        # template. Answering from a real `date` call keeps the wording
+        # natural, handles timezone variants, and stays consistent with every
+        # other lookup phrasing.
 
         # --- Phase 2: Smart Intent Classification ---
         llm = await self._get_llm()
@@ -970,7 +935,8 @@ Output strictly the category name."""
             # turn starts blind and contradicts what was just discussed.
             from .memory_graph import relevant_prior_turns
             raw_history = await self._fetch_history(db_session_id, limit=24)
-            history = await sync_to_async(relevant_prior_turns)(effective_goal, raw_history)
+            history = await sync_to_async(relevant_prior_turns)(
+                effective_goal, raw_history, chronology_fallback=True)
             from .direct_chat import SRE_DOMAIN_CLAMP
             from .thread_memory import (build_activity_context, build_thread_context,
                                         get_session_memory, is_recap_request, record_turn)

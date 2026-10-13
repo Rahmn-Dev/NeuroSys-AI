@@ -6,6 +6,11 @@ from typing import Iterable
 
 from .canonical_lifecycle import classify_case
 
+# How many of the most recent turns to fall back to when nothing in the older
+# history resembles the current message. Continuity should survive a change of
+# subject; the turn budget below still caps what the prompt actually pays for.
+FALLBACK_TURNS = 6
+
 _ENTITY = re.compile(
     r"(?:/[A-Za-z0-9_.@+\-/]+)|(?:\b(?:nginx|apache2?|httpd|postgres(?:ql)?|mysql|mariadb|redis|docker|ssh(?:d)?|systemd|suricata|gunicorn|daphne)\b)|(?:\bport\s*[:=]?\s*\d{1,5}\b)|(?::\d{3,5}\b)|(?:\b(?:400|401|403|404|408|429|500|501|502|503|504)\b)",
     re.I,
@@ -129,7 +134,8 @@ class _Turn:
 
 def relevant_prior_turns(message: str, history, max_chars: int = 4000,
                          always_last: int = 2, min_score: float = 0.30,
-                         per_turn_chars: int = 900):
+                         per_turn_chars: int = 900,
+                         chronology_fallback: bool = False):
     """Pick the prior turns worth spending context on.
 
     Always keeps the last exchange so a running thread is never lost, then
@@ -137,6 +143,12 @@ def relevant_prior_turns(message: str, history, max_chars: int = 4000,
     message (entity or keyword overlap). Unrelated earlier work - a finished
     nginx case while the operator asks about something else - is dropped
     instead of steering the answer.
+
+    `chronology_fallback=True` is for pure conversation history, where an
+    unrelated older turn is context rather than contamination. Without it a
+    question that shares no keywords with its own answer ("what did we
+    discuss earlier?") is handed an empty history. Case memory keeps the
+    strict same-topic rule so a new subject never inherits an old case.
     """
     turns = list(history or [])
     if not turns:
@@ -152,6 +164,9 @@ def relevant_prior_turns(message: str, history, max_chars: int = 4000,
         score, shared = similarity(probe, _Turn(text))
         if score >= min_score or shared:
             scored.append((score, turns.index(turn), turn))
+    if not scored and chronology_fallback:
+        window = turns[:-always_last] if always_last > 0 else turns
+        scored = [(0.0, turns.index(t), t) for t in window[-FALLBACK_TURNS:]]
     scored.sort(key=lambda row: row[0], reverse=True)
     chosen = keep + [row[2] for row in scored]
     chosen.sort(key=lambda t: turns.index(t))

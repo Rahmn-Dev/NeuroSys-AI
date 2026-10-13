@@ -3,8 +3,11 @@
 import asyncio
 import os
 import sys
+from pathlib import Path
 
 import pytest
+
+ROOT = Path(__file__).resolve().parents[2]
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "ai_config"))
 
@@ -200,6 +203,45 @@ def test_memory_window_is_budgeted():
     long_history.append(_Turn("user", "halo"))
     kept = relevant_prior_turns("halo", long_history, max_chars=1000)
     assert sum(len(t.message) for t in kept) <= 1000
+
+
+# --- Conversation continuity (chronology fallback) -------------------------
+
+def test_question_about_memory_itself_still_gets_history():
+    """"What did we discuss earlier" shares no keywords with its answer.
+
+    Same-topic-only filtering used to hand the model an empty history, and it
+    then answered that the session was fresh. Direct-chat history opts into a
+    chronological fallback for exactly this question.
+    """
+    kept = relevant_prior_turns(
+        "apa yang kita bahas dari awal banget", _ops_history(), chronology_fallback=True)
+    texts = " ".join(t.message for t in kept)
+    assert "nginx" in texts and "sepatu roda" in texts
+
+
+def test_unrelated_older_turns_are_only_continuity_not_inheritance():
+    """The fallback fills the gap; it must not reorder or outrank relevance."""
+    kept = relevant_prior_turns(
+        "nginx 502 lagi muncul", _ops_history(), chronology_fallback=True)
+    texts = " ".join(t.message for t in kept)
+    # The matching nginx turns still lead, and the fallback added nothing new.
+    assert texts.index("nginx") < texts.index("sepatu roda")
+
+
+def test_case_memory_keeps_strict_topic_isolation():
+    """Default (no fallback) must stay strict for case memory."""
+    kept = relevant_prior_turns("sepatu roda", _ops_history())
+    texts = [t.message for t in kept]
+    assert not any("nginx" in t for t in texts)
+
+
+def test_fallback_window_is_bounded_and_ordered():
+    history = [_Turn("user", f"turn-{i}") for i in range(20)]
+    kept = relevant_prior_turns("pertanyaan tanpa kemiripan", history,
+                                chronology_fallback=True)
+    assert len(kept) <= 8  # 2 always-last + 6 fallback
+    assert [t.message for t in kept] == [f"turn-{i}" for i in range(12, 20)]
 
 
 # --- SRE domain clamp ------------------------------------------------------
@@ -483,8 +525,22 @@ from sre_agent.direct_chat import is_lookup_turn  # noqa: E402
     "uptime",
     "baca file /etc/hostname",
 ])
-def test_pure_single_fact_questions_stay_deterministic(message):
+def test_pure_single_fact_questions_still_skip_the_router(message):
     assert is_lookup_turn(message) is True
+
+
+def test_lookups_are_not_answered_from_canned_strings():
+    """A canned answer freezes the phrasing and collapses timezone variants.
+
+    "jam berapa" used to be answered from a fixed template in 0.2s, while
+    "what time in London" went to the model - the same question, two different
+    kinds of answer. Both now go through the model and a real `date` call, so
+    the wording stays natural and the variant is handled. The lookup gate
+    itself still skips the router call, so nothing extra is spent.
+    """
+    source = (ROOT / "ai_config/sre_agent/engine.py").read_text()
+    assert "fast_lookup_completed" not in source
+    assert "Sekarang pukul" not in source
 
 
 @pytest.mark.parametrize("message", [
