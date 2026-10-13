@@ -1217,7 +1217,9 @@
     window.openTurn = function () { window.turnState = 'running'; };
     window.closeTurn = function () {
       window.turnState = 'idle';
-      window.freshTurnTop = null;
+      // The fresh-turn scroll anchor only lives as long as the run.
+      window.freshTurnUser = null;
+      window.freshTurnMode = null;
       // The live flag is what pins the bubble header; drop it the moment the
       // turn ends so archived answers scroll like ordinary history again.
       document.querySelectorAll('.agent-msg.sre-msg-ai[data-live="1"]').forEach(b => {
@@ -4022,32 +4024,17 @@
       // follow position, the view is theirs - the Latest button is the way
       // back, exactly as it already is for ordinary new content.
       if (!window.agentAutoScroll && !window.isPinnedToBottom()) return;
-      // A just-sent turn is anchored with its question at the top. While the
-      // anchor is on screen and the whole turn still fits, there is nothing to
-      // center: moving it would only shove the question down to the middle.
-      // Once the anchor scrolls off or the answer outgrows the viewport, the
-      // anchor is spent and normal centering resumes.
-      if (window.freshTurnTop) {
-        if (!document.contains(window.freshTurnTop)) {
-          window.freshTurnTop = null;
-        } else {
-          const hostRect = messagesDiv.getBoundingClientRect();
-          const anchorRect = window.freshTurnTop.getBoundingClientRect();
-          const anchorVisible = anchorRect.top >= hostRect.top - 2
-            && anchorRect.bottom <= hostRect.bottom + 2;
-          if (!anchorVisible) {
-            window.freshTurnTop = null;
-          } else if (messagesDiv.scrollHeight <= messagesDiv.clientHeight + 4) {
-            return;
-          }
-        }
-      }
       const wrap = document.getElementById(wrapId);
       const bubbleId = wrap && wrap.dataset.bubbleId;
       const bubble = (bubbleId && document.getElementById(bubbleId))
         || (wrap && wrap.nextElementSibling && wrap.nextElementSibling.classList.contains('agent-msg')
           ? wrap.nextElementSibling : null);
       if (!bubble) return;
+      // A just-sent turn is positioned by followFreshTurn (question on top for
+      // a one-liner, workflow card on top when the question is tall) and keeps
+      // following that anchor for as long as the run lives. Centering resumes
+      // once the anchor is spent or the turn ends.
+      if (window.freshTurnUser && window.followFreshTurn(bubble)) return;
       let userBubble = null;
       for (const child of messagesDiv.children) {
         if (child === wrap) break;
@@ -4069,29 +4056,78 @@
       if (typeof requestAnimationFrame === 'function') requestAnimationFrame(align);
     };
 
+    // How far above the column bottom the answer tail is parked. The composer
+    // floats over the column and #chat-messages reserves 140px for it.
+    window.SRE_TAIL_PAD = 150;
+
+    // The fresh turn's workflow card, or null while the card is still hidden
+    // (startRunWrap defers opening it until the first step lands).
+    window.freshTurnCard = function () {
+      const body = window.activeRunWrap;
+      if (!body || !body.dataset) return null;
+      const card = document.getElementById(body.dataset.wrapId || '');
+      if (!card || !document.contains(card)) return null;
+      return card.style.display === 'none' ? null : card;
+    };
+
+    // Position the freshly sent turn. Two targets are computed as absolute
+    // scroll offsets and whichever sits further down wins: the anchor (the
+    // question, or the workflow card when the question is tall) and the
+    // answer's tail, which must stay above the composer. While the turn fits,
+    // the anchor holds the top of the column; once the answer outgrows that,
+    // the tail wins and the anchor scrolls off - the same tradeoff the operator
+    // makes by hand, since the answer is the point.
+    // Returns true while the fresh-turn follow still owns the scroll.
+    window.followFreshTurn = function (bubble) {
+      const user = window.freshTurnUser;
+      if (!user || !document.contains(user) || !messagesDiv) {
+        window.freshTurnUser = null;
+        window.freshTurnMode = null;
+        return false;
+      }
+      const host = messagesDiv.getBoundingClientRect();
+      const userRect = user.getBoundingClientRect();
+      const maxScroll = Math.max(0, messagesDiv.scrollHeight - messagesDiv.clientHeight);
+      const tailTarget = (bubble && document.contains(bubble))
+        ? messagesDiv.scrollTop + bubble.getBoundingClientRect().bottom - (host.bottom - window.SRE_TAIL_PAD)
+        : null;
+      const card = window.freshTurnMode === 'card' ? window.freshTurnCard() : null;
+      let target;
+      if (card) {
+        target = messagesDiv.scrollTop + card.getBoundingClientRect().top - host.top - 8;
+      } else if (window.freshTurnMode === 'card') {
+        // The card has not opened yet: park the question above the fold so the
+        // answer has the column to itself, and the card lands on top when it
+        // appears.
+        target = messagesDiv.scrollTop + userRect.bottom - host.top - 8;
+      } else {
+        target = messagesDiv.scrollTop + userRect.top - host.top - 12;
+      }
+      if (tailTarget !== null) target = Math.max(target, tailTarget);
+      const clamped = Math.max(0, Math.min(maxScroll, target));
+      if (clamped !== messagesDiv.scrollTop) messagesDiv.scrollTop = clamped;
+      window.hideJumpToLatest();
+      return true;
+    };
+
     // A new turn inserts its user bubble, run card, and empty AI bubble in the
-    // same task. The fresh question is anchored at the top of the column so
-    // the question and its answer read together; forcing the very bottom
-    // instead buried the question above the fold on every send. Defer until
-    // layout settles so the starting state is fully visible, even if the user
-    // was reading up. Streaming keeps following the tail from there.
+    // same task. A one-line question stays at the top of the column with its
+    // workflow card and answer below it; a tall question (multi-line, pasted
+    // text, attached files) would eat the column, so the workflow card takes
+    // the top instead and the question scrolls above the fold. Deferred until
+    // layout settles so the starting state is fully visible even if the user
+    // was reading up.
     window.scrollToNewTurn = function () {
       if (window.isLoadingHistory || !messagesDiv) return;
       window.runHeaderPinned = false;
       window.agentAutoScroll = true;
       const users = messagesDiv.querySelectorAll(':scope > .sre-msg-user');
-      window.freshTurnTop = users.length ? users[users.length - 1] : null;
+      window.freshTurnUser = users.length ? users[users.length - 1] : null;
+      window.freshTurnMode = window.freshTurnUser
+        && window.freshTurnUser.getBoundingClientRect().height > 96 ? 'card' : 'user';
       const follow = () => {
         if (window.isLoadingHistory) return;
-        const anchor = window.freshTurnTop;
-        if (anchor && document.contains(anchor)) {
-          const r = anchor.getBoundingClientRect();
-          const host = messagesDiv.getBoundingClientRect();
-          const maxScroll = Math.max(0, messagesDiv.scrollHeight - messagesDiv.clientHeight);
-          messagesDiv.scrollTop = Math.max(0, Math.min(maxScroll, messagesDiv.scrollTop + r.top - host.top - 12));
-          window.hideJumpToLatest();
-          return;
-        }
+        if (window.freshTurnUser && window.followFreshTurn()) return;
         scrollToBottom(true);
       };
       if (typeof requestAnimationFrame === 'function') {
