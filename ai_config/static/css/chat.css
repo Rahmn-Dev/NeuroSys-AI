@@ -1272,6 +1272,11 @@
   }
   .sre-tl-dot svg { display: block; }
   .sre-tl-chev svg { display: block; }
+  /* The timeline connector has to reach the next step's dot, which sits 8px
+     inside the next step. That means painting 8px outside this step's box,
+     which the legacy overflow rule would clip into the gap the connector is
+     supposed to close. */
+  #sre-agent-app .sre-agent-step { overflow: visible !important; }
 
   #sre-agent-app a {
     color: #58a6ff;
