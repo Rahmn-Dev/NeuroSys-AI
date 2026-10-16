@@ -182,3 +182,6 @@ ai_config/staticfiles/
 
 # Thesis drafts (local only, never commit)
 docs/revisi-laporan-keamanan.md
+
+# Local thesis material (never commit)
+docs/*.pdf

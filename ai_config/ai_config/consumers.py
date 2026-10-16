@@ -32,6 +32,22 @@ except ImportError:
 import json
 from datetime import datetime
 
+# AuthMiddlewareStack only *populates* scope['user'] from the session cookie; it
+# never refuses a handshake. A socket that arrives without a login therefore
+# reaches the consumer as AnonymousUser and used to be accepted, which handed
+# out things as large as an interactive shell (TerminalConsumer). Every consumer
+# below now opts in explicitly, so the rule is written once instead of ten times.
+#
+# The bar is is_authenticated, not is_staff, on purpose: chat3 itself is only
+# @login_required, so requiring staff here would change who can use the app.
+WS_AUTH_REJECT_CODE = 4401
+
+
+def socket_is_anonymous(scope):
+    user = scope.get('user')
+    return user is None or not getattr(user, 'is_authenticated', False)
+
+
 class CustomJSONEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, datetime):
@@ -45,6 +61,9 @@ class SystemMonitorConsumer(AsyncWebsocketConsumer):
         self.monitoring_task = None  # ← ADD THIS
 
     async def connect(self):
+        if socket_is_anonymous(self.scope):
+            await self.close(code=WS_AUTH_REJECT_CODE)
+            return
         await self.accept()
         self.monitoring_task = asyncio.create_task(self.send_system_data())
 
@@ -397,9 +416,17 @@ class ServiceControlConsumer(AsyncWebsocketConsumer):
         super().__init__(*args, **kwargs)
         self.services_task = None  # ← ADD THIS
     async def connect(self):
-            await self.accept()
-            # Kirim daftar layanan yang sedang berjalan saat koneksi dibuka
-            self.services_task = asyncio.create_task(self.get_running_services())
+        if socket_is_anonymous(self.scope):
+            await self.close(code=WS_AUTH_REJECT_CODE)
+            return
+        # The original body of this consumer was indented 12 spaces. Once the
+        # guard was inserted above it at 8, that block became a continuation of
+        # the guard and `accept()` ended up after `return`, unreachable - so the
+        # handshake was never accepted. Normalised back to 8 so the accept and
+        # the task creation actually run.
+        await self.accept()
+        # Kirim daftar layanan yang sedang berjalan saat koneksi dibuka
+        self.services_task = asyncio.create_task(self.get_running_services())
             
 
     async def disconnect(self, close_code):
@@ -543,8 +570,11 @@ class ServiceControlConsumer(AsyncWebsocketConsumer):
 
                 except Exception as e:
                     await self.send(json.dumps({'status': 'error', 'message': str(e)}))
-                
-                await asyncio.sleep(1)
+
+                # One second shelled out to systemctl every second, for every
+                # open tab, and forced the frontend to re-render the whole table
+                # that often. Five seconds keeps the dashboard live without the churn.
+                await asyncio.sleep(5)
         except asyncio.CancelledError:
             # Clean exit
             pass
@@ -564,6 +594,9 @@ class MCPSmartAgentConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         """Handle WebSocket connection"""
         from .views import SmartMCPAgent
+        if socket_is_anonymous(self.scope):
+            await self.close(code=WS_AUTH_REJECT_CODE)
+            return
         # Accept the WebSocket connection
         await self.accept()
         
@@ -773,6 +806,9 @@ class MCPServerProxyConsumer(AsyncWebsocketConsumer):
         self.mcp_server_websocket = None
         
     async def connect(self):
+        if socket_is_anonymous(self.scope):
+            await self.close(code=WS_AUTH_REJECT_CODE)
+            return
         await self.accept()
         
         # Connect to actual MCP server
@@ -837,6 +873,9 @@ async def broadcast_to_mcp_agents(message, user_id=None):
 
 class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
+        if socket_is_anonymous(self.scope):
+            await self.close(code=WS_AUTH_REJECT_CODE)
+            return
         await self.accept()
         import json
         await self.send(text_data=json.dumps({
@@ -886,6 +925,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
 import threading
 class TerminalConsumer(AsyncWebsocketConsumer):
     async def connect(self):
+        if socket_is_anonymous(self.scope):
+            await self.close(code=WS_AUTH_REJECT_CODE)
+            return
         await self.accept()
         loop = asyncio.get_event_loop()
         self.polling_task = None
@@ -952,6 +994,9 @@ class SecurityConsumer(AsyncWebsocketConsumer):
         self.stats_task = None  # ← ADD THIS
        
     async def connect(self):
+        if socket_is_anonymous(self.scope):
+            await self.close(code=WS_AUTH_REJECT_CODE)
+            return
         await self.channel_layer.group_add("security_alerts", self.channel_name)
         await self.accept()
         await self.send_initial_data()
@@ -1206,6 +1251,9 @@ from dataset.IntrusionDetection.detector import predict_intrusion
 
 class AiIntrusionLogConsumer(AsyncWebsocketConsumer):
     async def connect(self):
+        if socket_is_anonymous(self.scope):
+            await self.close(code=WS_AUTH_REJECT_CODE)
+            return
         # Masuk ke group untuk broadcast alert ke dashboard
         await self.channel_layer.group_add("ai_intrusion_logs", self.channel_name)
         await self.accept()
@@ -1369,6 +1417,9 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
     """
 
     async def connect(self):
+        if socket_is_anonymous(self.scope):
+            await self.close(code=WS_AUTH_REJECT_CODE)
+            return
         self.agent_task = None
         self.lifecycle = None
         # Multitasking: one live run per chat session, all on this socket.
@@ -1824,6 +1875,9 @@ class SREAgentConsumer(AsyncWebsocketConsumer):
 class ArchitectureConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         from sre_agent.crypto import generate_rsa_key_pair
+        if socket_is_anonymous(self.scope):
+            await self.close(code=WS_AUTH_REJECT_CODE)
+            return
         self.rsa_private_key, public_pem = generate_rsa_key_pair()
         await self.accept()
         await self.send(text_data=json.dumps({

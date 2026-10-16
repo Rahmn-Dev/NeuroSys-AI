@@ -4344,9 +4344,18 @@
     };
 
     // --- History ---
-    async function loadHistory() {
+    // Superseded loads must not paint. Without this, a slow response for an older
+// search term lands after the newer one and appends stale rows into the list.
+let historyLoadSeq = 0;
+
+async function loadHistory() {
+      const loadSeq = ++historyLoadSeq;
       window.loadHistoryGlobal = loadHistory;
-      window.showPanelSkeleton(document.getElementById('history-list'), 5);
+      // Searching re-renders on every keystroke, so the skeleton would flicker
+      // on each one. Only show it for a cold (non-search) load.
+      if (!window.historySearchTerm) {
+        window.showPanelSkeleton(document.getElementById('history-list'), 5);
+      }
       window.renderActiveRuns && window.renderActiveRuns();
       window.onSessionDeleted = function (deletedId) {
         if (deletedId === sessionId) {
@@ -4359,17 +4368,33 @@
         // Pagination: first page resets the list; subsequent pages append.
         // `window.__historyAppend` is set by the Load More button.
         const appendMode = window.__historyAppend === true;
+        // The same term has to ride on every page request, otherwise "Load more"
+        // would append unfiltered chats to a filtered list.
+        const searchParam = window.historySearchTerm
+          ? `&search=${encodeURIComponent(window.historySearchTerm)}`
+          : '';
         const url = appendMode
-          ? `/api/v1/chat-sessions/?limit=50&offset=${window.__historyOffset || 0}`
-          : '/api/v1/chat-sessions/?limit=50';
+          ? `/api/v1/chat-sessions/?limit=50&offset=${window.__historyOffset || 0}${searchParam}`
+          : `/api/v1/chat-sessions/?limit=50${searchParam}`;
         const res = await fetch(url);
         const data = await res.json();
+        if (loadSeq !== historyLoadSeq) return;
         const list = document.getElementById('history-list');
         if (!appendMode) {
           list.innerHTML = '';
           window.__historyOffset = 0;
         }
         let sessions = data.results || data;
+
+        const countEl = document.getElementById('history-search-count');
+        if (countEl) {
+          const totalMatches = typeof data.count === 'number' ? data.count : sessions.length;
+          countEl.textContent = window.historySearchTerm ? `${totalMatches} found` : '';
+        }
+
+        if (!appendMode && window.historySearchTerm && sessions.length === 0) {
+          list.innerHTML = `<div class="sre-text-secondary" style="padding: 14px; font-size: 12px; text-align: center; font-style: italic;">No chats match &quot;${escapeHtml(window.historySearchTerm)}&quot;.</div>`;
+        }
 
         sessions.forEach(sess => {
           let el = document.createElement('div');
@@ -4463,10 +4488,31 @@
         }
         // If sessionId already exists (from WebSocket), DON'T reload
 
-      } catch (e) {
-        console.error('Failed to load history', e);
-      }
+} catch (e) {
+      console.error('Failed to load history', e);
     }
+  }
+
+    // Sidebar search. Debounced so typing does not fire a request per
+    // keystroke, and it resets pagination: a filtered list must start at the
+    // first page of matches instead of continuing from the previous offset.
+    let historySearchTimer = null;
+
+    window.historySearchInput = function (value) {
+      const term = String(value || '').trim();
+      const clearIcon = document.getElementById('history-search-clear');
+      if (clearIcon) {
+        clearIcon.style.display = term ? 'inline-block' : 'none';
+        clearIcon.style.pointerEvents = term ? 'auto' : 'none';
+      }
+      if (historySearchTimer) clearTimeout(historySearchTimer);
+      historySearchTimer = setTimeout(() => {
+        window.historySearchTerm = term;
+        window.__historyAppend = false;
+        window.__historyOffset = 0;
+        loadHistory();
+      }, 220);
+    };
 
     function hideApprovalCard() {
       const card = document.getElementById('approval-card');

@@ -126,12 +126,31 @@ def test_file_edit_insert_line(ai_tool_instance):
         os.remove(tmpfile_path)
 
 
+def _operator_client():
+    """A logged-in client that also clears the 2FA bounce.
+
+    /api/process-smart-chat/ is @login_required, and EnforceActiveSessionMiddleware
+    redirects any authenticated user whose Profile is not flagged active to the
+    2FA page, so a bare Client() would get a 302 instead of the view.
+    """
+    import uuid
+    from django.contrib.auth.models import User
+    # Unique per call: these four tests share one test database, so a fixed
+    # username collides on auth_user_username_key.
+    user = User.objects.create_user(f"smart-chat-op-{uuid.uuid4().hex[:8]}", password="x")
+    user.profile.is_active_session = True
+    user.profile.save()
+    client = _operator_client()
+    client.force_login(user)
+    return client
+
+
 @pytest.mark.django_db
 def test_process_smart_chat_valid_post():
     """
     Test bahwa endpoint /api/process-smart-chat/ dapat menerima POST dengan JSON
     """
-    client = Client()
+    client = _operator_client()
     
     # Tambahkan try-except untuk menangani case jika URL tidak ditemukan
     try:
@@ -173,7 +192,7 @@ def test_process_smart_chat_invalid_json():
     """
     Test bahwa endpoint menolak JSON yang tidak valid
     """
-    client = Client()
+    client = _operator_client()
     
     try:
         url = reverse('process_smart_chat')
@@ -211,7 +230,7 @@ def test_process_smart_chat_invalid_method():
     """
     Test bahwa hanya metode POST yang diterima
     """
-    client = Client()
+    client = _operator_client()
     
     try:
         url = reverse('process_smart_chat')
@@ -277,7 +296,7 @@ def test_process_smart_chat_empty_payload():
     """
     Test dengan payload kosong
     """
-    client = Client()
+    client = _operator_client()
     
     try:
         url = reverse('process_smart_chat')

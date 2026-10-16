@@ -46,11 +46,17 @@ def _run(coro):
 
 
 async def _anonymous_case():
-    communicator = await _connect(AnonymousUser())
-    try:
-        return await _call(communicator, "agent_permission.set", {"mode": "full_access"})
-    finally:
-        await communicator.disconnect()
+    """Anonymous is now refused at the handshake, before any RPC can be sent.
+
+    It used to connect and only be turned away per-call by the auth gate in
+    _handle_rpc. Refusing earlier is strictly stronger, so the property under
+    test is unchanged: an anonymous socket cannot mutate anything.
+    """
+    communicator = WebsocketCommunicator(application, "/ws/sre-agent/")
+    communicator.scope["user"] = AnonymousUser()
+    connected, _ = await communicator.connect()
+    assert connected is False, "anonymous socket was accepted"
+    return {"ok": False, "error": "refused at handshake"}
 
 
 async def _unknown_case():
@@ -62,7 +68,8 @@ async def _unknown_case():
 
 
 def test_anonymous_socket_cannot_mutate():
-    assert _run(_anonymous_case())["ok"] is False
+    result = _run(_anonymous_case())
+    assert result["ok"] is False
 
 
 def test_unknown_call_is_rejected_not_routed():

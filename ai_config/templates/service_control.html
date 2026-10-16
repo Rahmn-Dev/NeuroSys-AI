@@ -186,6 +186,11 @@
 {% block script %}
 
 <script>
+    // Public half of the server's RSA-OAEP key pair, rendered with the page.
+    // The password is encrypted against this before it is sent, so it never
+    // travels in the request body in the clear.
+    window.serviceConfigPublicKey = "{{ service_config_public_key|escapejs }}";
+
     function updateConnectionStatus(isConnected) {
         const indicator = document.getElementById('connectionStatus');
         const text = document.getElementById('connectionText');
@@ -240,9 +245,12 @@
             serviceName = serviceName.slice(0, -8);
         }
 
-        currentServiceName = serviceName;
-        fetch(`/api/get-service-config/${serviceName}/`)
+currentServiceName = serviceName;
+    fetch(`/api/get-service-config/${encodeURIComponent(serviceName)}/`)
             .then(response => {
+                if (response.status === 403) {
+                    throw new Error("Session expired. Sign in again.");
+                }
                 if (!response.ok) {
                     throw new Error("Network response was not ok");
                 }
@@ -252,6 +260,7 @@
                 if (data.error) {
                     Swal.fire("Error", data.error, "error");
                 } else {
+                    window.serviceConfigPublicKey = data.public_key || null;
                     document.getElementById('configEditor').value = data.config;
                     new bootstrap.Modal(document.getElementById('configModal')).show();
                 }
@@ -261,22 +270,57 @@
                 Swal.fire("Error", "Failed to fetch service configuration.", "error");
             });
     }
+    // --- Sudo password: encrypted before it leaves the browser ---
+    // Same RSA-OAEP path the chat and architecture modals already use, so the
+    // secret is never in the request body, never in a proxy log and never in
+    // the browser console. The public half arrives with the config payload; the
+    // private half never leaves the server.
+    function pemToArrayBuffer(pem) {
+        const b64 = pem.replace("-----BEGIN PUBLIC KEY-----", "")
+            .replace("-----END PUBLIC KEY-----", "").replace(/\s+/g, "");
+        const binary = window.atob(b64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return bytes.buffer;
+    }
+
+    async function encryptSudoPassword(password, publicKeyPem) {
+        if (!window.crypto || !window.crypto.subtle) {
+            throw new Error("This browser cannot encrypt. Use HTTPS or localhost.");
+        }
+        const key = await window.crypto.subtle.importKey(
+            "spki", pemToArrayBuffer(publicKeyPem),
+            { name: "RSA-OAEP", hash: "SHA-256" }, false, ["encrypt"]);
+        const buf = await window.crypto.subtle.encrypt(
+            { name: "RSA-OAEP" }, key, new TextEncoder().encode(password));
+        return window.btoa(String.fromCharCode.apply(null, new Uint8Array(buf)));
+    }
+
     async function saveConfig() {
         const configContent = document.getElementById('configEditor').value;
+        const publicKeyPem = window.serviceConfigPublicKey;
 
-        // Close the configuration modal first
+        // Close the configuration modal and wait for Bootstrap to actually
+        // finish. A fixed setTimeout raced the fade-out, which left the backdrop
+        // half-removed and made the next dialog flicker on top of it.
         const modalElement = document.getElementById('configModal');
         const modalInstance = bootstrap.Modal.getInstance(modalElement);
-        modalInstance.hide();
+        if (modalInstance) {
+            await new Promise(resolve => {
+                modalElement.addEventListener('hidden.bs.modal', resolve, { once: true });
+                modalInstance.hide();
+            });
+        }
+        // Bootstrap leaves the backdrop in the DOM until its own transition
+        // ends; Swal cannot paint over a leftover backdrop.
+        const leftover = document.querySelectorAll('body > .modal-backdrop');
+        leftover.forEach(node => node.remove());
 
-        // Wait for the modal to fully close before showing the password prompt
-        await new Promise(resolve => setTimeout(resolve, 300)); // Adjust delay if necessary
-
-        // Show the SweetAlert2 password prompt
         const { value: enteredPassword } = await Swal.fire({
             title: "Authentication Required",
             text: "Please enter your sudo password:",
             input: "password",
+            inputAttributes: { autocomplete: "off" },
             showCancelButton: true,
             confirmButtonText: "Submit",
             cancelButtonText: "Cancel",
@@ -288,87 +332,117 @@
         });
 
         if (!enteredPassword) {
-            Swal.fire("Cancelled", "Operation cancelled.", "info");
+            return;
+        }
+        if (!publicKeyPem) {
+            Swal.fire("Error", "The server encryption key was not received. Reopen this dialog.", "error");
             return;
         }
 
-        console.log("Password entered:", enteredPassword);
+        let encryptedPassword;
+        try {
+            encryptedPassword = await encryptSudoPassword(enteredPassword, publicKeyPem);
+        } catch (err) {
+            Swal.fire("Error", "Could not encrypt the password: " + (err.message || err), "error");
+            return;
+        } finally {
+            // Drop the plaintext as soon as the ciphertext exists.
+            enteredPassword.length = 0;
+        }
+
         const csrftoken = document.getElementById('csrfToken').value;
-        // Send the request to the backend with the password and configuration
         fetch(`/api/save-service-config/${currentServiceName}/`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': csrftoken,
             },
-            body: JSON.stringify({ config: configContent, password: enteredPassword }),
+            body: JSON.stringify({ config: configContent, encrypted_password: encryptedPassword }),
         })
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    Swal.fire("Error", data.error, "error");
-                } else {
-                    Swal.fire("Success", data.message, "success");
+            .then(async response => {
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(data.error || `Request failed (${response.status}).`);
                 }
+                return data;
+            })
+            .then(data => {
+                Swal.fire("Success", data.message, "success");
             })
             .catch(error => {
-                console.error("Error saving service config:", error);
-                Swal.fire("Error", "Failed to save service configuration.", "error");
+                Swal.fire("Error", error.message || "Failed to save service configuration.", "error");
             });
     }
-    // Populate the services table
+    // Populate the services table.
+    //
+    // This used to do `tbody.innerHTML = ''` and rebuild every row, and the
+    // server pushes a fresh payload once a second. That meant the whole table
+    // was destroyed and recreated every second: the page flickered, and an open
+    // modal was fighting a re-render underneath it. Rows are now keyed by unit
+    // name and patched in place, so an unchanged table produces no DOM work at
+    // all and an open dropdown or modal is never disturbed.
     function populateServicesTable(services) {
         const tbody = document.getElementById('serviceConnections');
-        tbody.innerHTML = ''; // Clear previous content
-
-        services.forEach(service => {
-            const row = document.createElement('tr');
-
-            // Service Name
-            const serviceName = document.createElement('td');
-            serviceName.textContent = service.name;
-            row.appendChild(serviceName);
-
-            // Status
-            const status = document.createElement('td');
-            status.innerHTML = getStatusBadge(service.status);
-            row.appendChild(status);
-
-            // Description
-            const description = document.createElement('td');
-            description.textContent = service.description || "N/A";
-            row.appendChild(description);
-
-            // Actions
-            const actions = document.createElement('td');
-            actions.innerHTML = `
-                <div class="dropdown" >
-                    <button class="btn btn-secondary dropdown-toggle" type="button" id="actionsDropdown_${service.name}" data-bs-toggle="dropdown" aria-expanded="false">
-                        Actions
-                    </button>
-                    <ul class="dropdown-menu" aria-labelledby="actionsDropdown_${service.name}">
-                        
-                        <li><a class="dropdown-item text-secondary" href="#" onclick="openConfigModal('${service.name}', 'config')"><i class="fas fa-wrench"></i></i> Config</a></li>
-                        <li><a class="dropdown-item text-success" href="#" onclick="controlService('${service.name}', 'start')"><i class="fas fa-play"></i> Start</a></li>
-                        <li><a class="dropdown-item text-danger" href="#" onclick="controlService('${service.name}', 'stop')"><i class="fas fa-stop"></i> Stop</a></li>
-                        <li><a class="dropdown-item text-warning" href="#" onclick="controlService('${service.name}', 'restart')"><i class="fas fa-redo"></i> Restart</a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item text-primary" href="#" onclick="runAIAnalysis('${service.name}')"><i class="fas fa-brain"></i> AI Diagnosis</a></li>
-                    </ul>
-                </div>
-            `;
-            row.appendChild(actions);
-
-            tbody.appendChild(row);
+        const existing = new Map();
+        Array.from(tbody.querySelectorAll('tr[data-unit]')).forEach(row => {
+            existing.set(row.dataset.unit, row);
         });
-        // Restore open dropdown state after re-rendering
-        if (openDropdownId) {
-            const dropdownButton = document.getElementById(openDropdownId);
-            if (dropdownButton) {
-                const dropdown = new bootstrap.Dropdown(dropdownButton);
-                dropdown.show();
+
+        services.forEach((service, index) => {
+            const unit = service.name;
+            const badge = getStatusBadge(service.status);
+            let row = existing.get(unit);
+
+            if (!row) {
+                row = document.createElement('tr');
+                row.dataset.unit = unit;
+                row.innerHTML = `
+                    <td data-cell="name"></td>
+                    <td data-cell="status"></td>
+                    <td data-cell="description"></td>
+                    <td data-cell="actions">
+                        <div class="dropdown">
+                            <button class="btn btn-secondary dropdown-toggle" type="button"
+                                id="actionsDropdown_${unit}" data-bs-toggle="dropdown" aria-expanded="false">
+                                Actions
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="actionsDropdown_${unit}">
+                                <li><a class="dropdown-item text-secondary" href="#" onclick="openConfigModal('${unit}', 'config')"><i class="fas fa-wrench"></i> Config</a></li>
+                                <li><a class="dropdown-item text-success" href="#" onclick="controlService('${unit}', 'start')"><i class="fas fa-play"></i> Start</a></li>
+                                <li><a class="dropdown-item text-danger" href="#" onclick="controlService('${unit}', 'stop')"><i class="fas fa-stop"></i> Stop</a></li>
+                                <li><a class="dropdown-item text-warning" href="#" onclick="controlService('${unit}', 'restart')"><i class="fas fa-redo"></i> Restart</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item text-primary" href="#" onclick="runAIAnalysis('${unit}')"><i class="fas fa-brain"></i> AI Diagnosis</a></li>
+                            </ul>
+                        </div>
+                    </td>`;
+                tbody.appendChild(row);
             }
-        }
+
+            // Patch only what actually changed, so a quiet system does no work.
+            const nameCell = row.querySelector('[data-cell="name"]');
+            const statusCell = row.querySelector('[data-cell="status"]');
+            const descCell = row.querySelector('[data-cell="description"]');
+            const nameText = unit;
+            const descText = service.description || "N/A";
+
+            if (nameCell.textContent !== nameText) nameCell.textContent = nameText;
+            if (statusCell.dataset.badge !== badge) {
+                statusCell.dataset.badge = badge;
+                statusCell.innerHTML = badge;
+            }
+            if (descCell.textContent !== descText) descCell.textContent = descText;
+
+            existing.delete(unit);
+            // Keep the server's ordering without rebuilding.
+            if (tbody.children[index] !== row) {
+                tbody.insertBefore(row, tbody.children[index] || null);
+            }
+        });
+
+        // Drop units that disappeared.
+        existing.forEach(row => row.remove());
+
         // Apply the search filter after updating the table
         filterServiceTable();
     }
@@ -434,13 +508,15 @@
     });
 
     // Control service actions
+    //
+    // The request names a service and a verb. It deliberately does not send a
+    // shell string: the server builds the systemctl argv itself, so nothing a
+    // caller writes can become another command.
     async function controlService(serviceName, action) {
         const requiresSudo = ["restart", "stop", "start"].includes(action);
-        let password = null;
+        let encryptedPassword = null;
 
         if (requiresSudo) {
-          
-
             const { value: enteredPassword } = await Swal.fire({
                 title: "Authentication Required",
                 text: "Please enter your sudo password:",
@@ -448,6 +524,7 @@
                 inputAttributes: {
                     autocapitalize: "off",
                     autocorrect: "off",
+                    autocomplete: "off",
                 },
                 showCancelButton: true,
                 confirmButtonText: "Submit",
@@ -460,28 +537,42 @@
             });
 
             if (!enteredPassword) {
-                Swal.fire("Cancelled", "Operation cancelled.", "info");
                 return;
             }
 
-            password = enteredPassword;
+            if (!window.serviceConfigPublicKey) {
+                Swal.fire("Error", "The server encryption key was not received. Reload this page.", "error");
+                return;
+            }
+            try {
+                encryptedPassword = await encryptSudoPassword(enteredPassword, window.serviceConfigPublicKey);
+            } catch (err) {
+                Swal.fire("Error", "Could not encrypt the password: " + (err.message || err), "error");
+                return;
+            } finally {
+                enteredPassword.length = 0;
+            }
         }
 
         try {
             const response = await fetch('/api/sudo-command/', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.getElementById('csrfToken').value,
+                },
                 body: JSON.stringify({
-                    password: password,
-                    command: `systemctl ${action} ${serviceName}`,
+                    service: serviceName,
+                    action: action,
+                    encrypted_password: encryptedPassword,
                 }),
             });
 
-            const result = await response.json();
+            const result = await response.json().catch(() => ({}));
             if (result.status === 'success') {
-                Swal.fire("Success", result.message, "success");
+                Swal.fire("Success", result.message || "Done.", "success");
             } else {
-                Swal.fire("Error", result.message, "error");
+                Swal.fire("Error", result.message || `Request failed (${response.status}).`, "error");
             }
         } catch (error) {
             console.error("Error controlling service:", error);

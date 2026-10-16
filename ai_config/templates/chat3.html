@@ -118,6 +118,19 @@
             <i class="fa-solid fa-chevron-left" style="font-size: 14px; padding: 2px; pointer-events: none;"></i>
           </button>
         </div>
+        <div id="history-search-wrap"
+          style="display: flex; align-items: center; gap: 6px; margin: 8px 8px 0 8px; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-main); transition: border-color 0.2s;">
+          <i class="fa-solid fa-magnifying-glass"
+            style="font-size: 12px; color: var(--text-secondary); pointer-events: none; flex-shrink: 0;"></i>
+          <input id="history-search" type="search" placeholder="Search chats..." autocomplete="off"
+            oninput="window.historySearchInput(this.value)"
+            onkeydown="if(event.key==='Escape'){this.value='';window.historySearchInput('');this.blur();}"
+            style="flex: 1; min-width: 0; background: transparent; border: none; outline: none; color: var(--text-primary); font-family: inherit; font-size: 12px; padding: 0;">
+          <span id="history-search-count" class="sre-text-secondary" style="font-size: 11px; white-space: nowrap;"></span>
+          <i id="history-search-clear" class="fa-solid fa-xmark" title="Clear search"
+            onclick="window.historySearchInput('');var i=document.getElementById('history-search');if(i){i.value='';i.focus();}"
+            style="display: none; font-size: 12px; color: var(--text-secondary); cursor: pointer; pointer-events: none; flex-shrink: 0;"></i>
+        </div>
         <div id="bulk-action-bar"
           style="display: none; padding: 10px; border-bottom: 1px solid var(--border-color); background: var(--bg-panel); flex-direction: column; gap: 8px;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -382,7 +395,7 @@
   // Django-provided values for the static chat bundles below.
   window.WORKSPACE_PROJECT_ROOT = "{{ project_root }}" || "";
 </script>
-<script src="{% static 'js/chat-app.js' %}?v=10"></script>
+<script src="{% static 'js/chat-app.js' %}?v=11"></script>
 
 
 <!-- Architecture Modal -->

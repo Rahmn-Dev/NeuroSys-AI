@@ -14,9 +14,11 @@ import ansible_runner
 import re
 from django.http import JsonResponse
 from django.shortcuts import render
+from django.contrib.auth.decorators import login_required
 from django.conf import settings
 from chatbot.models import AIModel
 @api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
 def system_status(request):
     status = {
         "cpu_usage": psutil.cpu_percent(interval=1),
@@ -622,6 +624,7 @@ def execute_step_with_input(step, additional_input):
         return {"status": "error", "message": str(e)}
 
 @api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
 def chat_with_ai(request):
     if request.method == 'POST':
         try:
@@ -692,6 +695,7 @@ def chat_with_ai(request):
 # --- Workspace & Artifacts APIs ---
 
 @api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
 def workspace_tree_api(request):
     """Returns a basic file tree. If path is provided, loads that directory's children (depth=1)."""
     import os
@@ -733,6 +737,7 @@ def workspace_tree_api(request):
     return Response(get_tree_depth1(target_path))
 
 @api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
 def workspace_file_api(request):
     """Returns the content of a file."""
     import os
@@ -754,6 +759,7 @@ def workspace_file_api(request):
         return Response({"error": str(e)}, status=500)
 
 @api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
 def artifact_list_api(request):
     """Returns a list of artifacts."""
     from chatbot.models import AgentArtifact
@@ -800,6 +806,7 @@ def seed_default_ai_models():
         for item in DEFAULT_AI_MODELS:
             AIModel.objects.create(**item)
 
+@login_required
 def ai_models_api(request):
     if request.method == 'GET':
         seed_default_ai_models()

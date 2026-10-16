@@ -2,7 +2,7 @@ from rest_framework import viewsets, status, permissions
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.pagination import LimitOffsetPagination
-from django.db.models import Count
+from django.db.models import Count, Q
 from . import models
 from .serializers import ChatSessionSerializer, ChatMessageSerializer
 from . import serializers
@@ -22,12 +22,26 @@ class ChatSessionViewSet(viewsets.ModelViewSet):
     http_method_names = ["get", "head", "options"]
     queryset = models.ChatSession.objects.all().order_by('-updated_at')
     serializer_class = ChatSessionSerializer
-    permission_classes = [permissions.AllowAny]
+    # Was AllowAny: the full chat history of every session was readable by
+    # anyone who could reach the port, with no session cookie at all. The only
+    # page that renders this list (chat3) is @login_required, so requiring a
+    # session removes the exposure without touching the working app.
+    permission_classes = [permissions.IsAuthenticated]
     pagination_class = ChatSessionPagination
 
     def get_queryset(self):
-        return (super().get_queryset()
-                .annotate(message_count=Count('messages', distinct=True)))
+        qs = (super().get_queryset()
+              .annotate(message_count=Count('messages', distinct=True)))
+        # Sidebar search (?search=). Matches the title OR any message text, so
+        # the operator can find a chat by what was actually said in it and not
+        # only by the auto-generated title. distinct() is required because the
+        # message join can otherwise duplicate a session once per matching hit.
+        term = (self.request.query_params.get('search') or '').strip()
+        if term:
+            qs = qs.filter(
+                Q(title__icontains=term) | Q(messages__message__icontains=term)
+            ).distinct()
+        return qs
 
     def get_serializer_class(self):
         # The sidebar list must be cheap: detail rows (messages + nested
@@ -92,7 +106,9 @@ class ChatMessagePagination(LimitOffsetPagination):
 class ChatMessageViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = models.ChatMessage.objects.all().order_by('created_at', 'id')
     serializer_class = ChatMessageSerializer
-    permission_classes = [permissions.AllowAny]
+    # Same reasoning as ChatSessionViewSet: message bodies carry the operator's
+    # own prompts, file paths, and tool output, so they need a session too.
+    permission_classes = [permissions.IsAuthenticated]
     pagination_class = ChatMessagePagination
 
     # Override get_queryset untuk filter pesan berdasarkan sesi
