@@ -734,9 +734,11 @@ def get_service_config(request, service_name):
         if os.path.getsize(config_path) > SERVICE_CONFIG_MAX_BYTES:
             return Response({"error": "Service file is too large to display."}, status=400)
 
-        # Baca isi file
+        # Batasi ukuran supaya unit file raksasa tidak membanjiri response.
+        # read() takes the cap positionally; `limit=` is readline's keyword and
+        # raises TypeError, which turned every successful lookup into a 500.
         with open(config_path, 'r', errors='replace') as f:
-            config_content = f.read(limit=SERVICE_CONFIG_MAX_BYTES)
+            config_content = f.read(SERVICE_CONFIG_MAX_BYTES)
 
         return Response({"config": config_content,
                          "public_key": SERVICE_CONFIG_PUBLIC_PEM})

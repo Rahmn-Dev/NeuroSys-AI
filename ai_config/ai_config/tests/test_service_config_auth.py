@@ -155,3 +155,38 @@ def test_operator_reaches_the_endpoint_and_gets_a_domain_error():
     body = response.json().get("error", "")
     # The message must not tell the caller whether sudo or the ciphertext failed.
     assert "password" not in body.lower() or "verify" in body.lower()
+
+# --- regression: reading a real unit file ----------------------------------
+
+def test_reading_a_unit_file_does_not_blow_up(tmp_path, monkeypatch):
+    """A TextIOWrapper.read(limit=...) TypeError made every lookup a 500.
+
+    Reading is capped, but positionally: `limit=` is readline's keyword.
+    """
+    from ai_config import views
+
+    unit = tmp_path / "demo.service"
+    unit.write_text("[Unit]\nDescription=Demo\nExecStart=/bin/true\n")
+
+    monkeypatch.setattr(views, "find_service_file", lambda name: str(unit))
+
+    client = _operator()
+    response = client.get("/api/get-service-config/demo/")
+    assert response.status_code == 200, (
+        f"reading a valid unit file returned {response.status_code}"
+    )
+    body = response.json()
+    assert "Description=Demo" in body["config"]
+    # The page needs the public key to encrypt the sudo password later.
+    assert "BEGIN PUBLIC KEY" in body["public_key"]
+
+
+def test_oversized_unit_file_is_refused_not_truncated_silently(tmp_path, monkeypatch):
+    from ai_config import views
+
+    unit = tmp_path / "big.service"
+    unit.write_text("A" * (views.SERVICE_CONFIG_MAX_BYTES + 100))
+    monkeypatch.setattr(views, "find_service_file", lambda name: str(unit))
+
+    response = _operator().get("/api/get-service-config/big/")
+    assert response.status_code == 400

@@ -1,9 +1,41 @@
 {% extends './layout/layout1.html' %}
+{% load static %}
 {% block style %}
-
+<link rel="stylesheet" href="{% static 'vendor/poppins.css' %}">
 {% endblock style%}
+
+{% comment %}
+Sudo prompt, matching the chat's modal so the two privileged flows look the
+same. The design tokens are declared on the overlay itself rather than on :root,
+so they cannot bleed into the Bootstrap page around it.
+{% endcomment %}
 {% block content %}
 <style>
+    #svc-sudo-overlay {
+        --svc-bg-panel: #ffffff;
+        --svc-bg-main: #f6f7f9;
+        --svc-border: #e2e5ea;
+        --svc-text-strong: #16181d;
+        --svc-text-secondary: #5c6270;
+        --svc-accent: #1f6feb;
+        --svc-success: #22c55e;
+        --svc-danger: #e5484d;
+        --svc-font: 'Poppins', system-ui, sans-serif;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        #svc-sudo-overlay {
+            --svc-bg-panel: #1c1f26;
+            --svc-bg-main: #14161b;
+            --svc-border: #2c313b;
+            --svc-text-strong: #f2f4f8;
+            --svc-text-secondary: #a1a8b8;
+            --svc-accent: #4d8dfb;
+            --svc-success: #34d399;
+            --svc-danger: #f2545b;
+        }
+    }
+
     .stats-card:hover {
        transform: translateY(-5px);
        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
@@ -181,6 +213,73 @@
         </div>
     </div>
 </div>
+
+<!-- Sudo prompt. Mirrors the chat's modal (same tokens, same shield row, same
+     "Encrypt & Save" button) so the two privileged flows read as one feature
+     instead of a Bootstrap alert pasted next to a Poppins dialog. -->
+<div id="svc-sudo-overlay"
+    style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+                backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);
+                z-index: 10800; align-items: center; justify-content: center; padding: 1rem;">
+    <div
+        style="background: var(--svc-bg-panel); padding: 36px 40px; border-radius: 20px;
+                    border: 1px solid var(--svc-border); width: 560px; max-width: 92vw;
+                    max-height: 90vh; overflow-y: auto; position: relative;
+                    box-shadow: 0 25px 60px rgba(0,0,0,0.45); font-family: var(--svc-font);">
+        <button onclick="closeSudoModal()" title="Close" aria-label="Close"
+            style="position: absolute; top: 20px; right: 22px; border: none; background: transparent;
+                        color: var(--svc-text-secondary); cursor: pointer; font-size: 18px; padding: 4px; border-radius: 8px;">
+            <i class="fa-solid fa-xmark"></i>
+        </button>
+        <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 14px;">
+            <div
+                style="width: 56px; height: 56px; border-radius: 50%; background: rgba(229,72,77,0.12);
+                            border: 1px solid rgba(229,72,77,0.25); display: flex; align-items: center;
+                            justify-content: center; color: var(--svc-danger); font-size: 24px; flex-shrink: 0;">
+                <i class="fa-solid fa-shield-halved"></i>
+            </div>
+            <h3 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.02em; color: var(--svc-text-strong);">
+                Authentication Required</h3>
+        </div>
+        <p style="font-size: 15px; color: var(--svc-text-secondary); margin: 0 0 18px; line-height: 1.6;">
+            Please enter your sudo password to <b style="color: var(--svc-text-strong);">start, stop or restart</b>
+            this service. It is <b style="color: var(--svc-text-strong);">End-to-End Encrypted (RSA-OAEP)</b> and is
+            never sent or logged in the clear.
+        </p>
+        <div style="border: 1px solid rgba(31,111,235,0.35); border-radius: 14px; padding: 6px;">
+            <div style="display: flex; align-items: center; gap: 12px; background: var(--svc-bg-main);
+                        border: 1px solid var(--svc-border); border-radius: 10px; padding: 14px 16px;">
+                <i class="fa-solid fa-lock" style="font-size: 18px; color: var(--svc-text-secondary);"></i>
+                <input type="password" id="svc-sudo-input" placeholder="Password" autocomplete="off"
+                    onkeydown="if(event.key==='Enter'){event.preventDefault();submitSudoModal();}"
+                    style="flex: 1; border: none !important; background: transparent !important; box-shadow: none !important;
+                                outline: none !important; font-size: 15px; font-family: var(--svc-font); padding: 0; color: var(--svc-text-strong);">
+                <button type="button" onclick="toggleSudoModalVisibility()" title="Show / hide password"
+                    style="border: none; background: transparent; color: var(--svc-text-secondary); cursor: pointer; font-size: 18px; padding: 0;">
+                    <i id="svc-sudo-eye" class="fa-solid fa-eye"></i>
+                </button>
+            </div>
+        </div>
+        <p id="svc-sudo-error" style="display: none; margin: 12px 0 0; font-size: 13px; color: var(--svc-danger);"></p>
+        <div style="border-top: 1px solid var(--svc-border); margin: 22px 0 18px;"></div>
+        <div style="display: flex; gap: 12px; justify-content: flex-end;">
+            <button onclick="closeSudoModal()"
+                onmouseover="this.style.background='var(--svc-border)'; this.style.color='var(--svc-text-strong)';"
+                onmouseout="this.style.background='var(--svc-bg-main)'; this.style.color='var(--svc-text-secondary)';"
+                style="border: none; background: var(--svc-bg-main); color: var(--svc-text-secondary);
+                            border-radius: 12px; padding: 12px 26px; font-size: 15px; font-family: var(--svc-font);
+                            cursor: pointer; transition: all 0.15s;">Cancel</button>
+            <button id="svc-sudo-submit" onclick="submitSudoModal()"
+                onmouseover="this.style.filter='brightness(1.08)'; this.style.boxShadow='0 10px 30px rgba(34,197,94,0.5)';"
+                onmouseout="this.style.filter='none'; this.style.boxShadow='0 8px 24px rgba(34,197,94,0.35)';"
+                style="border: none; border-radius: 12px; padding: 12px 26px; font-size: 15px; font-weight: 600;
+                            font-family: var(--svc-font); cursor: pointer; color: #fff;
+                            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+                            box-shadow: 0 8px 24px rgba(34,197,94,0.35); transition: all 0.15s;">
+                <i class="fa-solid fa-lock" style="font-size: 14px;"></i> Encrypt &amp; Save</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block script %}
@@ -205,39 +304,74 @@
         }
     }
 
-    const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
-    const wsHost = window.location.host;
-    const socket = new WebSocket(`${wsProtocol}://${wsHost}/ws/services/`);
-    updateConnectionStatus(false);
-    socket.onopen = function(event) {
-        console.log("WebSocket connected.");
-        updateConnectionStatus(true);
-    };
+    // --- Websocket with auto-reconnect ---
+    //
+    // The server pushes the service table every few seconds, but only while the
+    // socket is alive. The old onclose only greyed out the status text: after
+    // one dropped connection the table stayed frozen for the rest of the session
+    // with no way to recover short of a page reload. Reconnect with a capped
+    // backoff, and treat a dead socket as stale data rather than fresh data.
+    let socket = null;
+    let reconnectDelay = 1000;
+    let reconnectTimer = null;
 
-    socket.onclose = function(event) {
-        console.log("WebSocket disconnected.");
+    function openServicesSocket() {
+        const wsScheme = window.location.protocol === "https:" ? "wss" : "ws";
+        socket = new WebSocket(`${wsScheme}://${window.location.host}/ws/services/`);
         updateConnectionStatus(false);
-    };
 
-    socket.onerror = function(event) {
-        console.error("WebSocket error:", event);
-        updateConnectionStatus(false);
-    };
+        socket.onopen = function () {
+            reconnectDelay = 1000;           // a success resets the backoff
+            updateConnectionStatus(true);
+        };
 
+        socket.onmessage = handleServicesMessage;
 
-    let openDropdownId = null;
-    
-    // Handle incoming messages from the server
-    socket.onmessage = function(event) {
+        socket.onclose = function () {
+            updateConnectionStatus(false);
+            scheduleReconnect();
+        };
+
+        socket.onerror = function (event) {
+            console.error("WebSocket error:", event);
+            updateConnectionStatus(false);
+        };
+    }
+
+    function scheduleReconnect() {
+        if (reconnectTimer) return;
+        reconnectTimer = setTimeout(() => {
+            reconnectTimer = null;
+            openServicesSocket();
+        }, reconnectDelay);
+        // 1s, 2s, 4s, 8s, capped at 15s. A server that is down for an hour
+        // costs one attempt every 15s, not a reconnect storm.
+        reconnectDelay = Math.min(reconnectDelay * 2, 15000);
+    }
+
+    function sendServicesCommand(payload) {
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+            Swal.fire("Not connected", "Reconnecting to the service socket. Try again in a moment.", "warning");
+            return false;
+        }
+        socket.send(JSON.stringify(payload));
+        return true;
+    }
+
+    function handleServicesMessage(event) {
         const data = JSON.parse(event.data);
 
         if (data.status === 'success' && data.services) {
             populateServicesTable(data.services);
             updateDashboardCounts(data.service_stats);
         } else if (data.message) {
-            alert(data.message); // Show success/error message
+            Swal.fire("Service Control", data.message, "warning");
         }
-    };
+    }
+
+    openServicesSocket();
+
+    let openDropdownId = null;
     let currentServiceName = null;
     function openConfigModal(serviceName) {
     // Hapus .service jika ada
@@ -247,29 +381,102 @@
 
 currentServiceName = serviceName;
     fetch(`/api/get-service-config/${encodeURIComponent(serviceName)}/`)
-            .then(response => {
+            .then(async response => {
                 if (response.status === 403) {
                     throw new Error("Session expired. Sign in again.");
                 }
+                const data = await response.json().catch(() => ({}));
                 if (!response.ok) {
-                    throw new Error("Network response was not ok");
+                    // Surface what the server actually said. Swallowing it into a
+                    // generic string hid a server-side TypeError behind
+                    // "Failed to fetch" for a whole debugging round.
+                    throw new Error(data.error || `Request failed (${response.status}).`);
                 }
-                return response.json();
+                return data;
             })
             .then(data => {
                 if (data.error) {
                     Swal.fire("Error", data.error, "error");
                 } else {
-                    window.serviceConfigPublicKey = data.public_key || null;
+                    window.serviceConfigPublicKey = data.public_key || window.serviceConfigPublicKey;
                     document.getElementById('configEditor').value = data.config;
                     new bootstrap.Modal(document.getElementById('configModal')).show();
                 }
             })
             .catch(error => {
                 console.error("Error fetching service config:", error);
-                Swal.fire("Error", "Failed to fetch service configuration.", "error");
+                Swal.fire("Error", error.message || "Failed to fetch service configuration.", "error");
             });
     }
+    // --- Sudo modal (same dialog as the chat) --------------------------------
+    //
+    // Returns the plaintext password to the caller, or null if cancelled. The
+    // caller encrypts it and drops the plaintext; nothing here logs it.
+    let sudoModalResolve = null;
+
+    function openSudoModal() {
+        const overlay = document.getElementById('svc-sudo-overlay');
+        const input = document.getElementById('svc-sudo-input');
+        const error = document.getElementById('svc-sudo-error');
+        if (!overlay || !input) return Promise.resolve(null);
+
+        input.value = '';
+        input.type = 'password';
+        document.getElementById('svc-sudo-eye').className = 'fa-solid fa-eye';
+        error.style.display = 'none';
+        error.textContent = '';
+        overlay.style.display = 'flex';
+
+        setTimeout(() => input.focus(), 30);
+
+        return new Promise(resolve => {
+            sudoModalResolve = resolve;
+            overlay.onclick = (e) => {
+                if (e.target === overlay) closeSudoModal(null);
+            };
+        });
+    }
+
+    function closeSudoModal(value) {
+        const overlay = document.getElementById('svc-sudo-overlay');
+        if (overlay) {
+            overlay.style.display = 'none';
+            overlay.onclick = null;
+        }
+        const resolve = sudoModalResolve;
+        sudoModalResolve = null;
+        if (resolve) resolve(value === undefined ? null : value);
+    }
+
+    function toggleSudoModalVisibility() {
+        const input = document.getElementById('svc-sudo-input');
+        const eye = document.getElementById('svc-sudo-eye');
+        if (!input) return;
+        const show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        if (eye) eye.className = show ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye';
+    }
+
+    function submitSudoModal() {
+        const input = document.getElementById('svc-sudo-input');
+        const error = document.getElementById('svc-sudo-error');
+        if (!input || !input.value) {
+            if (error) {
+                error.textContent = 'Password is required.';
+                error.style.display = 'block';
+            }
+            return;
+        }
+        closeSudoModal(input.value);
+    }
+
+    document.addEventListener('keydown', (e) => {
+        const overlay = document.getElementById('svc-sudo-overlay');
+        if (e.key === 'Escape' && overlay && overlay.style.display !== 'none') {
+            closeSudoModal(null);
+        }
+    });
+
     // --- Sudo password: encrypted before it leaves the browser ---
     // Same RSA-OAEP path the chat and architecture modals already use, so the
     // secret is never in the request body, never in a proxy log and never in
@@ -316,20 +523,7 @@ currentServiceName = serviceName;
         const leftover = document.querySelectorAll('body > .modal-backdrop');
         leftover.forEach(node => node.remove());
 
-        const { value: enteredPassword } = await Swal.fire({
-            title: "Authentication Required",
-            text: "Please enter your sudo password:",
-            input: "password",
-            inputAttributes: { autocomplete: "off" },
-            showCancelButton: true,
-            confirmButtonText: "Submit",
-            cancelButtonText: "Cancel",
-            inputValidator: (value) => {
-                if (!value) {
-                    return "Password is required!";
-                }
-            },
-        });
+        const enteredPassword = await openSudoModal();
 
         if (!enteredPassword) {
             return;
@@ -493,10 +687,14 @@ currentServiceName = serviceName;
     // Add an event listener to the services search input
     document.getElementById('serviceSearchInput').addEventListener('input', filterServiceTable);
 
-    // Refresh services button
+    // Refresh services button. Asks the socket to re-send the table; it does not
+    // run anything. The old message was {action: 'refresh'}, which the server
+    // could not satisfy - it answered with an "error" key the page never read,
+    // so the click did nothing at all and the stale table stayed on screen.
     function refreshServices() {
-        socket.send(JSON.stringify({ action: 'refresh' }));
-        Swal.fire("Refreshing", "Services are being refreshed...", "info");
+        if (sendServicesCommand({ type: 'refresh_services' })) {
+            Swal.fire("Refreshing", "Fetching the current service list...", "info");
+        }
     }
     // Track dropdown state
     document.addEventListener('show.bs.dropdown', function(event) {
@@ -517,24 +715,7 @@ currentServiceName = serviceName;
         let encryptedPassword = null;
 
         if (requiresSudo) {
-            const { value: enteredPassword } = await Swal.fire({
-                title: "Authentication Required",
-                text: "Please enter your sudo password:",
-                input: "password",
-                inputAttributes: {
-                    autocapitalize: "off",
-                    autocorrect: "off",
-                    autocomplete: "off",
-                },
-                showCancelButton: true,
-                confirmButtonText: "Submit",
-                cancelButtonText: "Cancel",
-                inputValidator: (value) => {
-                    if (!value) {
-                        return "Password is required!";
-                    }
-                },
-            });
+            const enteredPassword = await openSudoModal();
 
             if (!enteredPassword) {
                 return;

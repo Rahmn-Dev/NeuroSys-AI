@@ -438,142 +438,158 @@ class ServiceControlConsumer(AsyncWebsocketConsumer):
                 pass
 
     async def receive(self, text_data):
+        """Read-only socket: it re-sends the service table and nothing else.
+
+        This used to be an execution path. It took `action` and `service_name`
+        straight from the client and ran `systemctl <action> <service_name>`
+        with no verb allowlist and no sudo, so a caller could reach verbs the
+        HTTP route (which is allowlisted to start/stop/restart) deliberately
+        refuses. Privilege-changing actions go through /api/sudo-command/, which
+        validates both fields server-side.
+        """
         try:
             data = json.loads(text_data)
-            action = data.get('action')  # start, stop, restart, reload
-            service_name = data.get('service_name')
+        except json.JSONDecodeError:
+            return
 
-            if not service_name or not action:
-                await self.send(json.dumps({'error': 'Service name and action are required.'}))
-                return
+        if data.get("type") == "refresh_services":
+            await self.push_services()
+            return
 
-            # Jalankan perintah systemctl
-            result = await sync_to_async(self.run_systemctl_command)(action, service_name)
+        # Anything else is not a verb this socket accepts. Say so instead of
+        # falling through to a command runner.
+        await self.send(json.dumps({
+            'status': 'error',
+            'message': 'This socket is read-only. Use the service controls instead.',
+        }))
 
-            if result['status'] == 'success':
-                await self.send(json.dumps({'status': 'success', 'message': result['message']}))
-            else:
-                await self.send(json.dumps({'status': 'error', 'message': result['message']}))
-
-        except Exception as e:
-            await self.send(json.dumps({'status': 'error', 'message': str(e)}))
-
-    def run_systemctl_command(self, action, service_name):
+    async def push_services(self):
         try:
-            command = ['systemctl', action, service_name]
-            result = subprocess.run(command, capture_output=True, text=True)
+            snapshot = await sync_to_async(self._build_service_snapshot)()
+        except Exception:
+            logger.error("services snapshot failed", exc_info=True)
+            # Say so. Swallowing this made a dead table look identical to an
+            # empty machine, which is how a refactor bug hid for a round.
+            await self.send(json.dumps({
+                'status': 'error',
+                'message': 'Could not read the service list from the server.',
+            }))
+            return
+        await self.send(json.dumps(snapshot))
 
-            if result.returncode == 0:
-                return {'status': 'success', 'message': result.stdout}
+    def _build_service_snapshot(self):
+        """Run systemctl once and return the service table payload.
+
+        Deliberately synchronous: it blocks on subprocess.run, so callers wrap it
+        in sync_to_async. Declaring it `async def` while still wrapping it in
+        sync_to_async produced a coroutine object that never ran, and the poll
+        loop's broad except swallowed it - the table simply stayed empty.
+        """
+        # Jalankan perintah systemctl untuk mendapatkan daftar layanan
+        result = subprocess.run(
+            ["systemctl", "list-units", "--type=service", "--all", "--no-pager"],
+            capture_output=True, text=True
+        )
+        services = []
+        lines = result.stdout.split('\n')
+
+        # Hitung statistik layanan
+        total_services = 0
+        active_services = 0
+        inactive_services = 0
+        failed_services = 0
+
+        # Proses setiap baris
+        for line in lines:
+            # Skip baris kosong
+            if not line.strip():
+                continue
+            
+            # Skip header dan footer
+            if (line.strip().startswith("UNIT") or 
+                line.strip().startswith("Legend:") or 
+                line.strip().startswith("To show all installed unit files") or 
+                "loaded units listed" in line or
+                line.strip().startswith("LOAD") or
+                line.strip().startswith("ACTIVE") or
+                line.strip().startswith("SUB")):
+                continue
+
+            # Clean line dari karakter bullet point dan whitespace berlebih
+            clean_line = line.replace("●", "").strip()
+            
+            # Split berdasarkan whitespace
+            parts = clean_line.split()
+            
+            # Pastikan baris memiliki minimal 4 kolom (UNIT, LOAD, ACTIVE, SUB)
+            if len(parts) < 4:
+                continue
+
+            # Pastikan ini baris service yang valid
+            if not parts[0].endswith('.service'):
+                continue
+
+            total_services += 1
+            
+            # Ekstrak informasi layanan
+            name = parts[0]
+            load_state = parts[1]
+            active_state = parts[2] 
+            sub_state = parts[3]
+            description = " ".join(parts[4:]) if len(parts) > 4 else "N/A"
+
+            # Hitung statistik berdasarkan active state
+            if active_state == "active":
+                active_services += 1
+            elif active_state == "inactive":
+                inactive_services += 1
+            elif active_state == "failed":
+                failed_services += 1
+
+            # Tentukan status overall
+            if active_state == "failed" or sub_state == "failed":
+                status = "failed"
+            elif active_state == "active":
+                status = "running"
+            elif load_state == "not-found":
+                status = "not-found"
             else:
-                return {'status': 'error', 'message': result.stderr}
+                status = "stopped"
 
-        except Exception as e:
-            return {'status': 'error', 'message': str(e)}
+            # Tambahkan ke daftar layanan
+            services.append({
+                'name': name,
+                'status': status,
+                'active_state': active_state,
+                'sub_state': sub_state,
+                'load_state': load_state,
+                'description': description
+            })
+
+        # Dikembalikan, bukan dikirim: pemanggil yang memutuskan kapan dan ke
+        # mana payload ini sampai.
+        return {
+            'status': 'success',
+            'services': services,
+            'service_stats': {
+                "total": total_services,
+                "active": active_services,
+                "inactive": inactive_services,
+                "failed": failed_services
+            }
+        }
 
     async def get_running_services(self):
+        """Push the table every few seconds until the socket closes."""
         try:
             while True:
-                try:
-                    # Jalankan perintah systemctl untuk mendapatkan daftar layanan
-                    result = subprocess.run(
-                        ["systemctl", "list-units", "--type=service", "--all", "--no-pager"],
-                        capture_output=True, text=True
-                    )
-                    services = []
-                    lines = result.stdout.split('\n')
+                # push_services reports its own failures to the client, so there
+                # is no bare except here to hide a broken payload.
+                await self.push_services()
 
-                    # Hitung statistik layanan
-                    total_services = 0
-                    active_services = 0
-                    inactive_services = 0
-                    failed_services = 0
-
-                    # Proses setiap baris
-                    for line in lines:
-                        # Skip baris kosong
-                        if not line.strip():
-                            continue
-                        
-                        # Skip header dan footer
-                        if (line.strip().startswith("UNIT") or 
-                            line.strip().startswith("Legend:") or 
-                            line.strip().startswith("To show all installed unit files") or 
-                            "loaded units listed" in line or
-                            line.strip().startswith("LOAD") or
-                            line.strip().startswith("ACTIVE") or
-                            line.strip().startswith("SUB")):
-                            continue
-
-                        # Clean line dari karakter bullet point dan whitespace berlebih
-                        clean_line = line.replace("●", "").strip()
-                        
-                        # Split berdasarkan whitespace
-                        parts = clean_line.split()
-                        
-                        # Pastikan baris memiliki minimal 4 kolom (UNIT, LOAD, ACTIVE, SUB)
-                        if len(parts) < 4:
-                            continue
-
-                        # Pastikan ini baris service yang valid
-                        if not parts[0].endswith('.service'):
-                            continue
-
-                        total_services += 1
-                        
-                        # Ekstrak informasi layanan
-                        name = parts[0]
-                        load_state = parts[1]
-                        active_state = parts[2] 
-                        sub_state = parts[3]
-                        description = " ".join(parts[4:]) if len(parts) > 4 else "N/A"
-
-                        # Hitung statistik berdasarkan active state
-                        if active_state == "active":
-                            active_services += 1
-                        elif active_state == "inactive":
-                            inactive_services += 1
-                        elif active_state == "failed":
-                            failed_services += 1
-
-                        # Tentukan status overall
-                        if active_state == "failed" or sub_state == "failed":
-                            status = "failed"
-                        elif active_state == "active":
-                            status = "running"
-                        elif load_state == "not-found":
-                            status = "not-found"
-                        else:
-                            status = "stopped"
-
-                        # Tambahkan ke daftar layanan
-                        services.append({
-                            'name': name,
-                            'status': status,
-                            'active_state': active_state,
-                            'sub_state': sub_state,
-                            'load_state': load_state,
-                            'description': description
-                        })
-
-                    # Kirim data layanan ke frontend
-                    await self.send(json.dumps({
-                        'status': 'success', 
-                        'services': services, 
-                        'service_stats': {
-                            "total": total_services,
-                            "active": active_services,
-                            "inactive": inactive_services,
-                            "failed": failed_services
-                        }
-                    }))
-
-                except Exception as e:
-                    await self.send(json.dumps({'status': 'error', 'message': str(e)}))
-
-                # One second shelled out to systemctl every second, for every
-                # open tab, and forced the frontend to re-render the whole table
-                # that often. Five seconds keeps the dashboard live without the churn.
+                # Five seconds, not one: this shelled out to systemctl for
+                # every open tab and made the browser rebuild the whole table
+                # that often, which was the source of the page flicker.
                 await asyncio.sleep(5)
         except asyncio.CancelledError:
             # Clean exit
